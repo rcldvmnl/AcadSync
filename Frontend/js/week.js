@@ -1,7 +1,8 @@
 // Whole week (students) / Week Schedule editor (admin).
 
-const START_OPTIONS = ['07:00', '08:00', '09:00', '10:00', '13:00', '15:00'];
-const END_OPTIONS = ['09:30', '10:00', '10:30', '11:30', '12:00', '14:30', '16:00', '17:00'];
+const LENGTHS = [[60, '1 hr'], [90, '1.5 hrs'], [120, '2 hrs'], [180, '3 hrs']];
+const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const toHHMM = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 let state = { data: null, subjects: [], admin: false, adding: null };
 
 (async () => {
@@ -32,8 +33,8 @@ function render() {
   $('#main').innerHTML = `
     ${state.admin ? `<div class="mb-5 flex gap-3 rounded-[1.5rem] bg-lavender-tint p-4 lg:max-w-xl">
       ${icon('calendar', 20, 'mt-0.5 shrink-0')}
-      <div><div class="text-sm font-semibold">Classes repeat every week</div><div class="text-xs text-muted">Tap + to add a class to a day, or × to remove one.</div></div>
-    </div>` : ''}
+      <div><div class="text-sm font-semibold">Classes repeat every week</div><div class="text-xs text-muted">Tap + to add a class to a day, or × to remove one. Each class can have its own time and length.</div></div>
+    </div>${unscheduled()}` : ''}
     <div class="grid gap-5 lg:grid-cols-2 lg:items-start">${days.map(state.admin ? adminDay : studentDay).join('')}</div>`;
   if (state.admin) bindAdmin();
 }
@@ -69,18 +70,31 @@ function adminDay(d) {
     </section>`;
 }
 
+/** Subjects that have no class meeting yet (e.g. right after loading the preset). */
+function unscheduled() {
+  const list = state.subjects.filter((s) => !s.slots.length);
+  if (!list.length) return '';
+  return `<div class="mb-5 rounded-[1.5rem] bg-sun-tint p-4 lg:max-w-xl">
+    <div class="text-sm font-semibold">${list.length} subject${list.length === 1 ? '' : 's'} without class times</div>
+    <div class="mt-2 flex flex-wrap gap-2">${list.map((s) => `<a href="add-subject.html?id=${s.id}" class="chip bg-white">${esc(s.code)} · set times</a>`).join('')}</div>
+  </div>`;
+}
+
 function newClassForm() {
   const a = state.adding;
-  const chips = (opts, key, cur) => opts.map((o) => `<button type="button" data-${key}="${o}" class="rounded-full px-4 py-2.5 text-sm font-medium ${cur === o ? 'bg-charcoal text-white' : 'bg-canvas'}">${Fmt.time(o)}</button>`).join('');
+  const len = toMin(a.end) - toMin(a.start);
   return `
     <form id="new-class" class="mt-2 rounded-2xl border-2 border-dashed border-charcoal/60 p-4">
       <div class="flex items-center justify-between"><div class="font-semibold">New class</div><span class="chip bg-sun-tint">Not saved yet</span></div>
       <label class="mt-3 block"><span class="mb-1.5 block text-xs text-muted">Subject</span>
         <span class="field">${icon('bookOpen', 18)}<select name="subject_id">${state.subjects.map((s) => `<option value="${s.id}" ${String(s.id) === String(a.subject_id) ? 'selected' : ''}>${esc(s.code)} · ${esc(s.title)}</option>`).join('')}</select>${icon('chevronDown', 18)}</span></label>
-      <div class="mt-3 text-xs text-muted">Starts</div>
-      <div class="mt-1.5 flex flex-wrap gap-2">${chips(START_OPTIONS, 'start', a.start)}</div>
-      <div class="mt-3 text-xs text-muted">Ends</div>
-      <div class="mt-1.5 flex flex-wrap gap-2">${chips(END_OPTIONS, 'end', a.end)}</div>
+      <div class="mt-3 grid grid-cols-2 gap-2">
+        <label class="block"><span class="mb-1.5 block text-xs text-muted">Starts</span>
+          <span class="field h-11">${icon('clock', 16)}<input type="time" data-start value="${a.start}"></span></label>
+        <label class="block"><span class="mb-1.5 block text-xs text-muted">Ends</span>
+          <span class="field h-11">${icon('clock', 16)}<input type="time" data-end value="${a.end}"></span></label>
+      </div>
+      <div class="mt-2 flex flex-wrap gap-1.5">${LENGTHS.map(([m, l]) => `<button type="button" data-len="${m}" class="rounded-full px-3 py-1.5 text-xs font-medium ${m === len ? 'bg-charcoal text-white' : 'bg-canvas'}">${l}</button>`).join('')}</div>
       <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
       <div class="mt-4 grid grid-cols-2 gap-2">
         <button type="button" data-cancel class="btn btn-canvas">Cancel</button>
@@ -91,7 +105,8 @@ function newClassForm() {
 
 function bindAdmin() {
   $$('[data-add]').forEach((b) => b.onclick = () => {
-    state.adding = { dow: Number(b.dataset.add), subject_id: state.subjects[0]?.id, start: '08:00', end: '09:30' };
+    state.adding = { dow: Number(b.dataset.add), subject_id: state.subjects[0]?.id, start: '08:00', end: '09:00' };
+    if (!state.subjects.length) { UI.toast('Add a subject first', { iconName: 'alert' }); state.adding = null; return; }
     render();
     $('#new-class')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -104,8 +119,15 @@ function bindAdmin() {
   });
   const form = $('#new-class');
   if (!form) return;
-  $$('[data-start]', form).forEach((b) => b.onclick = () => { state.adding.start = b.dataset.start; state.adding.subject_id = form.elements.subject_id.value; render(); });
-  $$('[data-end]', form).forEach((b) => b.onclick = () => { state.adding.end = b.dataset.end; state.adding.subject_id = form.elements.subject_id.value; render(); });
+  const keep = () => { state.adding.subject_id = form.elements.subject_id.value; render(); };
+  $('[data-start]', form).onchange = (e) => {
+    const len = Math.max(30, toMin(state.adding.end) - toMin(state.adding.start));
+    state.adding.start = e.target.value;
+    state.adding.end = toHHMM(toMin(e.target.value) + len);
+    keep();
+  };
+  $('[data-end]', form).onchange = (e) => { state.adding.end = e.target.value; keep(); };
+  $('[data-len]', form).forEach((b) => b.onclick = () => { state.adding.end = toHHMM(toMin(state.adding.start) + Number(b.dataset.len)); keep(); });
   $('[data-cancel]', form).onclick = () => { state.adding = null; render(); };
   UI.bindForm(form, async (d) => {
     await API.post('subjects.php', { action: 'add_slot', subject_id: Number(d.subject_id), day_of_week: state.adding.dow, start_time: state.adding.start, end_time: state.adding.end });

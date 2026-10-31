@@ -8,15 +8,24 @@
  *  array_search, in_array, array_filter, ...) and no SQL ORDER BY / WHERE is
  *  used for processing — the database only stores raw rows.
  *
- *  DATA STRUCTURES (7)                     WHERE IT IS USED
+ *  Search the project for "[DSA:" to find every place a structure is used.
+ *
+ *  DATA STRUCTURES (7)       RUBRIC                                   IN ACADSYNC
  *  ----------------------------------------------------------------------------
- *  1. Array      — FixedArray / SubjectArray   Subject grid (fixed curriculum)
- *  2. Linked List— TaskLinkedList              Active task timeline
- *  3. HashSet    — StudentHashSet              Unique @lspu.edu.ph e-mails
- *  4. Stack      — UndoStack                   Admin "Undo reject"
- *  5. Queue      — ApprovalQueue               Admin approval pipeline (FIFO)
- *  6. Tree       — SubjectTree                 Section -> Subjects -> Tasks
- *  7. Graph      — DependencyGraph             Study-group connections
+ *  1. Array       Storing and accessing collections of records.     SubjectArray: a section's subjects
+ *  2. Linked List Managing sequences of records through             TaskLinkedList: the task timeline
+ *                 insertion and deletion.                           (insert approved, delete expired/removed)
+ *  3. HashSet     Preventing duplicate entries or maintaining       HashSet / StudentHashSet: unique e-mails,
+ *                 unique records.                                   student IDs, section names, class codes,
+ *                                                                   subject codes
+ *  4. Stack       Implementing undo operations, history, or         UndoStack: admin "Undo reject"
+ *                 backtracking.
+ *  5. Queue       Managing waiting lists, service requests, or      ApprovalQueue: student task requests
+ *                 tasks in order.                                   reviewed first-come, first-served
+ *  6. Tree        Organizing hierarchical data or implementing      SubjectTree: Section -> Subjects -> Tasks,
+ *                 tree-based searching.                             searched depth-first by the search bar
+ *  7. Graph       Representing connections, routes,                 DependencyGraph: study-group links
+ *                 relationships, or networks.                       between classmates (adjacency list + BFS)
  *
  *  ALGORITHMS (5)
  *  ----------------------------------------------------------------------------
@@ -143,7 +152,10 @@ final class DsaUtil
 }
 
 /* ============================================================================
- * 1. ARRAY — fixed-capacity one-dimensional array
+ * 1. ARRAY — "Storing and accessing collections of records."
+ *    A fixed-capacity, index-based 1D array. AcadSync stores each section's
+ *    subject records in a SubjectArray and reads them back by index for the
+ *    subject grid, the curriculum list and the Tree's branches.
  * ========================================================================= */
 class FixedArray
 {
@@ -180,6 +192,17 @@ class FixedArray
         }
     }
 
+    /** Linear scan for the index of the record whose $field equals $value (-1 if absent). */
+    public function indexOf(string $field, mixed $value): int
+    {
+        for ($i = 0; $i < $this->size; $i++) {
+            if ((string) ($this->slots[$i][$field] ?? '') === (string) $value) {
+                return $i;
+            }
+        }
+        return -1;
+    }
+
     public function size(): int
     {
         return $this->size;
@@ -200,7 +223,7 @@ class FixedArray
     }
 }
 
-/** The section curriculum. BSINFO-2A has 8 core subjects; officers may add a few electives. */
+/** A section's curriculum. BSINFO-2A has 8 core subjects; officers may add electives. */
 class SubjectArray extends FixedArray
 {
     public const CORE_SUBJECTS = 8;
@@ -212,7 +235,11 @@ class SubjectArray extends FixedArray
 }
 
 /* ============================================================================
- * 2. LINKED LIST — singly linked task timeline (+ INSERTION SORT)
+ * 2. LINKED LIST — "Managing sequences of records through insertion and deletion."
+ *    A singly linked list of TaskNodes = the section's active task timeline.
+ *    INSERTION: approved tasks are spliced in chronologically (Insertion Sort).
+ *    DELETION:  expired tasks are dropped from the head (head = head->next) and
+ *               an admin-removed task is unlinked from the middle (deleteById).
  * ========================================================================= */
 class TaskNode
 {
@@ -281,6 +308,47 @@ class TaskLinkedList
         return $dropped;
     }
 
+    /**
+     * DELETION from anywhere in the list: walks to the node before the match
+     * and re-points its `next` past it. Returns the removed task (or null).
+     */
+    public function deleteById(int $taskId): ?array
+    {
+        if ($this->head === null) {
+            return null;
+        }
+        if ((int) $this->head->task['id'] === $taskId) {
+            $removed = $this->head->task;
+            $this->head = $this->head->next;
+            $this->length--;
+            return $removed;
+        }
+        $prev = $this->head;
+        while ($prev->next !== null && (int) $prev->next->task['id'] !== $taskId) {
+            $prev = $prev->next;
+        }
+        if ($prev->next === null) {
+            return null;
+        }
+        $removed = $prev->next->task;
+        $prev->next = $prev->next->next;   // unlink
+        $this->length--;
+        return $removed;
+    }
+
+    /** 1-based position of a task in the timeline (0 if not found). */
+    public function positionOf(int $taskId): int
+    {
+        $i = 0;
+        for ($n = $this->head; $n !== null; $n = $n->next) {
+            $i++;
+            if ((int) $n->task['id'] === $taskId) {
+                return $i;
+            }
+        }
+        return 0;
+    }
+
     public function length(): int
     {
         return $this->length;
@@ -297,9 +365,12 @@ class TaskLinkedList
 }
 
 /* ============================================================================
- * 3. HASHSET — O(1) duplicate e-mail detection with a custom hash function
+ * 3. HASHSET — "Preventing duplicate entries or maintaining unique records."
+ *    Custom djb2 hash + separate chaining gives O(1) average add/contains.
+ *    Used to keep e-mails, student IDs, section names, class codes and a
+ *    section's subject codes unique.
  * ========================================================================= */
-class StudentHashSet
+class HashSet
 {
     /** @var array<int, array<int, string>> buckets for separate chaining */
     private array $buckets = [];
@@ -312,8 +383,14 @@ class StudentHashSet
         }
     }
 
+    /** Keys are compared case-insensitively and without surrounding spaces. */
+    protected function normalize(string $key): string
+    {
+        return DsaUtil::lower(trim($key));
+    }
+
     /** djb2 string hash, reduced to a bucket index. */
-    private function hash(string $key): int
+    public function hash(string $key): int
     {
         $h = 5381;
         $len = strlen($key);
@@ -323,9 +400,9 @@ class StudentHashSet
         return $h % $this->bucketCount;
     }
 
-    public function contains(string $email): bool
+    public function contains(string $value): bool
     {
-        $key = DsaUtil::lower(trim($email));
+        $key = $this->normalize($value);
         $bucket = $this->buckets[$this->hash($key)];
         $n = count($bucket);
         for ($i = 0; $i < $n; $i++) {
@@ -336,13 +413,13 @@ class StudentHashSet
         return false;
     }
 
-    /** Adds an e-mail. Returns false when it already exists (duplicate). */
-    public function addEmail(string $email): bool
+    /** Adds a value. Returns false when it already exists (duplicate rejected). */
+    public function add(string $value): bool
     {
-        if ($this->contains($email)) {
+        if ($this->contains($value)) {
             return false;
         }
-        $key = DsaUtil::lower(trim($email));
+        $key = $this->normalize($value);
         $this->buckets[$this->hash($key)][] = $key;
         $this->count++;
         return true;
@@ -352,10 +429,33 @@ class StudentHashSet
     {
         return $this->count;
     }
+
+    /** Non-empty buckets, for the DSA viewer: [bucketIndex => [keys...]]. */
+    public function buckets(): array
+    {
+        $out = [];
+        foreach ($this->buckets as $i => $b) {
+            if ($b) {
+                $out[$i] = $b;
+            }
+        }
+        return $out;
+    }
+}
+
+/** HashSet of student e-mails (FR-1.2 duplicate-account check). */
+class StudentHashSet extends HashSet
+{
+    public function addEmail(string $email): bool
+    {
+        return $this->add($email);
+    }
 }
 
 /* ============================================================================
- * 4. STACK — LIFO buffer of rejected requests (Admin Undo)
+ * 4. STACK — "Implementing undo operations, history, or backtracking."
+ *    LIFO buffer of rejected requests. Reject = push; "Undo" = pop the most
+ *    recent rejection and send it back to the approval queue.
  * ========================================================================= */
 class StackNode
 {
@@ -417,7 +517,10 @@ class UndoStack
 }
 
 /* ============================================================================
- * 5. QUEUE — FIFO approval pipeline
+ * 5. QUEUE — "Managing waiting lists, service requests, or tasks in order."
+ *    FIFO waiting list of student task requests. Submitting = enqueue at the
+ *    rear; the admin can only decide the front request (dequeue), so requests
+ *    are served strictly in the order they arrived.
  * ========================================================================= */
 class QueueNode
 {
@@ -487,7 +590,11 @@ class ApprovalQueue
 }
 
 /* ============================================================================
- * 6. TREE — Section (root) -> Subjects (branches) -> Tasks (leaves)
+ * 6. TREE — "Organizing hierarchical data or implementing tree-based searching."
+ *    HIERARCHY: Section (root) -> Subjects (branches) -> Tasks (leaves).
+ *    SEARCHING: search() walks the tree depth-first and returns every node
+ *    whose label matches, together with its path (e.g. BSINFO-2A > GEC 107 >
+ *    Reporting — Ch. 3). Powers the search bar.
  * ========================================================================= */
 class TreeNode
 {
@@ -519,7 +626,32 @@ class SubjectTree
         return $this->root->addChild(new TreeNode($subject['code'], $subject + ['type' => 'subject']));
     }
 
-    /** Depth-first search for a subject branch by id. */
+    /**
+     * Tree-based search (depth-first, pre-order). Matches a node when its
+     * label — or for subjects, their title — contains the query.
+     * Returns [['node' => data, 'path' => ['BSINFO-2A', 'GEC 107', ...]], ...].
+     */
+    public function search(string $query, ?TreeNode $node = null, array $path = []): array
+    {
+        $node ??= $this->root;
+        $path[] = $node->label;
+        $matches = [];
+        $haystack = $node->label . ' ' . ($node->data['title'] ?? '');
+        if ($node !== $this->root && DsaUtil::contains($haystack, $query)) {
+            $matches[] = ['node' => $node->data, 'path' => $path];
+        }
+        $n = count($node->children);
+        for ($i = 0; $i < $n; $i++) {
+            $found = $this->search($query, $node->children[$i], $path);
+            $m = count($found);
+            for ($j = 0; $j < $m; $j++) {
+                $matches[] = $found[$j];
+            }
+        }
+        return $matches;
+    }
+
+    /** Finds a subject branch among the root's children by id. */
     public function findSubject(int $subjectId): ?TreeNode
     {
         $n = count($this->root->children);
@@ -556,7 +688,10 @@ class SubjectTree
 }
 
 /* ============================================================================
- * 7. GRAPH — study-group collaboration (undirected adjacency list)
+ * 7. GRAPH — "Representing connections, routes, relationships, or networks."
+ *    Undirected graph stored as an adjacency list. Vertices = classmates,
+ *    edges = "works with" relationships labelled by study group. Breadth-first
+ *    traversal (teamMembers) finds everyone connected inside one group.
  * ========================================================================= */
 class DependencyGraph
 {
@@ -651,6 +786,12 @@ class DependencyGraph
     public function vertexCount(): int
     {
         return count($this->adjacency);
+    }
+
+    /** The raw adjacency list, for the DSA viewer. */
+    public function adjacencyList(): array
+    {
+        return $this->adjacency;
     }
 }
 

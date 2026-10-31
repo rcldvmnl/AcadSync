@@ -14,8 +14,11 @@ require_once __DIR__ . '/../backend/bootstrap.php';
 require_method('POST');
 $admin = require_admin();
 $ctx = load_context($admin);
+$sectionId = (int) $ctx['section']['id'];
+$adminId = (int) $admin['id'];
 
-$queue = build_queue($ctx['subjectIndex']);
+// [DSA: QUEUE] — only the front of the waiting list may be decided
+$queue = build_queue($sectionId, $ctx['taskIndex']);
 $front = $queue->peek();
 if ($front === null) {
     fail('The queue is empty.', 409);
@@ -24,20 +27,28 @@ if ((int) $front['id'] !== (int) param('task_id', 0)) {
     fail('Requests are reviewed in order — decide #1 first.', 409, ['front_id' => (int) $front['id']]);
 }
 
-$task = $queue->dequeue();              // DEQUEUE (FIFO)
 $action = param('action');
+if ($action !== 'approve' && $action !== 'reject') {
+    fail('Action must be approve or reject.');
+}
+
+$task = $queue->dequeue();              // DEQUEUE (FIFO)
 $requester = (int) $task['requested_by'];
 
 Store::begin();
 Store::delete('approval_queue', (int) $task['queue_row']);
 
 if ($action === 'approve') {
-    Store::update('tasks', (int) $task['id'], ['status' => 'approved', 'reviewed_by' => (int) $admin['id']]);
     $linkId = (int) $task['id'];
-
-    if ($task['kind'] === 'change' && $task['target_task_id']) {
+    if ($task['kind'] === 'change') {
+        $original = $ctx['taskIndex'][(int) $task['target_task_id']] ?? null;
+        if (!$original || $original['status'] !== 'approved') {
+            Store::update('tasks', (int) $task['id'], ['status' => 'rejected', 'reviewed_by' => $adminId]);
+            Store::commit();
+            fail('The original task was removed, so this edit request was closed.', 409);
+        }
         // Copy the requested changes onto the original task
-        Store::update('tasks', (int) $task['target_task_id'], [
+        Store::update('tasks', (int) $original['id'], [
             'category' => $task['category'],
             'title' => $task['title'],
             'description' => $task['description'],
@@ -47,40 +58,34 @@ if ($action === 'approve') {
             'deadline_type' => $task['deadline_type'],
             'location' => $task['location'],
         ]);
-        $linkId = (int) $task['target_task_id'];
+        $linkId = (int) $original['id'];
     }
+    Store::update('tasks', (int) $task['id'], ['status' => 'approved', 'reviewed_by' => $adminId]);
     Store::commit();
 
-    // Rebuild the timeline: the approved task is placed with Insertion Sort
+    // [DSA: LINKED LIST] — rebuild the timeline; Insertion Sort places the task by date
     $ctx = load_context($admin);
     $timeline = build_timeline($ctx['tasks'], time());
-    $position = 0;
-    $i = 0;
-    foreach ($timeline->toArray() as $t) {
-        $i++;
-        if ((int) $t['id'] === $linkId) {
-            $position = $i;
-        }
-    }
 
-    notify($requester, 'approved', "Your request “{$task['title']}” was approved", "task.html?id=$linkId");
-    respond(['action' => 'approved', 'task_id' => $linkId, 'timeline_position' => $position, 'queue_size' => $queue->size()]);
-}
-
-if ($action === 'reject') {
-    Store::update('tasks', (int) $task['id'], ['status' => 'rejected', 'reviewed_by' => (int) $admin['id']]);
-    Store::insert('undo_stack', ['task_id' => (int) $task['id'], 'admin_id' => (int) $admin['id']]);   // PUSH (LIFO)
-    Store::commit();
-
-    notify($requester, 'rejected', "Your request “{$task['title']}” was not approved", null);
-    $stack = build_undo_stack($ctx['subjectIndex']);
+    notify($requester, $sectionId, 'approved', "Your request “{$task['title']}” was approved", "task.html?id=$linkId");
     respond([
-        'action' => 'rejected',
-        'task' => present_task($task, $ctx['subjectIndex'], $ctx['users']),
-        'undo_size' => $stack->size(),
+        'action' => 'approved',
+        'task_id' => $linkId,
+        'timeline_position' => $timeline->positionOf($linkId),
         'queue_size' => $queue->size(),
     ]);
 }
 
-Store::pdo()->rollBack();
-fail('Action must be approve or reject.');
+Store::update('tasks', (int) $task['id'], ['status' => 'rejected', 'reviewed_by' => $adminId]);
+// [DSA: STACK] — PUSH the rejection so it can be undone (LIFO)
+Store::insert('undo_stack', ['section_id' => $sectionId, 'task_id' => (int) $task['id'], 'admin_id' => $adminId]);
+Store::commit();
+
+notify($requester, $sectionId, 'rejected', "Your request “{$task['title']}” was not approved", 'account.html#requests');
+$ctx = load_context($admin);
+respond([
+    'action' => 'rejected',
+    'task' => present_task($task, $ctx['subjectIndex'], $ctx['users']),
+    'undo_size' => build_undo_stack($sectionId, $ctx['taskIndex'])->size(),
+    'queue_size' => $queue->size(),
+]);

@@ -28,6 +28,11 @@ let picker, times, category = 'Reporting', mode, task = null;
 
   const [{ subjects }, sched] = await Promise.all([API.get('subjects.php'), API.get('schedule.php')]);
   const markers = new Set(sched.timeline.filter((t) => t.deadline).map((t) => t.deadline_end || t.deadline));
+  if (!subjects.length) {
+    $('#main').innerHTML = `${UI.empty('No subjects yet', admin ? 'Add a subject first, then you can add its tasks.' : 'Ask your class officer to add the section’s subjects.', 'bookOpen')}
+      ${admin ? '<a href="add-subject.html" class="btn btn-dark mt-4 w-full">Add a subject</a>' : ''}`;
+    return;
+  }
   render(subjects, markers);
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 

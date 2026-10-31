@@ -10,14 +10,12 @@ require_once __DIR__ . '/../backend/bootstrap.php';
 
 $admin = require_admin();
 $ctx = load_context($admin);
+$sectionId = (int) $ctx['section']['id'];
 
-$queue = build_queue($ctx['subjectIndex']);
-$stack = build_undo_stack($ctx['subjectIndex']);
-
-$taskById = [];
-foreach ($ctx['tasks'] as $t) {
-    $taskById[(int) $t['id']] = $t;
-}
+// [DSA: QUEUE] — waiting list of requests, front = oldest
+$queue = build_queue($sectionId, $ctx['taskIndex']);
+// [DSA: STACK] — rejected requests, top = most recent
+$stack = build_undo_stack($sectionId, $ctx['taskIndex']);
 
 $items = [];
 $position = 0;
@@ -25,11 +23,13 @@ foreach ($queue->toArray() as $q) {
     $position++;
     $item = present_task($q, $ctx['subjectIndex'], $ctx['users']);
     $item['position'] = $position;
+    // [ALGORITHM: LINEAR SEARCH] — compare with existing tasks of the same subject
     $item['similar'] = $q['kind'] === 'new'
         ? find_similar($ctx['tasks'], (int) $q['subject_id'], $q['title'] . ' ' . $q['description'], null, $ctx['subjectIndex'], $ctx['users'])
         : [];
-    if ($q['kind'] === 'change' && isset($taskById[(int) $q['target_task_id']])) {
-        $item['original'] = present_task($taskById[(int) $q['target_task_id']], $ctx['subjectIndex'], $ctx['users']);
+    $original = $ctx['taskIndex'][(int) $q['target_task_id']] ?? null;
+    if ($q['kind'] === 'change' && $original) {
+        $item['original'] = present_task($original, $ctx['subjectIndex'], $ctx['users']);
     }
     $items[] = $item;
 }

@@ -12,6 +12,7 @@ require_once __DIR__ . '/custom_dsa.php';
 require_once __DIR__ . '/services.php';
 
 session_name('acadsync');
+session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'path' => '/']);
 session_start();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -59,7 +60,25 @@ function require_method(string $method): void
     }
 }
 
-/** The logged-in user row, or a 401. */
+/** The membership row linking a user to a section, or null. */
+function membership(int $userId, ?int $sectionId): ?array
+{
+    if ($sectionId === null) {
+        return null;
+    }
+    foreach (Store::all('memberships') as $m) {
+        if ((int) $m['user_id'] === $userId && (int) $m['section_id'] === $sectionId) {
+            return $m;
+        }
+    }
+    return null;
+}
+
+/**
+ * The logged-in user row, or a 401. Two convenience keys are added:
+ *   section_id = the section currently open (null if none)
+ *   role       = the user's role in that section ('admin' | 'student')
+ */
 function current_user(): array
 {
     $id = $_SESSION['user_id'] ?? null;
@@ -67,14 +86,18 @@ function current_user(): array
     if (!$user) {
         fail('Please log in first.', 401);
     }
+    $active = $user['active_section_id'] !== null ? (int) $user['active_section_id'] : null;
+    $m = membership((int) $user['id'], $active);
+    $user['section_id'] = $m ? $active : null;
+    $user['role'] = $m['role'] ?? 'student';
     return $user;
 }
 
-/** The logged-in user, who must also belong to a section. */
+/** The logged-in user, who must also have a section open. */
 function current_member(): array
 {
     $user = current_user();
-    if (empty($user['section_id'])) {
+    if ($user['section_id'] === null) {
         fail('Join or create a section first.', 409, ['needs_section' => true]);
     }
     return $user;
@@ -89,17 +112,29 @@ function require_admin(): array
     return $user;
 }
 
-function notify(int $userId, string $type, string $message, ?string $link = null): void
+function notify(int $userId, ?int $sectionId, string $type, string $message, ?string $link = null): void
 {
-    Store::insert('notifications', ['user_id' => $userId, 'type' => $type, 'message' => $message, 'link' => $link]);
+    Store::insert('notifications', [
+        'user_id' => $userId, 'section_id' => $sectionId, 'type' => $type, 'message' => $message, 'link' => $link,
+    ]);
 }
 
 /** Sends a notification to every admin of a section. */
 function notify_admins(int $sectionId, string $type, string $message, ?string $link = null): void
 {
-    foreach (Store::where('users', 'section_id', $sectionId) as $u) {
+    foreach (section_members($sectionId) as $u) {
         if ($u['role'] === 'admin') {
-            notify((int) $u['id'], $type, $message, $link);
+            notify((int) $u['id'], $sectionId, $type, $message, $link);
+        }
+    }
+}
+
+/** Sends a notification to everyone in a section except $exceptUserId. */
+function notify_section(int $sectionId, ?int $exceptUserId, string $type, string $message, ?string $link = null): void
+{
+    foreach (section_members($sectionId) as $u) {
+        if ((int) $u['id'] !== $exceptUserId) {
+            notify((int) $u['id'], $sectionId, $type, $message, $link);
         }
     }
 }
@@ -114,8 +149,8 @@ function public_user(array $u): array
         'last_name' => $u['last_name'],
         'name' => trim($u['first_name'] . ' ' . $u['last_name']) ?: $u['username'],
         'email' => $u['email'],
-        'role' => $u['role'],
-        'section_id' => $u['section_id'] !== null ? (int) $u['section_id'] : null,
-        'joined_at' => $u['joined_at'],
+        'role' => $u['role'] ?? 'student',
+        'section_id' => isset($u['section_id']) ? (int) $u['section_id'] : null,
+        'joined_at' => $u['joined_at'] ?? $u['created_at'] ?? null,
     ];
 }

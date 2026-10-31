@@ -7,7 +7,35 @@ const taskId = new URLSearchParams(location.search).get('id');
   await Shell.init({ active: 'schedule', eyebrow: `${t.subject_code} · ${t.subject_title}`, title: 'Task Details' });
   document.title = `AcadSync · ${t.title}`;
   $('#main').innerHTML = render(t, role === 'admin');
+  $('#delete-task')?.addEventListener('click', () => confirmDelete(t));
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
+
+/** Admin: remove a published task (it is unlinked from the timeline's Linked List). */
+function confirmDelete(t) {
+  UI.sheet(`
+    <span class="mb-4 grid h-14 w-14 place-items-center rounded-full bg-danger-tint">${icon('alert', 24)}</span>
+    <h2 class="text-2xl font-bold">Remove this task?</h2>
+    <p class="mt-2 text-sm text-muted">“${esc(t.title)}” will disappear from everyone’s schedule in your section.</p>
+    <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+    <div class="mt-6 grid grid-cols-2 gap-3">
+      <button type="button" data-close class="btn btn-canvas">Cancel</button>
+      <button type="button" data-confirm class="btn btn-dark">Remove</button>
+    </div>`, {
+    label: 'Remove task',
+    onMount(el) {
+      $('[data-confirm]', el).onclick = async () => {
+        try {
+          await API.post('request_task.php', { action: 'delete', task_id: t.id });
+          location.replace('schedule.html');
+        } catch (e) {
+          const err = $('[data-error]', el);
+          err.textContent = e.message;
+          err.hidden = false;
+        }
+      };
+    },
+  });
+}
 
 function render(t, admin) {
   const unset = t.deadline_type === 'unset' || !t.deadline_ts;
@@ -74,7 +102,10 @@ function render(t, admin) {
             <ul class="mt-2 space-y-2">${checklist.map((c) => `<li class="flex items-center gap-3 text-[15px]"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-mint-tint text-success">${icon('check', 14)}</span>${esc(c)}</li>`).join('')}</ul>` : ''}
         </div>
         ${t.status === 'approved' ? (admin
-          ? `<a href="task-form.html?id=${t.id}" class="btn btn-dark w-full">${icon('edit', 18)}Edit task</a>`
+          ? `<div class="grid grid-cols-2 gap-3">
+              <button type="button" id="delete-task" class="btn btn-danger">Remove</button>
+              <a href="task-form.html?id=${t.id}" class="btn btn-dark">${icon('edit', 18)}Edit task</a>
+            </div>`
           : `<a href="task-form.html?mode=change&id=${t.id}" class="btn btn-light w-full shadow-card">${icon('edit', 18)}Request changes</a>`) : ''}
       </div>
     </div>`;

@@ -44,7 +44,7 @@ function studentView(d) {
       </a>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-1">
-        <a href="notifications.html" class="relative overflow-hidden rounded-[1.75rem] border-2 border-lavender-light bg-white p-4 shadow-card">
+        <a href="account.html#requests" class="relative overflow-hidden rounded-[1.75rem] border-2 border-lavender-light bg-white p-4 shadow-card">
           <span class="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-lavender-tint"></span>
           <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white text-lavender-dark shadow-card">${icon('inbox', 18)}</span>
           <div class="text-xs text-muted">Pending</div>
@@ -64,7 +64,9 @@ function studentView(d) {
           <h2 class="text-xl font-bold">My subjects</h2>
           <span class="text-xs text-muted">${d.subjects.length} subjects</span>
         </div>
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">${d.subjects.map(subjectCard).join('')}</div>
+        ${d.subjects.length
+          ? `<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">${d.subjects.map(subjectCard).join('')}</div>`
+          : UI.empty('No subjects yet', 'Your class officer hasn’t added this section’s subjects.', 'bookOpen')}
       </section>
 
       <section class="lg:row-span-1 lg:rounded-[1.75rem] lg:bg-white lg:p-4 lg:shadow-card">

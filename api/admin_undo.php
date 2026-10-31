@@ -11,9 +11,11 @@ require_once __DIR__ . '/../backend/bootstrap.php';
 require_method('POST');
 $admin = require_admin();
 $ctx = load_context($admin);
+$sectionId = (int) $ctx['section']['id'];
 
-$stack = build_undo_stack($ctx['subjectIndex']);
-$task = $stack->pop();                  // POP (LIFO)
+// [DSA: STACK] — undo = POP the latest rejection (LIFO)
+$stack = build_undo_stack($sectionId, $ctx['taskIndex']);
+$task = $stack->pop();
 if ($task === null) {
     fail('Nothing to undo.', 409);
 }
@@ -21,10 +23,12 @@ if ($task === null) {
 Store::begin();
 Store::delete('undo_stack', (int) $task['stack_row']);
 Store::update('tasks', (int) $task['id'], ['status' => 'pending', 'reviewed_by' => null]);
-Store::insert('approval_queue', ['task_id' => (int) $task['id']]);   // ENQUEUE (rear)
+// [DSA: QUEUE] — ENQUEUE it again at the rear of the waiting list
+Store::insert('approval_queue', ['section_id' => $sectionId, 'task_id' => (int) $task['id']]);
 Store::commit();
 
-$queue = build_queue($ctx['subjectIndex']);
+$ctx = load_context($admin);
+$queue = build_queue($sectionId, $ctx['taskIndex']);
 $next = $stack->peek();
 respond([
     'restored' => present_task($task, $ctx['subjectIndex'], $ctx['users']),

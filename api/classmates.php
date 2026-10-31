@@ -14,7 +14,8 @@ require_once __DIR__ . '/../backend/bootstrap.php';
 $user = current_member();
 $sectionId = (int) $user['section_id'];
 $members = section_members($sectionId);
-$graph = build_graph($members);
+// [DSA: GRAPH] — classmates are vertices, study-group links are edges
+$graph = build_graph($sectionId, $members);
 
 function present_member(array $m, DependencyGraph $graph): array
 {
@@ -44,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         fail('A study group needs at least 2 members.');
     }
     $existing = [];
-    foreach (Store::all('study_groups') as $e) {
+    foreach (section_rows('study_groups', $sectionId) as $e) {
         $existing[$e['student_a_id'] . '-' . $e['student_b_id'] . '-' . $e['project_context']] = true;
     }
     Store::begin();
@@ -54,13 +55,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $key = $ids[$i] . '-' . $ids[$j] . '-' . $name;
             $rev = $ids[$j] . '-' . $ids[$i] . '-' . $name;
             if (!isset($existing[$key]) && !isset($existing[$rev])) {
-                Store::insert('study_groups', ['student_a_id' => $ids[$i], 'student_b_id' => $ids[$j], 'project_context' => $name]);
+                Store::insert('study_groups', ['section_id' => $sectionId, 'student_a_id' => $ids[$i], 'student_b_id' => $ids[$j], 'project_context' => $name]);
             }
         }
     }
     Store::commit();
     foreach ($ids as $id) {
-        notify($id, 'group', "You were added to study group “{$name}”", 'classmates.html');
+        notify($id, $sectionId, 'group', "You were added to study group “{$name}”", 'classmates.html');
     }
     respond(['group' => $name, 'members' => $n], 201);
 }
@@ -72,12 +73,13 @@ $result = null;
 $algorithm = 'Selection Sort (A–Z by last name)';
 
 if ($q !== '' && $mode === 'id') {
-    // BINARY SEARCH — needs an array sorted by ID first
+    // [ALGORITHM: SELECTION SORT + BINARY SEARCH] — sort by ID, then halve the range
     $byId = Algorithms::selectionSortByStudentId($members);
     $found = Algorithms::binarySearchByStudentId($byId, $q);
     $list = $found ? [$found] : [];
     $algorithm = 'Binary Search by Student ID';
 } else {
+    // [ALGORITHM: SELECTION SORT] — A–Z by last name
     $list = Algorithms::selectionSortByLastName($members);
     if ($q !== '') {
         $list = Algorithms::linearSearchByName($list, $q);
@@ -86,7 +88,7 @@ if ($q !== '' && $mode === 'id') {
 }
 
 if ($group !== '') {
-    // GRAPH — walk the group's edges from any member to collect the team
+    // [DSA: GRAPH] — breadth-first walk of the group's edges from any member to collect the team
     $team = [];
     foreach ($members as $m) {
         if ($team) {

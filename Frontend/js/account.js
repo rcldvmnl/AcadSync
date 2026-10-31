@@ -1,15 +1,41 @@
-// My Account — profile, stats, section, settings, change password.
+// My Account — profile, stats, sections (switch), my requests, settings, change password.
+
+const STATUS_CHIP = {
+  pending: ['Waiting in queue', 'bg-sun-tint'],
+  approved: ['Approved', 'bg-mint-tint text-success'],
+  rejected: ['Not approved', 'bg-danger-tint'],
+};
 
 (async () => {
   const me = await Shell.init({
     active: 'account',
-    eyebrow: (m) => (m.user.role === 'admin' ? 'Admin · class officer' : `Client · ${m.section.name}`),
+    eyebrow: (m) => `${m.user.role === 'admin' ? 'Admin' : 'Student'} · ${m.section.name}`,
     title: 'My Account',
   });
   render(me);
+  if (me.user.role !== 'admin') loadRequests();
   if (location.hash === '#password') openPassword();
   if (location.hash === '#profile') openProfile();
+  if (location.hash === '#requests') $('#requests')?.scrollIntoView();
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
+
+async function loadRequests() {
+  const box = $('#requests-list');
+  try {
+    const { requests } = await API.get('tasks.php', { mine: 1 });
+    box.innerHTML = requests.length ? requests.slice(0, 8).map((r) => {
+      const [label, cls] = STATUS_CHIP[r.status] || [r.status, 'bg-canvas'];
+      const where = r.status === 'pending' && r.queue_position ? ` · #${r.queue_position} in queue` : '';
+      return `<a ${r.status === 'approved' ? `href="task.html?id=${r.kind === 'change' ? r.target_task_id : r.id}"` : ''} class="flex items-center gap-3 rounded-2xl p-3 ${r.status === 'approved' ? 'hover:bg-canvas' : ''}">
+        <span class="min-w-0 flex-1"><span class="block truncate text-[15px] font-medium">${esc(r.title)}${r.kind === 'change' ? ' <span class="text-xs text-muted">(edit)</span>' : ''}</span>
+          <span class="block text-xs text-muted">${esc(r.subject_code)} · sent ${esc(Fmt.ago(r.created_ts))}${where}</span></span>
+        ${UI.chip(label, cls)}
+      </a>`;
+    }).join('') : '<p class="p-3 text-sm text-muted">You haven’t requested any tasks yet. Tap + to send one to your admin.</p>';
+  } catch (e) {
+    box.innerHTML = `<p class="p-3 text-sm">${esc(e.message)}</p>`;
+  }
+}
 
 function render(me) {
   const admin = me.user.role === 'admin';
@@ -22,6 +48,7 @@ function render(me) {
     ['user', 'Edit profile', '#profile'],
     ['bell', 'Notifications', 'notifications.html'],
     ['lock', 'Change password', '#password'],
+    ['info', 'How AcadSync works (data structures)', 'dsa.html'],
     ['help', 'Help & feedback', '#help'],
   ];
 
@@ -33,21 +60,15 @@ function render(me) {
           ${stats.map(([n, l]) => `<div class="rounded-2xl bg-white p-4 shadow-card"><div class="text-xl font-bold">${n}</div><div class="text-xs text-muted">${l}</div></div>`).join('')}
         </div>
         <section>
-          <h2 class="mb-3 text-xl font-bold">${admin ? 'My section' : 'My sections'}</h2>
-          <div class="rounded-[1.75rem] bg-white p-4 shadow-card">
-            <div class="flex items-center gap-3">
-              <span class="grid h-11 w-11 place-items-center rounded-xl bg-charcoal text-sm font-semibold text-white">${esc(me.section.name.slice(-2))}</span>
-              <div class="min-w-0 flex-1"><div class="font-semibold">${esc(me.section.name)}</div>
-                <div class="text-xs text-muted">${admin ? `Code ${esc(me.section.class_code)} · ` : ''}${me.section.members} members${admin ? '' : ` · Joined ${esc(Shell.joined())}`}</div></div>
-              <span class="chip bg-mint-tint text-success">Active</span>
-            </div>
-            ${admin ? '' : `<a href="section.html#join" class="mt-3 flex items-center gap-3 border-t border-line pt-3">
-              <span class="grid h-11 w-11 place-items-center rounded-full bg-canvas">${icon('plus', 18)}</span>
-              <span class="flex-1 text-sm font-medium">Join another section</span>${icon('chevronRight', 18, 'text-muted')}</a>`}
-          </div>
+          <h2 class="mb-3 text-xl font-bold">My sections</h2>
+          <div class="rounded-[1.75rem] bg-white p-3 shadow-card" id="sections">${Shell.sectionList()}</div>
         </section>
       </div>
       <div class="space-y-5">
+        ${admin ? '' : `<section id="requests">
+          <h2 class="mb-3 text-xl font-bold">My requests</h2>
+          <div class="rounded-[1.75rem] bg-white p-2 shadow-card" id="requests-list">${UI.skeleton(2, 'h-14')}</div>
+        </section>`}
         <section>
           <h2 class="mb-3 text-xl font-bold">Settings</h2>
           <div class="rounded-[1.75rem] bg-white p-2 shadow-card">
@@ -64,6 +85,7 @@ function render(me) {
   $('[data-link="#profile"]').onclick = (e) => { e.preventDefault(); openProfile(); };
   $('[data-link="#help"]').onclick = (e) => { e.preventDefault(); openHelp(); };
   $('#logout').onclick = Shell.logout;
+  Shell.bindSectionList($('#sections'));
 }
 
 function openPassword() {
@@ -117,6 +139,7 @@ function openProfile() {
         Shell.me = { ...Shell.me, ...me };
         close();
         render(Shell.me);
+        if (Shell.me.user.role !== 'admin') loadRequests();
         UI.toast('Profile saved');
       });
     },

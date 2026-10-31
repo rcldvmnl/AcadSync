@@ -45,7 +45,7 @@ function render(d, admin) {
             ${s.instructor ? `<li class="flex items-center gap-2">${icon('user', 18)}${esc(s.instructor)}</li>` : ''}
           </ul>
           ${admin ? `<div class="mt-4 grid grid-cols-2 gap-3">
-            <a href="week.html" class="btn btn-light">Edit schedule</a>
+            <a href="add-subject.html?id=${s.id}" class="btn btn-light">Edit subject</a>
             <a href="task-form.html?subject=${s.id}" class="btn btn-dark">Add task</a>
           </div>` : ''}
         </div>

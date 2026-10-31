@@ -1,47 +1,37 @@
 <?php
 /**
  * POST /api/auth.php
- *   action=login            {login, password}
- *   action=register         {username, first_name, last_name, student_id, email, password, confirm}
+ *   action=login            {login, password}   login = e-mail, student number or username
+ *   action=register         {email, username, first_name, last_name, password, confirm}
  *   action=check_email      {email}            -> HashSet availability check
  *   action=logout
  *   action=forgot           {email}            -> issues a 6-digit reset code
  *   action=reset            {email, code, password}
- *   action=change_password  {current, password}
- *   action=update_profile   {first_name, last_name, username}
- * GET  /api/auth.php        -> current user (+ section, stats)
+ *   action=change_password  {current, password, confirm}
+ *   action=update_profile   {first_name, last_name}
+ * GET  /api/auth.php        -> current user (+ open section, all sections, stats)
+ *
+ * University e-mails use the student number: 0000-0000@lspu.edu.ph.
+ * The part before "@" becomes the Student ID.
  */
 
 declare(strict_types=1);
 require_once __DIR__ . '/../backend/bootstrap.php';
 
-const EMAIL_DOMAIN = '@lspu.edu.ph';
+const EMAIL_PATTERN = '/^(\d{4}-\d{4})@lspu\.edu\.ph$/';
+const EMAIL_HINT = 'Use your university e-mail, e.g. 0000-0000@lspu.edu.ph.';
 
-function is_lspu_email(string $email): bool
+/** Returns the student number inside a valid university e-mail, or null. */
+function student_number(string $email): ?string
 {
-    $email = DsaUtil::lower($email);
-    $len = strlen($email);
-    $dl = strlen(EMAIL_DOMAIN);
-    return $len > $dl
-        && substr($email, $len - $dl) === EMAIL_DOMAIN
-        && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
-}
-
-/** HASHSET — loads every registered e-mail for O(1) duplicate checks. */
-function email_set(): StudentHashSet
-{
-    $set = new StudentHashSet();
-    foreach (Store::all('users') as $u) {
-        $set->addEmail($u['email']);
-    }
-    return $set;
+    return preg_match(EMAIL_PATTERN, DsaUtil::lower(trim($email)), $m) ? $m[1] : null;
 }
 
 function find_user_by_login(string $login): ?array
 {
-    $login = DsaUtil::lower($login);
+    $login = DsaUtil::lower(trim($login));
     foreach (Store::all('users') as $u) {
-        if (DsaUtil::lower($u['email']) === $login || DsaUtil::lower($u['username']) === $login) {
+        if (DsaUtil::lower($u['email']) === $login || DsaUtil::lower($u['username']) === $login || $u['student_id'] === $login) {
             return $u;
         }
     }
@@ -50,21 +40,24 @@ function find_user_by_login(string $login): ?array
 
 function me_payload(array $user): array
 {
-    $payload = ['user' => public_user($user), 'section' => null, 'stats' => null];
-    if (empty($user['section_id'])) {
+    $payload = [
+        'user' => public_user($user),
+        'section' => null,
+        'sections' => user_sections((int) $user['id']),
+        'stats' => null,
+    ];
+    if ($user['section_id'] === null) {
         return $payload;
     }
-    $section = Store::find('sections', (int) $user['section_id']);
-    $members = section_members((int) $section['id']);
-    $payload['section'] = present_section($section, count($members));
-
     $ctx = load_context($user);
+    $payload['section'] = present_section($ctx['section'], count($ctx['members']));
+
     $uid = (int) $user['id'];
     if ($user['role'] === 'admin') {
         $published = 0;
         $reviewed = 0;
         foreach ($ctx['tasks'] as $t) {
-            if ((int) $t['reviewed_by'] === $uid) {
+            if ((int) $t['reviewed_by'] === $uid && (int) $t['requested_by'] !== $uid) {
                 $reviewed++;
             }
             if ((int) $t['requested_by'] === $uid && $t['status'] === 'approved') {
@@ -83,7 +76,7 @@ function me_payload(array $user): array
                 }
             }
         }
-        $graph = build_graph($members);
+        $graph = build_graph((int) $ctx['section']['id'], $ctx['members']);
         $payload['stats'] = ['submitted' => $submitted, 'approved' => $approved, 'groups' => count($graph->groupsOf($uid))];
     }
     return $payload;
@@ -99,41 +92,44 @@ switch (param('action')) {
     case 'login': {
         $user = find_user_by_login((string) param('login', ''));
         if (!$user || !password_verify((string) param('password', ''), $user['password_hash'])) {
-            fail('Wrong username/e-mail or password.', 401);
+            fail('Wrong e-mail/username or password.', 401);
         }
         session_regenerate_id(true);
         $_SESSION['user_id'] = (int) $user['id'];
-        respond(me_payload($user));
+        respond(me_payload(current_user()));
     }
 
     case 'check_email': {
         $email = (string) param('email', '');
-        if (!is_lspu_email($email)) {
-            respond(['available' => false, 'reason' => 'Only @lspu.edu.ph addresses can sign up.']);
+        $sid = student_number($email);
+        if ($sid === null) {
+            respond(['available' => false, 'reason' => EMAIL_HINT]);
         }
-        $taken = email_set()->contains($email);
+        // [DSA: HASHSET] — O(1) duplicate check against every registered e-mail
+        $taken = hashset_of('users', 'email')->contains($email);
         respond([
             'available' => !$taken,
-            'reason' => $taken ? 'An account with this e-mail already exists.' : 'Email available — no existing account found',
+            'student_id' => $sid,
+            'reason' => $taken ? 'An account with this e-mail already exists.' : "Available — your Student ID will be $sid",
         ]);
     }
 
     case 'register': {
-        $username = (string) param('username', '');
+        $email = DsaUtil::lower((string) param('email', ''));
+        $username = DsaUtil::lower((string) param('username', ''));
         $first = (string) param('first_name', '');
         $last = (string) param('last_name', '');
-        $studentId = (string) param('student_id', '');
-        $email = DsaUtil::lower((string) param('email', ''));
         $password = (string) param('password', '');
+        $studentId = student_number($email);
 
-        if ($username === '' || $first === '' || $last === '') {
-            fail('Please fill in your name and username.');
+        if ($first === '' || $last === '') {
+            fail('Please enter your first and last name.');
         }
-        if (!preg_match('/^\d{4}-?\d{4,6}$/', $studentId)) {
-            fail('Student ID should look like 2023-10045.');
+        if ($studentId === null) {
+            fail(EMAIL_HINT);
         }
-        if (!is_lspu_email($email)) {
-            fail('Only @lspu.edu.ph addresses can sign up.');
+        if (!preg_match('/^[a-z0-9._]{3,30}$/', $username)) {
+            fail('Username: 3–30 letters, numbers, dots or underscores.');
         }
         if (strlen($password) < 8) {
             fail('Password must be at least 8 characters.');
@@ -142,32 +138,28 @@ switch (param('action')) {
             fail('Passwords do not match.');
         }
 
-        // FR-1.2 — duplicate check through the custom HashSet
-        $set = email_set();
-        if (!$set->addEmail($email)) {
+        // [DSA: HASHSET] — FR-1.2: e-mails, student IDs and usernames must be unique
+        if (!hashset_of('users', 'email')->add($email)) {
             fail('An account with this e-mail already exists.', 409);
         }
-        foreach (Store::all('users') as $u) {
-            if (DsaUtil::lower($u['username']) === DsaUtil::lower($username)) {
-                fail('That username is taken.', 409);
-            }
-            if (DsaUtil::digitsToInt($u['student_id'] ?? '') === DsaUtil::digitsToInt($studentId)) {
-                fail('That student ID is already registered.', 409);
-            }
+        if (!hashset_of('users', 'student_id')->add($studentId)) {
+            fail('That student number is already registered.', 409);
+        }
+        if (!hashset_of('users', 'username')->add($username)) {
+            fail('That username is taken.', 409);
         }
 
         $id = Store::insert('users', [
             'student_id' => $studentId,
+            'email' => $email,
             'username' => $username,
             'first_name' => $first,
             'last_name' => $last,
-            'email' => $email,
             'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-            'role' => 'student',
         ]);
         session_regenerate_id(true);
         $_SESSION['user_id'] = $id;
-        respond(me_payload(Store::find('users', $id)), 201);
+        respond(me_payload(current_user()), 201);
     }
 
     case 'logout': {
@@ -178,10 +170,10 @@ switch (param('action')) {
 
     case 'forgot': {
         $email = DsaUtil::lower((string) param('email', ''));
-        if (!is_lspu_email($email)) {
-            fail('Enter your @lspu.edu.ph e-mail.');
+        if (student_number($email) === null) {
+            fail(EMAIL_HINT);
         }
-        if (!email_set()->contains($email)) {
+        if (!hashset_of('users', 'email')->contains($email)) {
             fail('No account uses that e-mail.', 404);
         }
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -221,7 +213,7 @@ switch (param('action')) {
         if (strlen($password) < 8) {
             fail('New password must be at least 8 characters.');
         }
-        if ($password !== (string) param('confirm', $password)) {
+        if ($password !== (string) param('confirm', '')) {
             fail('Passwords do not match.');
         }
         Store::update('users', (int) $user['id'], ['password_hash' => password_hash($password, PASSWORD_DEFAULT)]);
@@ -236,7 +228,7 @@ switch (param('action')) {
             fail('Name cannot be empty.');
         }
         Store::update('users', (int) $user['id'], ['first_name' => $first, 'last_name' => $last]);
-        respond(me_payload(Store::find('users', (int) $user['id'])));
+        respond(me_payload(current_user()));
     }
 
     default:

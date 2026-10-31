@@ -25,7 +25,7 @@ function openForgot() {
       <form>
         <h2 class="text-2xl font-bold">Forgot password?</h2>
         <p class="mt-2 text-sm text-muted">Enter your @lspu.edu.ph email and we’ll send a 6-digit code to reset it.</p>
-        <div class="mt-4">${UI.field({ name: 'email', label: 'University email', type: 'email', iconName: 'mail', placeholder: 'juan.delacruz@lspu.edu.ph', value: email, required: true })}</div>
+        <div class="mt-4">${UI.field({ name: 'email', label: 'University email', type: 'email', iconName: 'mail', placeholder: '0000-0000@lspu.edu.ph', value: email, required: true })}</div>
         <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
         <button type="submit" class="btn btn-dark mt-5 w-full">Send reset code</button>
         <button type="button" data-close class="mt-3 w-full py-2 text-sm font-semibold">Back to login</button>
@@ -78,12 +78,23 @@ if (signupForm) {
   const msg = $('#email-msg');
   let timer;
 
-  // Live duplicate check — backed by the StudentHashSet on the server.
+  const HINT = 'Your Student ID is the number before “@”.';
+
+  // Typing only the student number? Complete the address on blur.
+  emailInput.addEventListener('blur', () => {
+    if (/^\d{4}-\d{4}$/.test(emailInput.value.trim())) {
+      emailInput.value = `${emailInput.value.trim()}@lspu.edu.ph`;
+      emailInput.dispatchEvent(new Event('input'));
+    }
+  });
+
+  // Live duplicate check — backed by the HashSet of e-mails on the server.
   emailInput.addEventListener('input', () => {
     clearTimeout(timer);
     field.classList.remove('ok', 'bad');
     $('#email-ok').hidden = true;
-    msg.textContent = '';
+    msg.textContent = HINT;
+    msg.className = 'mt-1.5 block text-xs text-muted';
     const value = emailInput.value.trim();
     if (!value.includes('@')) return;
     timer = setTimeout(async () => {

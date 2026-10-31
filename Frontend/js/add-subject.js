@@ -1,29 +1,45 @@
-// Add Subject (admin) — adds to the curriculum Array plus its weekly class slots.
+// Add / Edit Subject (admin). Each class day keeps its own start and end time.
 
 const form = $('#subject-form');
-const chosenDays = new Set([1, 3]);
-let color = 'lavender';
+const editId = new URLSearchParams(location.search).get('id');
 const SWATCH = { lavender: 'bg-lavender', peach: 'bg-peach', yellow: 'bg-sun', mint: 'bg-mint' };
 const LENGTHS = [[60, '1 hr'], [90, '1.5 hrs'], [120, '2 hrs'], [180, '3 hrs']];
+let color = 'lavender';
+/** day (1–6) -> { start: 'HH:MM', end: 'HH:MM' } */
+const schedule = new Map();
 
 $$('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon, 18); });
 
-(async () => {
-  const me = await Shell.init({ active: 'home', eyebrow: (m) => `Admin · ${m.section.name}`, title: 'Add Subject' });
-  if (me.user.role !== 'admin') {
-    $('#main').innerHTML = UI.errorBox('Only the class admin can add subjects.');
-  }
-})().catch(() => {});
+const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const toHHMM = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
-function renderDays() {
-  $('#days').innerHTML = [1, 2, 3, 4, 5, 6].map((d) => `
-    <button type="button" data-day="${d}" aria-pressed="${chosenDays.has(d)}" class="aspect-square rounded-full text-[11px] font-semibold uppercase ${chosenDays.has(d) ? 'bg-charcoal text-white' : 'bg-canvas text-muted'}">${DAYS[d]}</button>`).join('');
-  $$('[data-day]').forEach((b) => b.onclick = () => {
-    const d = Number(b.dataset.day);
-    chosenDays.has(d) ? chosenDays.delete(d) : chosenDays.add(d);
-    renderDays();
+(async () => {
+  const me = await Shell.init({
+    active: 'home',
+    eyebrow: (m) => `Admin · ${m.section.name}`,
+    title: editId ? 'Edit Subject' : 'Add Subject',
   });
-}
+  if (me.user.role !== 'admin') {
+    $('#main').innerHTML = UI.errorBox('Only the class admin can add or edit subjects.');
+    return;
+  }
+  if (editId) {
+    document.title = 'AcadSync · Edit Subject';
+    const d = await API.get('subjects.php', { id: editId });
+    const s = d.subject;
+    form.elements.code.value = s.code;
+    form.elements.title.value = s.title;
+    form.elements.instructor.value = s.instructor || '';
+    form.elements.room.value = s.room || '';
+    color = s.color_tag || 'lavender';
+    d.slots.forEach((slot) => schedule.set(slot.day_of_week, { start: slot.start_time, end: slot.end_time }));
+    $('button[type=submit]', form).textContent = 'Save changes';
+  } else {
+    schedule.set(1, { start: '13:00', end: '14:00' });
+  }
+  renderColors();
+  renderDays();
+})().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
 function renderColors() {
   $('#colors').innerHTML = Object.entries(SWATCH).map(([k, cls]) => `
@@ -31,26 +47,63 @@ function renderColors() {
   $$('[data-color]').forEach((b) => b.onclick = () => { color = b.dataset.color; renderColors(); });
 }
 
-function minutes(hhmm) { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; }
-function renderLengths() {
-  const len = minutes(form.elements.end.value || '00:00') - minutes(form.elements.start.value || '00:00');
-  $('#lengths').innerHTML = LENGTHS.map(([m, l]) => `<button type="button" data-len="${m}" class="rounded-full px-4 py-2.5 text-sm font-medium ${m === len ? 'bg-charcoal text-white' : 'bg-canvas'}">${l}</button>`).join('');
-  $$('[data-len]').forEach((b) => b.onclick = () => {
-    const end = minutes(form.elements.start.value) + Number(b.dataset.len);
-    form.elements.end.value = `${String(Math.floor(end / 60) % 24).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
-    renderLengths();
+function renderDays() {
+  $('#days').innerHTML = [1, 2, 3, 4, 5, 6].map((d) => `
+    <button type="button" data-day="${d}" aria-pressed="${schedule.has(d)}" class="aspect-square rounded-full text-[11px] font-semibold uppercase ${schedule.has(d) ? 'bg-charcoal text-white' : 'bg-canvas text-muted'}">${DAYS[d]}</button>`).join('');
+  $$('[data-day]').forEach((b) => b.onclick = () => {
+    const d = Number(b.dataset.day);
+    if (schedule.has(d)) schedule.delete(d);
+    else {
+      // New day starts with the same time as the last one added, as a starting point
+      const last = [...schedule.values()].pop() || { start: '08:00', end: '09:30' };
+      schedule.set(d, { ...last });
+    }
+    renderDays();
+  });
+  renderRows();
+}
+
+function renderRows() {
+  const days = [...schedule.keys()].sort((a, b) => a - b);
+  $('#day-rows').innerHTML = days.length ? days.map((d) => {
+    const { start, end } = schedule.get(d);
+    const len = toMin(end) - toMin(start);
+    return `
+      <div class="rounded-2xl bg-canvas p-3" data-row="${d}">
+        <div class="flex items-center justify-between">
+          <div class="font-semibold">${DAYS_LONG[d]}</div>
+          <div class="text-xs ${len > 0 ? 'text-muted' : 'text-danger'}">${len > 0 ? `${Fmt.time(start)} – ${Fmt.time(end)}` : 'End must be after start'}</div>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+          <label class="block"><span class="mb-1 block text-[11px] text-muted">Starts</span>
+            <span class="field h-11 bg-white">${icon('clock', 16)}<input type="time" data-start value="${start}" aria-label="${DAYS_LONG[d]} start time"></span></label>
+          <label class="block"><span class="mb-1 block text-[11px] text-muted">Ends</span>
+            <span class="field h-11 bg-white">${icon('clock', 16)}<input type="time" data-end value="${end}" aria-label="${DAYS_LONG[d]} end time"></span></label>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          ${LENGTHS.map(([m, l]) => `<button type="button" data-len="${m}" class="rounded-full px-3 py-1.5 text-xs font-medium ${m === len ? 'bg-charcoal text-white' : 'bg-white'}">${l}</button>`).join('')}
+        </div>
+      </div>`;
+  }).join('') : '<p class="rounded-2xl bg-canvas p-4 text-sm text-muted">No class days yet — tap a day above. You can also save now and set times later.</p>';
+
+  $$('[data-row]').forEach((row) => {
+    const d = Number(row.dataset.row);
+    const slot = schedule.get(d);
+    $('[data-start]', row).onchange = (e) => {
+      const len = Math.max(30, toMin(slot.end) - toMin(slot.start));
+      slot.start = e.target.value;
+      slot.end = toHHMM(toMin(slot.start) + len);   // keep the same length when the start moves
+      renderRows();
+    };
+    $('[data-end]', row).onchange = (e) => { slot.end = e.target.value; renderRows(); };
+    $$('[data-len]', row).forEach((b) => b.onclick = () => { slot.end = toHHMM(toMin(slot.start) + Number(b.dataset.len)); renderRows(); });
   });
 }
-form.elements.start.addEventListener('change', renderLengths);
-form.elements.end.addEventListener('change', renderLengths);
-
-renderDays();
-renderColors();
-renderLengths();
 
 UI.bindForm(form, async (d) => {
-  const { id } = await API.post('subjects.php', {
-    action: 'add', ...d, color, days: [...chosenDays].sort(), start: d.start, end: d.end,
-  });
-  location.href = `subject.html?id=${id}`;
+  const slots = [...schedule.entries()].map(([day, s]) => ({ day, start: s.start, end: s.end }));
+  const bad = slots.find((s) => toMin(s.end) <= toMin(s.start));
+  if (bad) throw new Error(`On ${DAYS_LONG[bad.day]}, the end time must be after the start time.`);
+  const res = await API.post('subjects.php', { action: editId ? 'update' : 'add', id: editId ? Number(editId) : undefined, ...d, color, slots });
+  location.href = `subject.html?id=${res.id}`;
 });

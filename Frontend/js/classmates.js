@@ -70,7 +70,7 @@ function renderGroups() {
 function renderList() {
   const members = state.data.members;
   if (!members.length) {
-    $('#list').innerHTML = UI.empty(state.mode === 'id' ? 'No student with that ID' : 'No one found', state.mode === 'id' ? 'Binary Search returned nothing — check the ID (e.g. 2023-10045).' : 'Try another name.', 'search');
+    $('#list').innerHTML = UI.empty(state.mode === 'id' ? 'No student with that ID' : 'No one found', state.mode === 'id' ? 'Binary Search returned nothing — check the ID (e.g. 2023-1045).' : 'Try another name.', 'search');
     return;
   }
   // Already sorted A–Z by the server; just split into letter sections.
@@ -162,7 +162,7 @@ $('#search').elements.q.addEventListener('input', (e) => {
 $('#search').addEventListener('submit', (e) => { e.preventDefault(); state.q = e.target.elements.q.value.trim(); load(); });
 $$('[data-mode]').forEach((b) => b.onclick = () => {
   state.mode = b.dataset.mode;
-  $('#search').elements.q.placeholder = state.mode === 'id' ? 'Student ID, e.g. 2023-10045' : 'Search by name…';
+  $('#search').elements.q.placeholder = state.mode === 'id' ? 'Student ID, e.g. 2023-1045' : 'Search by name…';
   $('#search').elements.q.inputMode = state.mode === 'id' ? 'numeric' : 'text';
   load();
 });

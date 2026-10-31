@@ -11,6 +11,9 @@ declare(strict_types=1);
 
 const DB_PATH = __DIR__ . '/../data/acadsync.db';
 
+/** Bump when schema.sql changes; an older database file is backed up and rebuilt. */
+const SCHEMA_VERSION = 2;
+
 final class Store
 {
     private static ?PDO $pdo = null;
@@ -21,22 +24,44 @@ final class Store
             return self::$pdo;
         }
 
-        $fresh = !file_exists(DB_PATH);
         if (!is_dir(dirname(DB_PATH))) {
             mkdir(dirname(DB_PATH), 0777, true);
         }
+        self::backupIfOutdated();
+        $fresh = !file_exists(DB_PATH);
 
-        self::$pdo = new PDO('sqlite:' . DB_PATH);
-        self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        self::$pdo->exec('PRAGMA foreign_keys = ON');
+        self::$pdo = self::open(DB_PATH);
         self::$pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
+        self::$pdo->exec('PRAGMA user_version = ' . SCHEMA_VERSION);
 
         if ($fresh) {
             require_once __DIR__ . '/seed.php';
             seed_database();
         }
         return self::$pdo;
+    }
+
+    private static function open(string $path): PDO
+    {
+        $pdo = new PDO('sqlite:' . $path);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $pdo->exec('PRAGMA foreign_keys = ON');
+        return $pdo;
+    }
+
+    /** Renames a database built from an older schema to data/acadsync.backup-<date>.db. */
+    private static function backupIfOutdated(): void
+    {
+        if (!file_exists(DB_PATH)) {
+            return;
+        }
+        $old = self::open(DB_PATH);
+        $version = (int) $old->query('PRAGMA user_version')->fetchColumn();
+        $old = null;
+        if ($version !== SCHEMA_VERSION) {
+            rename(DB_PATH, dirname(DB_PATH) . '/acadsync.backup-' . date('Ymd-His') . '.db');
+        }
     }
 
     /** Raw read: SELECT * FROM table. Rows come back in insertion (rowid) order. */
@@ -106,7 +131,7 @@ final class Store
     private static function table(string $name): string
     {
         static $allowed = [
-            'sections', 'users', 'subjects', 'class_schedules', 'tasks', 'study_groups',
+            'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups',
             'approval_queue', 'undo_stack', 'notifications', 'password_resets',
         ];
         foreach ($allowed as $t) {

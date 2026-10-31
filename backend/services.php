@@ -1,21 +1,38 @@
 <?php
 /**
  * Bridges raw SQLite rows and the custom data structures.
- * Each loader does a raw `SELECT *`, filters with a loop, then feeds the rows
- * into the matching structure from custom_dsa.php.
+ * Each loader does a raw `SELECT *` (Store::all), keeps the rows of ONE section
+ * with a simple loop, then feeds them into the matching structure from
+ * custom_dsa.php. Search for "[DSA:" to find every structure in use.
  */
 
 declare(strict_types=1);
 
-/** ARRAY — the section's curriculum in a fixed-capacity SubjectArray. */
+const DAY_NAMES = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday'];
+
+/** Raw rows of a table that belong to one section. */
+function section_rows(string $table, int $sectionId): array
+{
+    $out = [];
+    foreach (Store::all($table) as $row) {
+        if ((int) $row['section_id'] === $sectionId) {
+            $out[] = $row;
+        }
+    }
+    return $out;
+}
+
+/**
+ * [DSA: ARRAY] — storing and accessing a collection of records.
+ * The section's subject records are stored in a fixed-capacity SubjectArray
+ * and read back by index everywhere subjects are listed.
+ */
 function load_subjects(int $sectionId): SubjectArray
 {
     $array = new SubjectArray();
-    foreach (Store::all('subjects') as $row) {
-        if ((int) $row['section_id'] === $sectionId) {
-            $row['id'] = (int) $row['id'];
-            $array->add($row);
-        }
+    foreach (section_rows('subjects', $sectionId) as $row) {
+        $row['id'] = (int) $row['id'];
+        $array->add($row);
     }
     return $array;
 }
@@ -40,18 +57,6 @@ function user_index(): array
     return $map;
 }
 
-/** Every task row belonging to the section's subjects. */
-function section_tasks(array $subjectIndex): array
-{
-    $out = [];
-    foreach (Store::all('tasks') as $t) {
-        if (isset($subjectIndex[(int) $t['subject_id']])) {
-            $out[] = $t;
-        }
-    }
-    return $out;
-}
-
 /** Adds subject + requester details and a timestamp the frontend can format. */
 function present_task(array $t, array $subjectIndex, array $users): array
 {
@@ -59,6 +64,7 @@ function present_task(array $t, array $subjectIndex, array $users): array
     $by = $users[(int) $t['requested_by']] ?? null;
     return [
         'id' => (int) $t['id'],
+        'section_id' => (int) $t['section_id'],
         'subject_id' => (int) $t['subject_id'],
         'subject_code' => $subject['code'] ?? '',
         'subject_title' => $subject['title'] ?? '',
@@ -77,15 +83,16 @@ function present_task(array $t, array $subjectIndex, array $users): array
         'target_task_id' => $t['target_task_id'] !== null ? (int) $t['target_task_id'] : null,
         'requested_by' => (int) $t['requested_by'],
         'requested_by_name' => $by ? trim($by['first_name'] . ' ' . $by['last_name']) : 'Unknown',
-        'requested_by_role' => $by['role'] ?? 'student',
+        'requested_by_role' => $t['requested_by_role'] ?? null,
         'created_at' => $t['created_at'],
         'created_ts' => strtotime((string) $t['created_at']) ?: null,
     ];
 }
 
 /**
- * LINKED LIST — approved tasks inserted one by one with Insertion Sort,
- * then expired deadlines are dropped by moving the head pointer.
+ * [DSA: LINKED LIST] — managing a sequence of records through insertion and deletion.
+ * INSERTION: each approved task is spliced in by deadline (Insertion Sort).
+ * DELETION:  expired tasks are removed from the head (head = head->next).
  */
 function build_timeline(array $tasks, int $now): TaskLinkedList
 {
@@ -99,41 +106,51 @@ function build_timeline(array $tasks, int $now): TaskLinkedList
     return $list;
 }
 
-/** QUEUE — pending requests in arrival order (approval_queue rowid order). */
-function build_queue(array $subjectIndex): ApprovalQueue
+/** id => task row for the section. */
+function task_index(array $tasks): array
 {
-    $tasks = [];
-    foreach (Store::all('tasks') as $t) {
-        $tasks[(int) $t['id']] = $t;
+    $map = [];
+    foreach ($tasks as $t) {
+        $map[(int) $t['id']] = $t;
     }
+    return $map;
+}
+
+/**
+ * [DSA: QUEUE] — managing a waiting list of service requests in order.
+ * Pending requests are enqueued in arrival order (approval_queue row order).
+ */
+function build_queue(int $sectionId, array $taskIndex): ApprovalQueue
+{
     $queue = new ApprovalQueue();
-    foreach (Store::all('approval_queue') as $row) {
-        $t = $tasks[(int) $row['task_id']] ?? null;
-        if ($t && $t['status'] === 'pending' && isset($subjectIndex[(int) $t['subject_id']])) {
+    foreach (section_rows('approval_queue', $sectionId) as $row) {
+        $t = $taskIndex[(int) $row['task_id']] ?? null;
+        if ($t && $t['status'] === 'pending') {
             $queue->enqueue(['queue_row' => (int) $row['id']] + $t);
         }
     }
     return $queue;
 }
 
-/** STACK — rejected requests; the most recent rejection ends up on top. */
-function build_undo_stack(array $subjectIndex): UndoStack
+/**
+ * [DSA: STACK] — undo history. Rejected requests are pushed in the order they
+ * were rejected, so the most recent rejection ends up on top.
+ */
+function build_undo_stack(int $sectionId, array $taskIndex): UndoStack
 {
-    $tasks = [];
-    foreach (Store::all('tasks') as $t) {
-        $tasks[(int) $t['id']] = $t;
-    }
     $stack = new UndoStack();
-    foreach (Store::all('undo_stack') as $row) {
-        $t = $tasks[(int) $row['task_id']] ?? null;
-        if ($t && $t['status'] === 'rejected' && isset($subjectIndex[(int) $t['subject_id']])) {
+    foreach (section_rows('undo_stack', $sectionId) as $row) {
+        $t = $taskIndex[(int) $row['task_id']] ?? null;
+        if ($t && $t['status'] === 'rejected') {
             $stack->push(['stack_row' => (int) $row['id']] + $t);
         }
     }
     return $stack;
 }
 
-/** TREE — BSINFO-2A -> subjects -> active tasks. */
+/**
+ * [DSA: TREE] — hierarchical data: Section (root) -> Subjects -> active Tasks.
+ */
 function build_tree(array $section, SubjectArray $subjects, TaskLinkedList $timeline): SubjectTree
 {
     $tree = new SubjectTree($section['name']);
@@ -141,52 +158,79 @@ function build_tree(array $section, SubjectArray $subjects, TaskLinkedList $time
         $tree->addSubject($subjects->get($i));
     }
     foreach ($timeline->toArray() as $t) {
-        $tree->addTask((int) $t['subject_id'], ['id' => (int) $t['id'], 'title' => $t['title'], 'deadline' => $t['deadline']]);
+        $tree->addTask((int) $t['subject_id'], [
+            'id' => (int) $t['id'], 'title' => $t['title'], 'category' => $t['category'], 'deadline' => $t['deadline'],
+        ]);
     }
     return $tree;
 }
 
+/** Users who belong to a section, each with their role in it. */
 function section_members(int $sectionId): array
 {
+    $users = user_index();
     $out = [];
-    foreach (Store::all('users') as $u) {
-        if ((int) $u['section_id'] === $sectionId) {
+    foreach (section_rows('memberships', $sectionId) as $m) {
+        $u = $users[(int) $m['user_id']] ?? null;
+        if ($u) {
+            $u['role'] = $m['role'];
+            $u['joined_at'] = $m['joined_at'];
+            $u['section_id'] = $sectionId;
             $out[] = $u;
         }
     }
     return $out;
 }
 
-/** GRAPH — study-group edges between members of the section. */
-function build_graph(array $members): DependencyGraph
+/** Every section a user belongs to (for the section switcher). */
+function user_sections(int $userId): array
+{
+    $sections = [];
+    foreach (Store::all('sections') as $s) {
+        $sections[(int) $s['id']] = $s;
+    }
+    $counts = [];
+    foreach (Store::all('memberships') as $m) {
+        $counts[(int) $m['section_id']] = ($counts[(int) $m['section_id']] ?? 0) + 1;
+    }
+    $out = [];
+    foreach (Store::all('memberships') as $m) {
+        if ((int) $m['user_id'] === $userId && isset($sections[(int) $m['section_id']])) {
+            $s = $sections[(int) $m['section_id']];
+            $out[] = present_section($s, $counts[(int) $s['id']] ?? 0) + ['role' => $m['role'], 'joined_at' => $m['joined_at']];
+        }
+    }
+    return $out;
+}
+
+/**
+ * [DSA: GRAPH] — connections between classmates. Each study_groups row is an
+ * undirected edge in the adjacency list.
+ */
+function build_graph(int $sectionId, array $members): DependencyGraph
 {
     $graph = new DependencyGraph();
-    $inSection = [];
     foreach ($members as $m) {
-        $inSection[(int) $m['id']] = true;
         $graph->addVertex((int) $m['id']);
     }
-    foreach (Store::all('study_groups') as $e) {
-        $a = (int) $e['student_a_id'];
-        $b = (int) $e['student_b_id'];
-        if (isset($inSection[$a], $inSection[$b])) {
-            $graph->addEdge($a, $b, $e['project_context']);
-        }
+    foreach (section_rows('study_groups', $sectionId) as $e) {
+        $graph->addEdge((int) $e['student_a_id'], (int) $e['student_b_id'], $e['project_context']);
     }
     return $graph;
 }
 
-/** Weekly class slots for the section, with subject info attached. */
-function class_slots(array $subjectIndex): array
+/** Weekly class meetings for the section, with subject info attached. */
+function class_slots(int $sectionId, array $subjectIndex): array
 {
     $out = [];
-    foreach (Store::all('class_schedules') as $c) {
+    foreach (section_rows('class_schedules', $sectionId) as $c) {
         $subject = $subjectIndex[(int) $c['subject_id']] ?? null;
         if ($subject) {
             $out[] = [
                 'id' => (int) $c['id'],
                 'subject_id' => (int) $c['subject_id'],
                 'day_of_week' => (int) $c['day_of_week'],
+                'day_name' => $c['day_name'],
                 'start_time' => $c['start_time'],
                 'end_time' => $c['end_time'],
                 'code' => $subject['code'],
@@ -206,7 +250,6 @@ function classes_on_day(array $slots, int $dow): array
     $day = [];
     foreach ($slots as $s) {
         if ($s['day_of_week'] === $dow) {
-            // insertion sort by start_time ("08:00" < "13:00" as text)
             $i = count($day) - 1;
             $day[] = $s;
             while ($i >= 0 && DsaUtil::compareText($day[$i]['start_time'], $s['start_time']) > 0) {
@@ -219,18 +262,30 @@ function classes_on_day(array $slots, int $dow): array
     return $day;
 }
 
-/** Everything the app needs about the user's section. */
+/** Everything the app needs about the user's open section. */
 function load_context(array $user): array
 {
-    $section = Store::find('sections', (int) $user['section_id']);
-    $subjects = load_subjects((int) $section['id']);
-    $subjectIndex = subject_index($subjects);
+    $sectionId = (int) $user['section_id'];
+    $section = Store::find('sections', $sectionId);
+    $subjects = load_subjects($sectionId);
+    $members = section_members($sectionId);
+    $roles = [];
+    foreach ($members as $m) {
+        $roles[(int) $m['id']] = $m['role'];
+    }
+    $tasks = [];
+    foreach (section_rows('tasks', $sectionId) as $t) {
+        $t['requested_by_role'] = $roles[(int) $t['requested_by']] ?? 'student';
+        $tasks[] = $t;
+    }
     return [
         'section' => $section,
         'subjects' => $subjects,
-        'subjectIndex' => $subjectIndex,
+        'subjectIndex' => subject_index($subjects),
         'users' => user_index(),
-        'tasks' => section_tasks($subjectIndex),
+        'members' => $members,
+        'tasks' => $tasks,
+        'taskIndex' => task_index($tasks),
     ];
 }
 
@@ -241,9 +296,23 @@ function present_section(array $section, int $memberCount): array
         'name' => $section['name'],
         'class_code' => $section['class_code'],
         'program' => $section['program'],
+        'year_level' => $section['year_level'],
         'semester' => $section['semester'],
+        'school_year' => $section['school_year'],
         'members' => $memberCount,
     ];
+}
+
+/**
+ * [DSA: HASHSET] helpers — one set per uniqueness rule.
+ */
+function hashset_of(string $table, string $field, ?int $sectionId = null): HashSet
+{
+    $set = new HashSet();
+    foreach ($sectionId === null ? Store::all($table) : section_rows($table, $sectionId) as $row) {
+        $set->add((string) $row[$field]);
+    }
+    return $set;
 }
 
 /**
@@ -261,6 +330,39 @@ function find_similar(array $tasks, int $subjectId, string $text, ?int $ignoreId
     $out = [];
     foreach (Algorithms::linearSearchTasks($approved, $text, $subjectId, $ignoreId) as $m) {
         $out[] = ['task' => present_task($m['task'], $subjectIndex, $users), 'keywords' => $m['keywords']];
+    }
+    return $out;
+}
+
+/** "13:00" -> minutes since midnight. */
+function to_minutes(string $hhmm): int
+{
+    return (int) substr($hhmm, 0, 2) * 60 + (int) substr($hhmm, 3, 2);
+}
+
+function valid_time(string $t): bool
+{
+    return (bool) preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $t);
+}
+
+/**
+ * Validates a list of class meetings [{day, start, end}, ...] where every
+ * day may have its own time. Returns the cleaned list or throws a message.
+ */
+function clean_slots(array $slots): array
+{
+    $out = [];
+    foreach ($slots as $slot) {
+        $day = (int) ($slot['day'] ?? 0);
+        $start = (string) ($slot['start'] ?? '');
+        $end = (string) ($slot['end'] ?? '');
+        if ($day < 1 || $day > 6) {
+            fail('Class days must be Monday to Saturday.');
+        }
+        if (!valid_time($start) || !valid_time($end) || to_minutes($start) >= to_minutes($end)) {
+            fail('On ' . DAY_NAMES[$day] . ', the start time must be before the end time.');
+        }
+        $out[] = ['day' => $day, 'start' => $start, 'end' => $end];
     }
     return $out;
 }

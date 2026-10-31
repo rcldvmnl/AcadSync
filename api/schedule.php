@@ -13,11 +13,11 @@ $user = current_member();
 $ctx = load_context($user);
 $now = time();
 
-// LINKED LIST — chronological timeline of approved tasks, expired ones dropped
+// [DSA: LINKED LIST] — chronological timeline of approved tasks, expired ones dropped
 $timeline = build_timeline($ctx['tasks'], $now);
 $active = $timeline->toArray();
 
-// BUBBLE SORT — the "Urgent" toggle
+// [ALGORITHM: BUBBLE SORT] — the "Urgent" toggle
 $byUrgency = Algorithms::bubbleSortByUrgency($active, $now);
 
 $present = fn (array $t) => present_task($t, $ctx['subjectIndex'], $ctx['users']);
@@ -25,7 +25,8 @@ $present = fn (array $t) => present_task($t, $ctx['subjectIndex'], $ctx['users']
 // Week grid (Mon–Sat) for the requested week
 $anchor = strtotime((string) param('week', date('Y-m-d', $now))) ?: $now;
 $monday = strtotime('monday this week', $anchor);
-$slots = class_slots($ctx['subjectIndex']);
+$sectionId = (int) $ctx['section']['id'];
+$slots = class_slots($sectionId, $ctx['subjectIndex']);
 $days = [];
 for ($d = 0; $d < 6; $d++) {
     $ts = strtotime("+$d day", $monday);
@@ -56,7 +57,8 @@ foreach ($active as $t) {
     }
 }
 
-$queue = build_queue($ctx['subjectIndex']);
+// [DSA: QUEUE] — pending requests, oldest first
+$queue = build_queue($sectionId, $ctx['taskIndex']);
 $mine = 0;
 $oldest = null;
 foreach ($queue->toArray() as $q) {
@@ -71,7 +73,7 @@ foreach ($ctx['subjects']->toArray() as $s) {
     $subjects[] = $s + ['due' => $dueBySubject[$s['id']] ?? 0];
 }
 
-$members = section_members((int) $ctx['section']['id']);
+$members = $ctx['members'];
 
 respond([
     'now' => $now,
@@ -91,5 +93,6 @@ respond([
         'oldest_request' => $oldest,
         'next_due_ts' => $active && DsaUtil::deadlineTs($active[0]) !== null ? DsaUtil::deadlineTs($active[0]) : null,
     ],
+    // [DSA: TREE] — Section -> Subjects -> Tasks
     'tree' => build_tree($ctx['section'], $ctx['subjects'], $timeline)->toArray(),
 ]);

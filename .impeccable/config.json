@@ -1,0 +1,302 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/signup.html"
+        ],
+        "createdAt": "2026-10-31T04:01:06.797Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/section.html"
+        ],
+        "createdAt": "2026-10-31T04:02:15.479Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/add-subject.html"
+        ],
+        "createdAt": "2026-10-31T04:03:26.803Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/account.html"
+        ],
+        "createdAt": "2026-10-31T04:03:27.331Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/classmates.html"
+        ],
+        "createdAt": "2026-10-31T04:03:27.866Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/home.html"
+        ],
+        "createdAt": "2026-10-31T04:03:28.386Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/notifications.html"
+        ],
+        "createdAt": "2026-10-31T04:03:28.935Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/queue.html"
+        ],
+        "createdAt": "2026-10-31T04:03:29.463Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/schedule.html"
+        ],
+        "createdAt": "2026-10-31T04:03:30.020Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/subject.html"
+        ],
+        "createdAt": "2026-10-31T04:03:30.558Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/task.html"
+        ],
+        "createdAt": "2026-10-31T04:03:31.123Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/task-form.html"
+        ],
+        "createdAt": "2026-10-31T04:03:31.663Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/week.html"
+        ],
+        "createdAt": "2026-10-31T04:03:32.240Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/search.html"
+        ],
+        "createdAt": "2026-10-31T04:03:32.781Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/dsa.html"
+        ],
+        "createdAt": "2026-10-31T04:03:33.346Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/index.html"
+        ],
+        "createdAt": "2026-10-31T04:03:33.897Z",
+        "reason": "Figma components page (AcadSync v2) specifies the yellow glow ring on the nav + button; design fidelity"
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-10-31T04:08:06.347Z",
+        "reason": "Typeface taken from the user's AcadSync Figma file (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/signup.html"
+        ],
+        "createdAt": "2026-10-31T04:08:06.901Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/section.html"
+        ],
+        "createdAt": "2026-10-31T04:08:07.413Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/add-subject.html"
+        ],
+        "createdAt": "2026-10-31T04:08:07.946Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/search.html"
+        ],
+        "createdAt": "2026-10-31T04:08:08.514Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/dsa.html"
+        ],
+        "createdAt": "2026-10-31T04:08:09.073Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/index.html"
+        ],
+        "createdAt": "2026-10-31T04:08:09.602Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/home.html"
+        ],
+        "createdAt": "2026-10-31T04:08:10.153Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/account.html"
+        ],
+        "createdAt": "2026-10-31T04:08:10.740Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/classmates.html"
+        ],
+        "createdAt": "2026-10-31T04:08:11.282Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/notifications.html"
+        ],
+        "createdAt": "2026-10-31T04:08:11.814Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/queue.html"
+        ],
+        "createdAt": "2026-10-31T04:08:12.328Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/schedule.html"
+        ],
+        "createdAt": "2026-10-31T04:08:12.858Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/subject.html"
+        ],
+        "createdAt": "2026-10-31T04:08:13.422Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/task.html"
+        ],
+        "createdAt": "2026-10-31T04:08:13.970Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/task-form.html"
+        ],
+        "createdAt": "2026-10-31T04:08:14.505Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/week.html"
+        ],
+        "createdAt": "2026-10-31T04:08:15.049Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      }
+    ]
+  }
+}

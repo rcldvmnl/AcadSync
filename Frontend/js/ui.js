@@ -232,7 +232,7 @@ const UI = {
 };
 
 /** "Admin · BSINFO-2A" or "BSINFO-2A · 2nd Semester" */
-const sectionEyebrow = (me) => (me.user.role === 'admin' ? `Admin · ${me.section.name}` : `${me.section.name} · ${String(me.section.semester || '').split(' · ')[0]}`);
+const sectionEyebrow = (me) => (me.user.role === 'admin' ? `Admin · ${me.section.name}` : [me.section.name, me.section.semester].filter(Boolean).join(' · '));
 
 /* ===================================================================== SHELL */
 const Shell = {
@@ -294,9 +294,10 @@ const Shell = {
         <div class="truncate text-xs text-muted">${esc(eyebrow)}</div>
         <h1 class="truncate text-xl font-bold tracking-tight lg:text-[28px] lg:leading-tight">${esc(title)}</h1>
       </div>
-      ${search ? `<form action="classmates.html" class="hidden w-72 items-center gap-2 rounded-full bg-white px-4 py-3 shadow-card lg:flex" role="search">
-        ${icon('search', 18, 'text-muted')}<input name="q" class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-subtle" placeholder="Search classmates by name">
-      </form>` : ''}
+      ${search ? `<form action="search.html" class="hidden w-80 items-center gap-2 rounded-full bg-white px-4 py-3 shadow-card lg:flex" role="search">
+        ${icon('search', 18, 'text-muted')}<input name="q" class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-subtle" placeholder="Search tasks, subjects, classmates" aria-label="Search">
+      </form>
+      <a href="search.html" class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-card lg:hidden" aria-label="Search">${icon('search', 20)}</a>` : ''}
       <a href="notifications.html" class="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-card" aria-label="Notifications${unread ? ` (${unread} unread)` : ''}">
         ${icon('bell', 20)}${unread ? '<span class="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-danger ring-2 ring-white"></span>' : ''}
       </a>`;
@@ -358,11 +359,7 @@ const Shell = {
           ${statCells.map(([n, l]) => `<div class="rounded-2xl bg-canvas p-3"><div class="text-lg font-bold">${n}</div><div class="text-xs text-muted">${l}</div></div>`).join('')}
         </div>
         <h3 class="mt-5 font-semibold">My sections</h3>
-        <a href="account.html" class="mt-2 flex items-center gap-3 rounded-2xl bg-canvas p-3">
-          <span class="grid h-10 w-10 place-items-center rounded-xl bg-charcoal text-sm font-semibold text-white">${esc(section.name.slice(-2))}</span>
-          <div class="flex-1"><div class="font-semibold">${esc(section.name)}</div><div class="text-xs text-muted">${section.members} members · Joined ${esc(Shell.joined())}</div></div>
-          ${icon('chevronRight', 18, 'text-muted')}
-        </a>
+        <div class="mt-2">${Shell.sectionList()}</div>
         <div class="mt-5 space-y-1">
           ${[['user', 'Edit profile', 'account.html#profile'], ['bell', 'Notifications', 'notifications.html'], ['lock', 'Change password', 'account.html#password']]
             .map(([i, l, h]) => `<a href="${h}" class="flex items-center gap-3 rounded-2xl px-1 py-2 hover:bg-canvas"><span class="grid h-9 w-9 place-items-center rounded-full bg-canvas">${icon(i, 18)}</span><span class="flex-1 text-sm font-medium">${l}</span>${icon('chevronRight', 18, 'text-muted')}</a>`).join('')}
@@ -371,12 +368,40 @@ const Shell = {
       </aside>`;
     wrap.addEventListener('click', (e) => e.target.closest('[data-close]') && wrap.remove());
     $('[data-logout]', wrap).onclick = Shell.logout;
+    Shell.bindSectionList(wrap);
     document.body.appendChild(wrap);
+  },
+
+  /** Every section the user belongs to; the open one is marked, others switch on click. */
+  sectionList() {
+    const { section, sections } = Shell.me;
+    return `<div class="space-y-2">
+      ${sections.map((s) => `
+        <button type="button" data-switch="${s.id}" class="flex w-full items-center gap-3 rounded-2xl bg-canvas p-3 text-left">
+          <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-charcoal text-sm font-semibold text-white">${esc(s.name.slice(-2))}</span>
+          <span class="min-w-0 flex-1"><span class="block font-semibold">${esc(s.name)}</span>
+            <span class="block truncate text-xs text-muted">${s.role === 'admin' ? `Admin · code ${esc(s.class_code)}` : 'Student'} · ${s.members} members · Joined ${esc(Shell.monthYear(s.joined_at))}</span></span>
+          ${s.id === section.id ? '<span class="chip bg-mint-tint text-success">Active</span>' : '<span class="chip bg-white">Open</span>'}
+        </button>`).join('')}
+      <a href="section.html" class="flex items-center gap-3 rounded-2xl p-3 hover:bg-canvas">
+        <span class="grid h-10 w-10 place-items-center rounded-full bg-canvas">${icon('plus', 18)}</span>
+        <span class="flex-1 text-sm font-medium">Join or create another section</span>${icon('chevronRight', 18, 'text-muted')}
+      </a>
+    </div>`;
+  },
+
+  bindSectionList(root) {
+    $$('[data-switch]', root).forEach((b) => b.onclick = async () => {
+      const id = Number(b.dataset.switch);
+      if (id === Shell.me.section.id) return;
+      await API.post('section.php', { action: 'switch', section_id: id });
+      location.href = 'home.html';
+    });
   },
 
   profileCard(admin, compact = false) {
     const { user, section } = Shell.me;
-    const roleLabel = admin ? `Admin · ${section.name}` : `${compact ? 'Client' : 'Student'} · ${section.name}`;
+    const roleLabel = `${admin ? 'Admin' : 'Student'} · ${section.name}`;
     return `
       <div class="card-pastel ${admin ? 'yellow' : 'peach'} rounded-[1.75rem] p-5">
         <span class="sparkle">✦</span><span class="ring-deco"></span>
@@ -391,8 +416,8 @@ const Shell = {
       </div>`;
   },
 
-  joined() {
-    const d = new Date(String(Shell.me.user.joined_at).replace(' ', 'T'));
+  monthYear(value) {
+    const d = new Date(String(value).replace(' ', 'T'));
     return isNaN(d) ? '' : `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   },
 

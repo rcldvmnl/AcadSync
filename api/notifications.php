@@ -34,7 +34,7 @@ for ($i = count($mine) - 1; $i >= 0; $i--) {
         'link' => $n['link'],
         'is_read' => (bool) (int) $n['is_read'],
         'created_at' => $n['created_at'],
-        'ts' => strtotime($n['created_at'] . ' UTC'),
+        'ts' => strtotime($n['created_at']),
     ];
     if (!(int) $n['is_read']) {
         $unread++;

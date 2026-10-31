@@ -15,7 +15,7 @@
 <body class="min-h-screen">
   <div class="mx-auto max-w-md px-4 pb-10 pt-6 lg:max-w-4xl lg:px-8 lg:pt-10">
     <header class="mb-5 flex items-center gap-3">
-      <button type="button" id="back" class="grid h-11 w-11 place-items-center rounded-full bg-white shadow-card" aria-label="Go back"></button>
+      <button type="button" id="back" class="grid h-11 w-11 place-items-center rounded-full bg-white shadow-card" aria-label="Go back" hidden></button>
       <div class="flex-1">
         <div class="text-xs text-muted" id="eyebrow">Get started</div>
         <h1 class="text-xl font-bold tracking-tight lg:text-[28px]" id="title">Find your section</h1>
@@ -25,9 +25,13 @@
 
     <!-- Choose -->
     <section data-view="choose">
+      <div id="my-sections" hidden class="mb-6">
+        <h2 class="mb-3 text-xl font-bold">Your sections</h2>
+        <div id="my-sections-list" class="space-y-3"></div>
+      </div>
       <p class="text-[11px] font-semibold uppercase tracking-wider text-muted">Set up your class</p>
       <h2 class="mt-1 text-[26px] font-bold leading-tight tracking-tight">Create a section or join one</h2>
-      <p class="mt-2 text-sm text-muted">The class officer becomes the admin. Everyone else joins as a client with a 6-character code.</p>
+      <p class="mt-2 text-sm text-muted">The class officer creates the section and becomes its admin. Everyone else joins with the 6-character class code.</p>
       <div class="mt-5 grid gap-5 lg:grid-cols-2">
         <div class="card-pastel lavender rounded-[1.75rem] p-5">
           <span class="sparkle">✦</span><span class="ring-deco"></span>
@@ -36,8 +40,8 @@
             <span class="chip mt-6 bg-white">Admin · class officer</span>
           </div>
           <h3 class="mt-4 text-xl font-bold">Create a new section</h3>
-          <p class="mt-1 text-sm">Set up BSINFO-2A, add subjects and their schedule, then share a class code.</p>
-          <a href="#create" class="btn btn-dark mt-4 w-full">Create section</a>
+          <p class="mt-1 text-sm">Name your section, add subjects and their weekly schedule, then share the class code.</p>
+          <button type="button" data-go="create" class="btn btn-dark mt-4 w-full">Create section</button>
         </div>
         <div class="card-pastel peach rounded-[1.75rem] p-5">
           <span class="sparkle">✦</span><span class="ring-deco"></span>
@@ -46,8 +50,8 @@
             <span class="chip mt-6 bg-white">Client · student</span>
           </div>
           <h3 class="mt-4 text-xl font-bold">Join with a class code</h3>
-          <p class="mt-1 text-sm">Got a code from your officer? Enter it to see your schedule.</p>
-          <a href="#join" class="btn btn-dark mt-4 w-full">Enter class code</a>
+          <p class="mt-1 text-sm">Got a code from your officer? Enter it to see your section’s schedule.</p>
+          <button type="button" data-go="join" class="btn btn-dark mt-4 w-full">Enter class code</button>
         </div>
       </div>
     </section>
@@ -70,11 +74,25 @@
     <section data-view="create" hidden class="mx-auto max-w-md">
       <form id="create-form" class="rounded-[1.75rem] bg-white p-5 shadow-card" novalidate>
         <div class="space-y-4">
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Section name</span><span class="field"><input name="name" value="BSINFO-2A" required></span></label>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Section name</span>
+            <span class="field"><input name="name" placeholder="e.g. BSINFO-2A" maxlength="30" autocomplete="off" required></span>
+            <span class="mt-1.5 block text-xs text-muted">Program + year + section letter. It must be unique in AcadSync.</span></label>
           <label class="block"><span class="mb-1.5 block text-xs text-muted">Program</span>
-            <span class="field"><select name="program"><option>BS Information Technology</option><option>BS Computer Science</option><option>BS Information Systems</option></select><span data-icon="chevronDown"></span></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Semester</span>
-            <span class="field"><select name="semester"><option>2nd Semester · 2026</option><option>1st Semester · 2026</option><option>1st Semester · 2027</option></select><span data-icon="chevronDown"></span></span></label>
+            <span class="field"><input name="program" list="programs" value="BS Information Technology" required></span>
+            <datalist id="programs"><option>BS Information Technology</option><option>BS Computer Science</option><option>BS Information Systems</option></datalist></label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block"><span class="mb-1.5 block text-xs text-muted">Year level</span>
+              <span class="field"><select name="year_level"><option>1st Year</option><option selected>2nd Year</option><option>3rd Year</option><option>4th Year</option></select><span data-icon="chevronDown"></span></span></label>
+            <label class="block"><span class="mb-1.5 block text-xs text-muted">Semester</span>
+              <span class="field"><select name="semester"><option>1st Semester</option><option selected>2nd Semester</option><option>Summer</option></select><span data-icon="chevronDown"></span></span></label>
+          </div>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">School year</span>
+            <span class="field"><input name="school_year" placeholder="2026-2027" pattern="\d{4}-\d{4}"></span></label>
+          <label class="flex items-start gap-3 rounded-2xl bg-canvas p-4">
+            <input type="checkbox" name="preset" value="1" class="mt-0.5 h-5 w-5 accent-charcoal">
+            <span><span class="block text-sm font-semibold">Start with the 8 BSINFO 2A core subjects</span>
+              <span class="block text-xs text-muted">GEC 107, ITEC 204, ITEC 205, ITEP 203, ITEL 201, ITEL 202, SOSLIT, PATHFit 3 — you’ll set their class times next.</span></span>
+          </label>
         </div>
         <p data-error class="mt-4 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
         <button type="submit" class="btn btn-dark mt-5 w-full">Create section</button>
