@@ -32,7 +32,38 @@ const ICON_PATHS = {
   edit: '<path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   sparkle: '<path d="M12 2c.6 4.6 2.4 6.4 7 7-4.6.6-6.4 2.4-7 7-.6-4.6-2.4-6.4-7-7 4.6-.6 6.4-2.4 7-7Z" fill="currentColor" stroke="none"/>',
   notebook: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 3v18M12 8h4M12 12h4"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a17 17 0 0 1-2.16 3.19M6.6 6.6A17.5 17.5 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2M2 2l20 20"/>',
 };
+
+/**
+ * Show/hide toggle for every password field — including ones added later
+ * (sheets, dialogs), picked up by a MutationObserver.
+ */
+function addPasswordToggles(root = document) {
+  root.querySelectorAll?.('input[type=password]:not([data-toggle-ready])').forEach((input) => {
+    input.dataset.toggleReady = '1';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted hover:bg-line/60 hover:text-charcoal';
+    const sync = () => {
+      const shown = input.type === 'text';
+      btn.innerHTML = icon(shown ? 'eyeOff' : 'eye', 18);
+      btn.setAttribute('aria-label', shown ? 'Hide password' : 'Show password');
+      btn.setAttribute('aria-pressed', String(shown));
+    };
+    btn.addEventListener('click', () => {
+      input.type = input.type === 'password' ? 'text' : 'password';
+      sync();
+      input.focus();
+    });
+    sync();
+    input.insertAdjacentElement('afterend', btn);
+  });
+}
+addPasswordToggles();
+new MutationObserver((records) => records.forEach((r) => r.addedNodes.forEach((n) => n.nodeType === 1 && addPasswordToggles(n))))
+  .observe(document.documentElement, { childList: true, subtree: true });
 
 function icon(name, size = 20, cls = '') {
   return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`;

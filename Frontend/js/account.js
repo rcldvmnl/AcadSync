@@ -48,7 +48,6 @@ function render(me) {
     ['user', 'Edit profile', '#profile'],
     ['bell', 'Notifications', 'notifications.html'],
     ['lock', 'Change password', '#password'],
-    ['info', 'How AcadSync works (data structures)', 'dsa.html'],
     ['help', 'Help & feedback', '#help'],
   ];
 

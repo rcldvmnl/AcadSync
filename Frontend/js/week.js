@@ -29,7 +29,8 @@ async function load() {
 }
 
 function render() {
-  const days = state.data.week.days.filter((d) => d.dow <= 5 || d.classes.length || state.admin);
+  // Classes meet Monday–Saturday; Sunday only appears on the Class Schedule day picker.
+  const days = state.data.week.days.filter((d) => d.dow <= 6 && (d.dow <= 5 || d.classes.length || state.admin));
   $('#main').innerHTML = `
     ${state.admin ? `<div class="mb-5 flex gap-3 rounded-[1.5rem] bg-lavender-tint p-4 lg:max-w-xl">
       ${icon('calendar', 20, 'mt-0.5 shrink-0')}

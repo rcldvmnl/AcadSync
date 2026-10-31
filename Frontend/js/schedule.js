@@ -11,8 +11,7 @@ let selectedDow;
 (async () => {
   await Shell.init({ active: 'schedule', eyebrow: sectionEyebrow, title: 'Class Schedule' });
   data = await API.get('schedule.php');
-  const today = new Date().getDay();
-  selectedDow = today >= 1 && today <= 6 ? today : 1;
+  selectedDow = new Date().getDay() || 7;   // 1 = Monday … 7 = Sunday
   render();
 })().catch((e) => { if (e.message !== 'no section') $('#content').innerHTML = UI.errorBox(e); });
 
@@ -34,21 +33,27 @@ function render() {
   if (showDays) renderClasses();
 }
 
+/** The whole week, Monday to Sunday, always in the same place — only the highlight moves. */
 function dayPicker() {
-  const days = data.week.days.filter((d) => d.dow <= 5 || d.classes.length || d.dow === selectedDow);
+  const days = data.week.days;
   const today = Fmt.iso(new Date());
-  const selected = data.week.days.find((d) => d.dow === selectedDow);
+  const selected = days.find((d) => d.dow === selectedDow);
   return `
     <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-xl font-bold">${selected && selected.date === today ? 'Today' : DAYS_LONG[selectedDow]}</h2>
+      <h2 class="text-xl font-bold">${selected && selected.date === today ? 'Today' : DAYS_LONG[selectedDow % 7]}</h2>
       <span class="chip bg-white text-xs">${selected ? esc(Fmt.short(selected.date)) : ''}</span>
     </div>
-    <div class="grid gap-2" style="grid-template-columns:repeat(${days.length},minmax(0,1fr))" role="tablist" aria-label="Day of the week">
-      ${days.map((d) => `
-        <button class="day-pill" role="tab" data-dow="${d.dow}" aria-pressed="${d.dow === selectedDow}" aria-selected="${d.dow === selectedDow}">
-          <span class="text-[10px] font-semibold uppercase ${d.dow === selectedDow ? 'text-white/70' : 'text-muted'}">${DAYS[d.dow]}</span>
-          <span class="text-xl font-bold">${Fmt.date(d.date).getDate()}</span>
-        </button>`).join('')}
+    <div class="grid grid-cols-7 gap-1.5" role="tablist" aria-label="Day of the week">
+      ${days.map((d) => {
+        const on = d.dow === selectedDow;
+        const isToday = d.date === today;
+        return `
+        <button class="day-pill ${isToday && !on ? 'ring-2 ring-charcoal ring-inset' : ''}" role="tab" data-dow="${d.dow}" aria-pressed="${on}" aria-selected="${on}" aria-label="${DAYS_LONG[d.dow % 7]} ${Fmt.monthDay(d.date)}${isToday ? ' (today)' : ''}">
+          <span class="text-[10px] font-semibold uppercase ${on ? 'text-white/70' : 'text-muted'}">${DAYS[d.dow % 7]}</span>
+          <span class="text-lg font-bold">${Fmt.date(d.date).getDate()}</span>
+          <span class="h-1 w-1 rounded-full ${d.classes.length ? (on ? 'bg-white/70' : 'bg-lavender') : 'bg-transparent'}"></span>
+        </button>`;
+      }).join('')}
     </div>`;
 }
 
@@ -57,7 +62,7 @@ function renderClasses() {
   const day = data.week.days.find((d) => d.dow === selectedDow);
   $('#classes').innerHTML = day && day.classes.length
     ? day.classes.map((c) => UI.classRow(c)).join('')
-    : UI.empty('No classes', `Nothing scheduled on ${DAYS_LONG[selectedDow]}.`, 'calendar');
+    : UI.empty('No classes', `Nothing scheduled on ${DAYS_LONG[selectedDow % 7]}.`, 'calendar');
 }
 
 function tasksSection() {

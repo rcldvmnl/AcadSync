@@ -28,7 +28,7 @@ $monday = strtotime('monday this week', $anchor);
 $sectionId = (int) $ctx['section']['id'];
 $slots = class_slots($sectionId, $ctx['subjectIndex']);
 $days = [];
-for ($d = 0; $d < 6; $d++) {
+for ($d = 0; $d < 7; $d++) {   // the whole week, Monday (1) to Sunday (7)
     $ts = strtotime("+$d day", $monday);
     $days[] = ['date' => date('Y-m-d', $ts), 'dow' => $d + 1, 'classes' => classes_on_day($slots, $d + 1)];
 }
