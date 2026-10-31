@@ -88,7 +88,8 @@ function changeSummary(q) {
   if (q.kind !== 'change' || !q.original) return '';
   return `<div class="mt-3 rounded-2xl bg-peach-tint p-3 text-xs">
     <div class="font-semibold">Edit request for “${esc(q.original.title)}”</div>
-    <div class="mt-0.5 text-muted">${esc(dueText(q.original))} → <b class="text-charcoal">${esc(dueText(q))}</b></div>
+    ${q.changed?.length ? `<div class="mt-1 flex flex-wrap gap-1">${q.changed.map((c) => `<span class="chip bg-white px-2 py-0.5 text-[11px]">${esc(c)}</span>`).join('')}</div>` : '<div class="mt-0.5 text-muted">No fields changed</div>'}
+    ${q.changed?.includes('Deadline') || q.changed?.includes('Due time') ? `<div class="mt-1 text-muted">${esc(dueText(q.original))} → <b class="text-charcoal">${esc(dueText(q))}</b></div>` : ''}
   </div>`;
 }
 
@@ -100,6 +101,7 @@ function mobileCard(q) {
         <span class="chip ${q.position === 1 ? 'bg-charcoal text-white' : 'bg-canvas text-muted'}">${posLabel(q)}</span>
       </div>
       <h3 class="mt-3 text-lg font-semibold">${esc(q.title)}</h3>
+      <div class="mt-1 flex flex-wrap gap-1.5">${UI.chip(q.category, 'bg-canvas')}${UI.workBadge(q)}</div>
       <div class="mt-1 flex items-center gap-1.5 text-xs text-muted">${icon('clock', 14)}${esc(dueText(q))} · by ${esc(q.requested_by_name)}</div>
       ${changeSummary(q)}
       ${q.kind === 'new' ? similarBox(q, true) : ''}
@@ -119,7 +121,7 @@ function similarBox(q, compact = false) {
 
 function detail(q) {
   const cells = [
-    ['Type', q.category],
+    ['Type', `${q.category} · ${q.work_mode === 'group' ? `group of ${UI.groupSize(q)}` : 'individual'}`],
     ['Due', dueText(q).replace(/^Due /, '')],
     ['Requested by', `${q.requested_by_name} · ${Fmt.monthDay(q.created_at.slice(0, 10))}`],
   ];

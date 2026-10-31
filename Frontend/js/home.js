@@ -14,7 +14,24 @@
     title: `${Fmt.greeting()}, ${me.user.first_name}`,
   });
   $('#main').innerHTML = admin ? adminView(data) : studentView(data);
+  if (!admin) groupReminder();
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
+
+/** "You still need a group for …" — shown above the dashboard while any group task is unclaimed. */
+async function groupReminder() {
+  try {
+    const { upcoming } = await API.get('groups.php');
+    const missing = upcoming.filter((t) => !t.in_group);
+    if (!missing.length) return;
+    $('#main').insertAdjacentHTML('afterbegin', `
+      <a href="${missing.length === 1 ? `task.html?id=${missing[0].id}` : 'classmates.html#groups'}" class="mb-5 flex items-center gap-3 rounded-[1.5rem] bg-sun-tint p-4">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white">${icon('users', 18)}</span>
+        <span class="min-w-0 flex-1"><span class="block text-sm font-semibold">You still need a group</span>
+          <span class="block truncate text-xs text-muted">${missing.map((t) => esc(t.title)).join(' · ')}</span></span>
+        ${icon('chevronRight', 18, 'text-muted')}
+      </a>`);
+  } catch { /* the reminder is optional */ }
+}
 
 const inLabel = (ts) => {
   if (!ts) return '';

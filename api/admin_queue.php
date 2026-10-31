@@ -30,6 +30,25 @@ foreach ($queue->toArray() as $q) {
     $original = $ctx['taskIndex'][(int) $q['target_task_id']] ?? null;
     if ($q['kind'] === 'change' && $original) {
         $item['original'] = present_task($original, $ctx['subjectIndex'], $ctx['users']);
+        // Which fields the student wants changed
+        $changed = [];
+        $labels = [
+            'title' => 'Title', 'description' => 'Description', 'category' => 'Category', 'location' => 'Where',
+            'subject_id' => 'Subject', 'work_mode' => 'Individual/group', 'group_min' => 'Group size', 'group_max' => 'Group size',
+            'deadline' => 'Deadline', 'deadline_end' => 'Deadline', 'deadline_time' => 'Due time', 'deadline_type' => 'Deadline',
+        ];
+        foreach ($labels as $field => $label) {
+            if ((string) $q[$field] !== (string) $original[$field]) {
+                $seen = false;
+                foreach ($changed as $c) {
+                    $seen = $seen || $c === $label;
+                }
+                if (!$seen) {
+                    $changed[] = $label;
+                }
+            }
+        }
+        $item['changed'] = $changed;
     }
     $items[] = $item;
 }

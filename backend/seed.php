@@ -152,7 +152,8 @@ function seed_database(): void
     }
 
     // --- Approved tasks (inserted out of order on purpose: the Linked List sorts them)
-    $task = function (int $sectionId, int $subjectId, int $by, string $cat, string $title, string $desc, ?string $date, ?string $time, string $where, string $status, string $created) use ($u) {
+    // $group = [min, max] for group work, null for individual work
+    $task = function (int $sectionId, int $subjectId, int $by, string $cat, string $title, string $desc, ?string $date, ?string $time, string $where, string $status, string $created, ?array $group = null) use ($u) {
         return Store::insert('tasks', [
             'section_id' => $sectionId,
             'subject_id' => $subjectId,
@@ -164,6 +165,9 @@ function seed_database(): void
             'deadline_time' => $time,
             'deadline_type' => $date === null ? 'unset' : 'exact',
             'location' => $where,
+            'work_mode' => $group ? 'group' : 'individual',
+            'group_min' => $group[0] ?? null,
+            'group_max' => $group[1] ?? null,
             'status' => $status,
             'reviewed_by' => $status === 'approved' ? $u['juan.delacruz'] : null,
             'created_at' => $created,
@@ -172,9 +176,10 @@ function seed_database(): void
     $A = $sec['BSINFO-2A'];
     $admin = $u['juan.delacruz'];
     $task($A, $s['GEC 107'], $admin, 'Exam', 'Final Exam — Chapters 1–6', 'Coverage: all chapters discussed after the midterm. Bring a blue pen.', $day(30), '08:00', 'Room 204', 'approved', $stamp('-2 days'));
-    $task($A, $s['ITEC 204'], $admin, 'Project', 'Final Project — AcadSync', "Build a working web app that uses 7 data structures and 5 algorithms.\n- Source code pushed to the class repo\n- Live demo during system checking\n- Printed documentation", null, null, 'Live demo + class drive', 'approved', $stamp('-10 days'));
-    $task($A, $s['GEC 107'], $admin, 'Reporting', 'Reporting — Ch. 3', "Each group presents Chapter 3 — The Scientific Revolution — for 15 minutes, then answers questions for 5 minutes.\n- Slides uploaded to the class drive\n- One printed handout per group", date('Y-m-d', $inHours), date('H:00', $inHours), 'In class · Room 204', 'approved', $stamp('-2 days'));
+    $finalProject = $task($A, $s['ITEC 204'], $admin, 'Project', 'Final Project — AcadSync', "Build a working web app that uses 7 data structures and 5 algorithms.\n- Source code pushed to the class repo\n- Live demo during system checking\n- Printed documentation", null, null, 'Live demo + class drive', 'approved', $stamp('-10 days'), [3, 4]);
+    $reporting = $task($A, $s['GEC 107'], $admin, 'Reporting', 'Reporting — Ch. 3', "Each group presents Chapter 3 — The Scientific Revolution — for 15 minutes, then answers questions for 5 minutes.\n- Slides uploaded to the class drive\n- One printed handout per group", date('Y-m-d', $inHours), date('H:00', $inHours), 'In class · Room 204', 'approved', $stamp('-2 days'), [2, 3]);
     $task($A, $s['ITEL 202'], $admin, 'Activity', 'Web Mockup Draft', 'Submit a low-fidelity mockup of your landing page as a PDF.', $day(1), '17:00', 'Google Classroom', 'approved', $stamp('-3 days'));
+    $task($A, $s['SOSLIT'], $admin, 'Film viewing', 'Film Reflection Paper', 'Watch the assigned film and write a 2-page reflection.', $day(9), '23:59', 'Google Classroom', 'approved', $stamp('-1 day'));
     $task($A, $s['ITEC 204'], $admin, 'Activity', 'Lab Activity 3', 'Implement a singly linked list with insert, delete and traverse.', $day(0), '23:59', 'Comp Lab 2', 'approved', $stamp('-4 days'));
     $task($A, $s['GEC 107'], $admin, 'Quiz', 'Quiz 1 — Ch. 4', '20-item multiple choice quiz on Chapter 4.', $day(5), '13:00', 'Room 204', 'approved', $stamp('-1 day'));
     $task($A, $s['ITEC 205'], $admin, 'Activity', 'ERD Exercise', 'Draw an ERD for a library system with at least 5 entities.', $day(3), '10:00', 'Room 301', 'approved', $stamp('-1 day'));
@@ -183,40 +188,38 @@ function seed_database(): void
     $pending = [
         ['ITEL 201', 'Quiz', 'OOP Quiz', '20-item quiz covering classes, objects and inheritance. Closed notes, 30 minutes.', $day(2), '08:00', 'maria.santos', '-3 days'],
         ['ITEC 204', 'Activity', 'Array Exercise', 'Solve 5 array manipulation problems and submit the .php file.', $day(4), '23:59', 'paolo.reyes', '-2 days'],
-        ['GEC 107', 'Reporting', 'Group Reporting — Ch. 4', 'Groups 4–6 report on Chapter 4 — Technology and Society.', $day(6), '13:00', 'ana.bautista', '-2 days'],
+        ['GEC 107', 'Reporting', 'Group Reporting — Ch. 4', 'Groups 4–6 report on Chapter 4 — Technology and Society.', $day(6), '13:00', 'ana.bautista', '-2 days', [3, 4]],
         ['ITEC 205', 'Activity', 'Lab Activity 4', 'Normalize the given table up to 3NF.', $day(7), '10:00', 'carlo.domingo', '-1 day'],
-        ['ITEL 202', 'Activity', 'Web Mockup', 'High-fidelity mockup of the landing page in Figma.', $day(8), '17:00', 'kyla.lim', '-2 hours'],
+        ['ITEL 202', 'Activity', 'Web Mockup', 'High-fidelity mockup of the landing page in Figma.', $day(8), '17:00', 'kyla.lim', '-2 hours', [2, 3]],
     ];
-    foreach ($pending as [$code, $cat, $title, $desc, $date, $time, $by, $ago]) {
-        $id = $task($A, $s[$code], $u[$by], $cat, $title, $desc, $date, $time, 'In class', 'pending', $stamp($ago));
+    foreach ($pending as $p) {
+        [$code, $cat, $title, $desc, $date, $time, $by, $ago] = $p;
+        $id = $task($A, $s[$code], $u[$by], $cat, $title, $desc, $date, $time, 'In class', 'pending', $stamp($ago), $p[8] ?? null);
         Store::insert('approval_queue', ['section_id' => $A, 'task_id' => $id, 'queued_at' => $stamp($ago)]);
     }
 
     // BSINFO-2B has its own, separate tasks
     $B = $sec['BSINFO-2B'];
     $task($B, $s2['ITEC 204'], $u['bea.garcia'], 'Quiz', 'Stacks & Queues Quiz', 'Short quiz on stack and queue operations.', $day(2), '13:00', 'Comp Lab 4', 'approved', $stamp('-1 day'));
-    $task($B, $s2['GEC 107'], $u['bea.garcia'], 'Reporting', 'Reporting — Ch. 2', 'Group 1 and 2 report on Chapter 2.', $day(4), '08:00', 'Room 205', 'approved', $stamp('-1 day'));
+    $reporting2B = $task($B, $s2['GEC 107'], $u['bea.garcia'], 'Reporting', 'Reporting — Ch. 2', 'Group 1 and 2 report on Chapter 2.', $day(4), '08:00', 'Room 205', 'approved', $stamp('-1 day'), [2, 3]);
     $id = $task($B, $s2['ITEL 201'], $u['leo.navarro'], 'Activity', 'Inheritance Lab', 'Build a class hierarchy for a school system.', $day(6), '11:30', 'Comp Lab 3', 'pending', $stamp('-5 hours'));
     Store::insert('approval_queue', ['section_id' => $B, 'task_id' => $id, 'queued_at' => $stamp('-5 hours')]);
 
-    // --- Study groups (graph edges between every pair in a team) -----------------
+    // --- Groups: [section, name, subject, task, purpose, max, creator, members] -------
     $groups = [
-        [$A, 'Capstone A', ['ana.bautista', 'juan.delacruz', 'maria.santos']],
-        [$A, 'DSA Study', ['juan.delacruz', 'paolo.reyes']],
-        [$A, 'Web Dev', ['carlo.domingo', 'marco.cruz', 'kyla.lim']],
-        [$B, 'Capstone B', ['bea.garcia', 'leo.navarro', 'ivy.mendoza']],
+        [$A, 'Capstone A', $s['ITEC 204'], $finalProject, 'Final project team — AcadSync web app', 4, 'juan.delacruz', ['ana.bautista', 'juan.delacruz', 'maria.santos']],
+        [$A, 'Group 1', $s['GEC 107'], $reporting, 'Chapter 3 report', 3, 'paolo.reyes', ['paolo.reyes', 'kyla.lim']],
+        [$A, 'DSA Study', $s['ITEC 204'], null, 'Weekly review before quizzes (Wed after class)', null, 'paolo.reyes', ['juan.delacruz', 'paolo.reyes']],
+        [$A, 'Web Dev', $s['ITEL 202'], null, 'Practice HTML/CSS together', null, 'carlo.domingo', ['carlo.domingo', 'marco.cruz', 'kyla.lim']],
+        [$B, 'Capstone B', $s2['GEC 107'], $reporting2B, 'Chapter 2 report', 3, 'bea.garcia', ['bea.garcia', 'leo.navarro', 'ivy.mendoza']],
     ];
-    foreach ($groups as [$sectionId, $name, $list]) {
-        $n = count($list);
-        for ($i = 0; $i < $n; $i++) {
-            for ($j = $i + 1; $j < $n; $j++) {
-                Store::insert('study_groups', [
-                    'section_id' => $sectionId,
-                    'student_a_id' => $u[$list[$i]],
-                    'student_b_id' => $u[$list[$j]],
-                    'project_context' => $name,
-                ]);
-            }
+    foreach ($groups as [$sectionId, $name, $subjectId, $taskId, $purpose, $max, $creator, $list]) {
+        $gid = Store::insert('study_groups', [
+            'section_id' => $sectionId, 'name' => $name, 'subject_id' => $subjectId, 'task_id' => $taskId,
+            'purpose' => $purpose, 'max_members' => $max, 'created_by' => $u[$creator], 'created_at' => $stamp('-3 days'),
+        ]);
+        foreach ($list as $member) {
+            Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $gid, 'user_id' => $u[$member], 'joined_at' => $stamp('-3 days')]);
         }
     }
 

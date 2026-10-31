@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     section_id INTEGER NOT NULL,
     subject_id INTEGER NOT NULL,
     requested_by INTEGER NOT NULL,      -- users.id
-    category TEXT NOT NULL,             -- Reporting | Quiz | Exam | Activity | Project
+    category TEXT NOT NULL,             -- Reporting | Quiz | Exam | Activity | Project | <custom "Other" label>
     title TEXT NOT NULL,
     description TEXT,                   -- Linear Search target
     deadline DATE,                      -- YYYY-MM-DD (first day if a range); NULL = not set yet
@@ -88,7 +88,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     deadline_time TEXT,                 -- "13:00"
     deadline_type TEXT NOT NULL DEFAULT 'exact', -- exact | range | unset
     location TEXT,
-    status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected | removed
+    work_mode TEXT NOT NULL DEFAULT 'individual', -- individual | group
+    group_min INTEGER,                  -- group work: smallest allowed group (e.g. 3)
+    group_max INTEGER,                  -- group work: largest allowed group (e.g. 4)
+    status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected | removed | withdrawn
     kind TEXT NOT NULL DEFAULT 'new',   -- new | change (edit request for target_task_id)
     target_task_id INTEGER,
     reviewed_by INTEGER,
@@ -98,17 +101,34 @@ CREATE TABLE IF NOT EXISTS tasks (
     FOREIGN KEY(requested_by) REFERENCES users(id)
 );
 
--- 7. STUDY_GROUPS — graph edges between two classmates ----------------------
+-- 7. STUDY_GROUPS — a group of classmates (for a subject, a group task, or studying)
 CREATE TABLE IF NOT EXISTS study_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id INTEGER NOT NULL,
-    student_a_id INTEGER NOT NULL,
-    student_b_id INTEGER NOT NULL,
-    project_context TEXT NOT NULL,      -- group name, e.g. "Capstone A"
-    UNIQUE (section_id, student_a_id, student_b_id, project_context),
+    name TEXT NOT NULL,                 -- "Capstone A", "Group 2"
+    subject_id INTEGER,                 -- optional subject the group is for
+    task_id INTEGER,                    -- optional group task (one group per student per task)
+    purpose TEXT,                       -- what the group is for
+    max_members INTEGER,                -- size limit (taken from the task's group_max)
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY(section_id) REFERENCES sections(id),
-    FOREIGN KEY(student_a_id) REFERENCES users(id),
-    FOREIGN KEY(student_b_id) REFERENCES users(id)
+    FOREIGN KEY(subject_id) REFERENCES subjects(id),
+    FOREIGN KEY(task_id) REFERENCES tasks(id),
+    FOREIGN KEY(created_by) REFERENCES users(id)
+);
+
+-- 7b. GROUP_MEMBERS — who is in each group. In PHP every pair of members in a
+--     group becomes an edge of the classmates GRAPH (adjacency list).
+CREATE TABLE IF NOT EXISTS group_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    joined_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (group_id, user_id),
+    FOREIGN KEY(group_id) REFERENCES study_groups(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
 -- 8. APPROVAL_QUEUE — persisted FIFO order (lower id = arrived earlier) ------
@@ -184,7 +204,9 @@ SELECT s.name AS section, sub.code AS subject, t.category, t.title,
        CASE t.deadline_type WHEN 'unset' THEN 'not set yet'
             WHEN 'range' THEN t.deadline || ' to ' || t.deadline_end
             ELSE t.deadline END AS deadline,
-       t.deadline_time AS due_time, t.status, t.kind,
+       t.deadline_time AS due_time,
+       CASE t.work_mode WHEN 'group' THEN 'group of ' || t.group_min || '–' || t.group_max ELSE 'individual' END AS work,
+       t.status, t.kind,
        u.last_name || ', ' || u.first_name AS requested_by, t.created_at
 FROM tasks t
 JOIN sections s ON s.id = t.section_id
@@ -203,11 +225,12 @@ JOIN users u ON u.id = t.requested_by
 ORDER BY s.name, q.id;
 
 CREATE VIEW IF NOT EXISTS view_study_groups AS
-SELECT s.name AS section, g.project_context AS study_group,
-       a.last_name || ', ' || a.first_name AS student_a,
-       b.last_name || ', ' || b.first_name AS student_b
-FROM study_groups g
+SELECT s.name AS section, g.name AS study_group, sub.code AS subject, t.title AS for_task,
+       g.purpose, u.student_id, u.last_name || ', ' || u.first_name AS member
+FROM group_members m
+JOIN study_groups g ON g.id = m.group_id
 JOIN sections s ON s.id = g.section_id
-JOIN users a ON a.id = g.student_a_id
-JOIN users b ON b.id = g.student_b_id
-ORDER BY s.name, g.project_context;
+JOIN users u ON u.id = m.user_id
+LEFT JOIN subjects sub ON sub.id = g.subject_id
+LEFT JOIN tasks t ON t.id = g.task_id
+ORDER BY s.name, g.name, u.last_name;

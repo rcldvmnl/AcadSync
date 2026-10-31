@@ -5,7 +5,7 @@
  *   - mode=id  -> Binary Search by numeric Student ID
  *   - mode=name-> Linear Search by name
  *   - group    -> members reachable inside that study group (Graph BFS)
- * POST action=create_group {name, member_ids[]}  (admin) -> adds Graph edges
+ * Creating / joining groups lives in api/groups.php.
  */
 
 declare(strict_types=1);
@@ -20,50 +20,6 @@ $graph = build_graph($sectionId, $members);
 function present_member(array $m, DependencyGraph $graph): array
 {
     return public_user($m) + ['groups' => $graph->groupsOf((int) $m['id'])];
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    require_admin();
-    if (param('action') !== 'create_group') {
-        fail('Unknown action.');
-    }
-    $name = (string) param('name', '');
-    if ($name === '') {
-        fail('Name the group.');
-    }
-    $inSection = [];
-    foreach ($members as $m) {
-        $inSection[(int) $m['id']] = $m;
-    }
-    $ids = [];
-    foreach ((array) param('member_ids', []) as $id) {
-        if (isset($inSection[(int) $id])) {
-            $ids[] = (int) $id;
-        }
-    }
-    if (count($ids) < 2) {
-        fail('A study group needs at least 2 members.');
-    }
-    $existing = [];
-    foreach (section_rows('study_groups', $sectionId) as $e) {
-        $existing[$e['student_a_id'] . '-' . $e['student_b_id'] . '-' . $e['project_context']] = true;
-    }
-    Store::begin();
-    $n = count($ids);
-    for ($i = 0; $i < $n; $i++) {
-        for ($j = $i + 1; $j < $n; $j++) {
-            $key = $ids[$i] . '-' . $ids[$j] . '-' . $name;
-            $rev = $ids[$j] . '-' . $ids[$i] . '-' . $name;
-            if (!isset($existing[$key]) && !isset($existing[$rev])) {
-                Store::insert('study_groups', ['section_id' => $sectionId, 'student_a_id' => $ids[$i], 'student_b_id' => $ids[$j], 'project_context' => $name]);
-            }
-        }
-    }
-    Store::commit();
-    foreach ($ids as $id) {
-        notify($id, $sectionId, 'group', "You were added to study group “{$name}”", 'classmates.html');
-    }
-    respond(['group' => $name, 'members' => $n], 201);
 }
 
 $q = (string) param('q', '');

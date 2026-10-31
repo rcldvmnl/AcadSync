@@ -140,6 +140,14 @@ const UI = {
 
   chip(text, cls = 'bg-white') { return `<span class="chip ${cls}">${esc(text)}</span>`; },
 
+  /** "Group · 3–4" badge for group work (nothing for individual tasks). */
+  groupSize(t) { return t.group_min === t.group_max ? `${t.group_min}` : `${t.group_min}–${t.group_max}`; },
+  workBadge(t) {
+    return t.work_mode === 'group'
+      ? `<span class="chip gap-1 bg-charcoal px-2 text-white">${icon('users', 12)}Group · ${UI.groupSize(t)}</span>`
+      : '';
+  },
+
   /** Date badge + title + category chip + due line + arrow — "Task Card v2". */
   taskCard(t, { compact = false } = {}) {
     const d = t.deadline_ts ? new Date(t.deadline_ts * 1000) : null;
@@ -151,7 +159,7 @@ const UI = {
         </div>
         <div class="min-w-0 flex-1">
           <div class="truncate font-semibold">${esc(t.title)}</div>
-          <div class="mt-1 flex items-center gap-2">${UI.chip(t.category, CATEGORY_CHIP[t.category] || 'bg-lavender-tint')}<span class="text-xs text-muted">${esc(t.subject_code)}</span></div>
+          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">${UI.chip(t.category, CATEGORY_CHIP[t.category] || 'bg-canvas')}${UI.workBadge(t)}<span class="text-xs text-muted">${esc(t.subject_code)}</span></div>
           <div class="mt-1.5 truncate text-xs text-muted">${esc(Fmt.due(t))}</div>
         </div>
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-charcoal text-white">${icon('arrowRight', 18)}</span>
@@ -395,7 +403,7 @@ const Shell = {
           ${[['user', 'Edit profile', 'account.html#profile'], ['bell', 'Notifications', 'notifications.html'], ['lock', 'Change password', 'account.html#password']]
             .map(([i, l, h]) => `<a href="${h}" class="flex items-center gap-3 rounded-2xl px-1 py-2 hover:bg-canvas"><span class="grid h-9 w-9 place-items-center rounded-full bg-canvas">${icon(i, 18)}</span><span class="flex-1 text-sm font-medium">${l}</span>${icon('chevronRight', 18, 'text-muted')}</a>`).join('')}
         </div>
-        <button data-logout class="btn btn-danger mt-auto w-full">Log out</button>
+        <div class="mt-auto pt-6"><button data-logout class="btn btn-danger w-full">Log out</button></div>
       </aside>`;
     wrap.addEventListener('click', (e) => e.target.closest('[data-close]') && wrap.remove());
     $('[data-logout]', wrap).onclick = Shell.logout;

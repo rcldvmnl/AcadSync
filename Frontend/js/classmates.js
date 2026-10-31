@@ -61,10 +61,10 @@ function groupTone(name) {
 function renderGroups() {
   const chips = [['', 'All'], ...state.data.groups.map((g) => [g, g])];
   $('#groups').innerHTML = `
-    ${state.admin ? `<button id="new-group" class="chip shrink-0 bg-charcoal px-3.5 py-2 text-sm text-white">+ New group</button>` : ''}
+    <button id="new-group" class="chip shrink-0 bg-charcoal px-3.5 py-2 text-sm text-white">+ New group</button>
     ${chips.map(([v, l]) => `<button data-group="${esc(v)}" aria-pressed="${state.group === v}" class="chip shrink-0 px-3.5 py-2 text-sm ${state.group === v ? 'bg-charcoal text-white' : v ? groupTone(v) : 'bg-white'}">${esc(l)}</button>`).join('')}`;
   $$('[data-group]').forEach((b) => b.onclick = () => { state.group = b.dataset.group; load(); });
-  $('#new-group')?.addEventListener('click', openNewGroup);
+  $('#new-group')?.addEventListener('click', () => GroupsTab.openCreate());
 }
 
 function renderList() {
@@ -120,37 +120,6 @@ function openMember(id) {
         <div class="mt-1 text-xs text-muted">With ${people.length ? people.map((p) => esc(`${p.first_name} ${p.last_name}`)).join(', ') : 'no one else in this list'}</div>
       </div>`).join('') : '<p class="mt-1 text-sm text-muted">Not in a study group yet.</p>'}
     <button data-close class="btn btn-dark mt-6 w-full">Close</button>`, { label: `${m.first_name} ${m.last_name}` });
-}
-
-function openNewGroup() {
-  const all = state.data.members;
-  UI.sheet(`
-    <form>
-      <h2 class="text-2xl font-bold">New study group</h2>
-      <p class="mt-1 text-sm text-muted">Everyone you pick gets connected in the study-group graph.</p>
-      <div class="mt-4">${UI.field({ name: 'name', label: 'Group name', placeholder: 'Capstone B', required: true })}</div>
-      <div class="mt-4 text-xs text-muted">Members</div>
-      <div class="mt-2 max-h-64 space-y-1 overflow-y-auto">
-        ${all.map((m) => `<label class="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-canvas">
-          <input type="checkbox" name="m" value="${m.id}" class="h-5 w-5 accent-charcoal">
-          <span class="flex-1 text-sm font-medium">${esc(m.last_name)}, ${esc(m.first_name)}</span>
-          <span class="text-xs text-muted">${esc(m.student_id)}</span></label>`).join('')}
-      </div>
-      <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
-      <button type="submit" class="btn btn-dark mt-5 w-full">Create group</button>
-    </form>`, {
-    label: 'New study group',
-    onMount(el, close) {
-      const form = $('form', el);
-      UI.bindForm(form, async (d) => {
-        const ids = $$('input[name=m]:checked', form).map((c) => Number(c.value));
-        await API.post('classmates.php', { action: 'create_group', name: d.name, member_ids: ids });
-        close();
-        UI.toast(`“${d.name}” created`, { sub: `${ids.length} members connected` });
-        load();
-      });
-    },
-  });
 }
 
 /* search */

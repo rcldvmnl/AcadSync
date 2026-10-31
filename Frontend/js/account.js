@@ -22,16 +22,33 @@ const STATUS_CHIP = {
 async function loadRequests() {
   const box = $('#requests-list');
   try {
-    const { requests } = await API.get('tasks.php', { mine: 1 });
-    box.innerHTML = requests.length ? requests.slice(0, 8).map((r) => {
+    const { requests, pending, limit } = await API.get('tasks.php', { mine: 1 });
+    const meter = `<div class="flex items-center gap-3 px-3 pb-2 pt-3">
+      <div class="flex gap-1">${Array.from({ length: limit }, (_, i) => `<span class="h-2 w-5 rounded-full ${i < pending ? 'bg-charcoal' : 'bg-line'}"></span>`).join('')}</div>
+      <span class="text-xs text-muted">${pending} of ${limit} requests waiting${pending >= limit ? ' — edit or withdraw one to send more' : ''}</span></div>`;
+    box.innerHTML = meter + (requests.length ? requests.slice(0, 10).map((r) => {
       const [label, cls] = STATUS_CHIP[r.status] || [r.status, 'bg-canvas'];
       const where = r.status === 'pending' && r.queue_position ? ` · #${r.queue_position} in queue` : '';
-      return `<a ${r.status === 'approved' ? `href="task.html?id=${r.kind === 'change' ? r.target_task_id : r.id}"` : ''} class="flex items-center gap-3 rounded-2xl p-3 ${r.status === 'approved' ? 'hover:bg-canvas' : ''}">
-        <span class="min-w-0 flex-1"><span class="block truncate text-[15px] font-medium">${esc(r.title)}${r.kind === 'change' ? ' <span class="text-xs text-muted">(edit)</span>' : ''}</span>
-          <span class="block text-xs text-muted">${esc(r.subject_code)} · sent ${esc(Fmt.ago(r.created_ts))}${where}</span></span>
-        ${UI.chip(label, cls)}
-      </a>`;
-    }).join('') : '<p class="p-3 text-sm text-muted">You haven’t requested any tasks yet. Tap + to send one to your admin.</p>';
+      const link = r.status === 'approved' ? `task.html?id=${r.kind === 'change' ? r.target_task_id : r.id}` : null;
+      return `<div class="rounded-2xl p-3 ${link ? 'hover:bg-canvas' : ''}">
+        <div class="flex items-center gap-3">
+          <${link ? `a href="${link}"` : 'span'} class="min-w-0 flex-1"><span class="block truncate text-[15px] font-medium">${esc(r.title)}${r.kind === 'change' ? ' <span class="text-xs text-muted">(edit request)</span>' : ''}</span>
+            <span class="block text-xs text-muted">${esc(r.subject_code)} · ${esc(r.category)}${r.work_mode === 'group' ? ` · group of ${UI.groupSize(r)}` : ''} · sent ${esc(Fmt.ago(r.created_ts))}${where}</span></${link ? 'a' : 'span'}>
+          ${UI.chip(label, cls)}
+        </div>
+        ${r.status === 'pending' ? `<div class="mt-2 flex gap-2">
+          <a href="task-form.html?request=${r.id}" class="chip bg-canvas px-3 py-1.5 text-xs font-semibold">${icon('edit', 12)}Edit</a>
+          <button type="button" data-withdraw="${r.id}" class="chip bg-danger-tint px-3 py-1.5 text-xs font-semibold">Withdraw</button>
+        </div>` : ''}
+      </div>`;
+    }).join('') : '<p class="p-3 text-sm text-muted">You haven’t requested any tasks yet. Tap + to send one to your admin.</p>');
+    $$('[data-withdraw]', box).forEach((b) => b.onclick = async () => {
+      try {
+        await API.post('request_task.php', { action: 'withdraw', request_id: Number(b.dataset.withdraw) });
+        UI.toast('Request withdrawn', { sub: 'It left the approval queue' });
+        loadRequests();
+      } catch (err) { UI.toast(err.message, { iconName: 'alert' }); }
+    });
   } catch (e) {
     box.innerHTML = `<p class="p-3 text-sm">${esc(e.message)}</p>`;
   }

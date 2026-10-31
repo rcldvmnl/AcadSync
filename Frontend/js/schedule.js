@@ -7,6 +7,7 @@
 let data;
 let filter = ['today', 'urgent', 'week', 'soon'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today';
 let selectedDow;
+let workFilter = 'all';   // all | individual | group
 
 (async () => {
   await Shell.init({ active: 'schedule', eyebrow: sectionEyebrow, title: 'Class Schedule' });
@@ -29,9 +30,21 @@ function render() {
   $('#content').innerHTML = `
     ${showDays ? `<section>${dayPicker()}<div id="classes" class="mt-4 space-y-3"></div>
       <a href="week.html" class="btn btn-light mt-3 w-full shadow-card">${admin ? 'Edit whole week' : 'See whole week'}</a></section>` : ''}
-    <section class="space-y-3 ${showDays ? '' : 'lg:col-span-2 lg:max-w-2xl'}">${tasksSection()}</section>`;
+    <section class="space-y-3 ${showDays ? '' : 'lg:col-span-2 lg:max-w-2xl'}">${workSwitch()}${tasksSection()}</section>`;
   if (showDays) renderClasses();
+  $$('[data-work]').forEach((b) => b.onclick = () => { workFilter = b.dataset.work; render(); });
 }
+
+/** All / Individual / Group — separates group work from individual tasks. */
+function workSwitch() {
+  const count = (m) => data.timeline.filter((t) => m === 'all' || t.work_mode === m).length;
+  return `<div class="grid grid-cols-3 rounded-full bg-white p-1 text-sm shadow-card" role="radiogroup" aria-label="Show tasks">
+    ${[['all', 'All'], ['individual', 'Individual'], ['group', 'Group']].map(([k, l]) => `
+      <button type="button" role="radio" data-work="${k}" aria-checked="${workFilter === k}" class="rounded-full py-2 ${workFilter === k ? 'bg-charcoal text-white' : 'text-muted'}">${l} <span class="text-xs opacity-70">${count(k)}</span></button>`).join('')}
+  </div>`;
+}
+
+const byWork = (items) => items.filter((t) => workFilter === 'all' || t.work_mode === workFilter);
 
 /** The whole week, Monday to Sunday, always in the same place — only the highlight moves. */
 function dayPicker() {
@@ -71,20 +84,29 @@ function tasksSection() {
   const endWeek = new Date(endToday); endWeek.setDate(endWeek.getDate() + ((7 - endWeek.getDay()) % 7));
   const list = (items, emptyTitle) => (items.length ? items.map((t) => UI.taskCard(t)).join('') : UI.empty(emptyTitle));
 
+  const timeline = byWork(data.timeline);
+
   if (filter === 'urgent') {
-    return `${heading('Most urgent first', 'Bubble Sort · time left')}${list(data.by_urgency, 'Nothing urgent')}`;
+    return `${heading('Most urgent first', 'Bubble Sort · time left')}${list(byWork(data.by_urgency), 'Nothing urgent')}`;
   }
   if (filter === 'week') {
-    const items = data.timeline.filter((t) => t.deadline_ts && t.deadline_ts * 1000 <= endWeek);
+    const items = timeline.filter((t) => t.deadline_ts && t.deadline_ts * 1000 <= endWeek);
     return `${heading('Due this week', `${items.length} task${items.length === 1 ? '' : 's'}`)}${list(items, 'Nothing due this week')}`;
   }
   if (filter === 'soon') {
-    const items = data.timeline.filter((t) => t.deadline_ts && t.deadline_ts - now <= 3 * 86400);
+    const items = timeline.filter((t) => t.deadline_ts && t.deadline_ts - now <= 3 * 86400);
     return `${heading('Due in the next 3 days', 'Sorted by due date')}${list(items, 'Nothing due soon')}`;
   }
 
-  const today = data.timeline.filter((t) => t.deadline_ts && t.deadline_ts * 1000 <= endToday);
-  const later = data.timeline.filter((t) => !today.includes(t));
+  const today = timeline.filter((t) => t.deadline_ts && t.deadline_ts * 1000 <= endToday);
+  const later = timeline.filter((t) => !today.includes(t));
+  // With "All", upcoming work is split: individual tasks first, then group work
+  const upcoming = workFilter === 'all'
+    ? `${heading('Individual tasks', `${later.filter((t) => t.work_mode !== 'group').length} upcoming`)}
+       ${list(later.filter((t) => t.work_mode !== 'group'), 'No individual tasks coming up')}
+       ${heading('Group work', `${later.filter((t) => t.work_mode === 'group').length} upcoming`)}
+       ${list(later.filter((t) => t.work_mode === 'group'), 'No group work coming up')}`
+    : `${heading(workFilter === 'group' ? 'Group work' : 'Individual tasks', 'Sorted by due date')}${list(later, 'Nothing coming up')}`;
   return `
     ${today.length ? `
       <div class="rounded-[1.75rem] border-2 border-[#F5C2BC] bg-danger-tint p-4">
@@ -94,8 +116,7 @@ function tasksSection() {
         </div>
         <div class="space-y-3">${today.map((t) => UI.taskCard(t)).join('')}</div>
       </div>` : ''}
-    ${heading('Upcoming tasks', 'Sorted by due date')}
-    ${list(later, 'No other upcoming tasks')}`;
+    ${upcoming}`;
 }
 
 function heading(title, sub) {

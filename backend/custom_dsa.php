@@ -941,6 +941,42 @@ final class Algorithms
         return $matches;
     }
 
+    /**
+     * Group-size planner for group work with a size RANGE (e.g. 3–4 per group).
+     * Class sizes rarely divide evenly (size % group != 0), so:
+     *   g = ceil(n / max)   -> the fewest groups that never exceed max
+     * then spread the students evenly: (n % g) groups get one extra member.
+     * Even spreading makes the smallest group as big as possible; if it is
+     * still below min (e.g. 5 students, 3–4 each -> [3, 2]) the caller warns.
+     * Example: 10 students, 3–4 per group -> g = 3 -> sizes [4, 3, 3].
+     */
+    public static function planGroupSizes(int $n, int $min, int $max): array
+    {
+        if ($n <= 0) {
+            return [];
+        }
+        $g = intdiv($n + $max - 1, $max);      // ceil(n / max)
+        $base = intdiv($n, $g);
+        $extra = $n % $g;
+        $sizes = [];
+        for ($i = 0; $i < $g; $i++) {
+            $sizes[] = $base + ($i < $extra ? 1 : 0);
+        }
+        return $sizes;
+    }
+
+    /** Fisher–Yates shuffle, hand-written (used before auto-grouping). */
+    public static function shuffle(array $items): array
+    {
+        for ($i = count($items) - 1; $i > 0; $i--) {
+            $j = random_int(0, $i);
+            $tmp = $items[$i];
+            $items[$i] = $items[$j];
+            $items[$j] = $tmp;
+        }
+        return $items;
+    }
+
     /** LINEAR SEARCH over the directory by (partial) name. */
     public static function linearSearchByName(array $students, string $query): array
     {

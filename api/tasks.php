@@ -23,15 +23,19 @@ if (param('mine')) {
     // newest first: walk the rows backwards
     for ($j = count($ctx['tasks']) - 1; $j >= 0; $j--) {
         $t = $ctx['tasks'][$j];
-        if ((int) $t['requested_by'] === $uid && $t['status'] !== 'removed') {
+        if ((int) $t['requested_by'] === $uid && $t['status'] !== 'removed' && $t['status'] !== 'withdrawn') {
             $mine[] = present_task($t, $ctx['subjectIndex'], $ctx['users']) + ['queue_position' => $positions[(int) $t['id']] ?? null];
         }
     }
-    respond(['requests' => $mine, 'queue_size' => $i]);
+    $waiting = 0;
+    foreach ($mine as $r) {
+        $waiting += $r['status'] === 'pending' ? 1 : 0;
+    }
+    respond(['requests' => $mine, 'queue_size' => $i, 'pending' => $waiting, 'limit' => 3]);
 }
 
 $task = $ctx['taskIndex'][(int) param('id', 0)] ?? null;
-if (!$task || $task['status'] === 'removed') {
+if (!$task || $task['status'] === 'removed' || $task['status'] === 'withdrawn') {
     fail('Task not found.', 404);
 }
 $isOwner = (int) $task['requested_by'] === $uid;

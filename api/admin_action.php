@@ -49,6 +49,10 @@ if ($action === 'approve') {
         }
         // Copy the requested changes onto the original task
         Store::update('tasks', (int) $original['id'], [
+            'subject_id' => $task['subject_id'],
+            'work_mode' => $task['work_mode'],
+            'group_min' => $task['group_min'],
+            'group_max' => $task['group_max'],
             'category' => $task['category'],
             'title' => $task['title'],
             'description' => $task['description'],

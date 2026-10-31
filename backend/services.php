@@ -78,6 +78,9 @@ function present_task(array $t, array $subjectIndex, array $users): array
         'deadline_type' => $t['deadline_type'],
         'deadline_ts' => DsaUtil::deadlineTs($t),
         'location' => $t['location'],
+        'work_mode' => $t['work_mode'] ?? 'individual',
+        'group_min' => isset($t['group_min']) ? (int) $t['group_min'] : null,
+        'group_max' => isset($t['group_max']) ? (int) $t['group_max'] : null,
         'status' => $t['status'],
         'kind' => $t['kind'],
         'target_task_id' => $t['target_task_id'] !== null ? (int) $t['target_task_id'] : null,
@@ -204,19 +207,75 @@ function user_sections(int $userId): array
 }
 
 /**
- * [DSA: GRAPH] — connections between classmates. Each study_groups row is an
- * undirected edge in the adjacency list.
+ * The section's groups, each with its member ids: [groupId => row + ['members' => [ids]]].
  */
-function build_graph(int $sectionId, array $members): DependencyGraph
+function load_groups(int $sectionId): array
+{
+    $groups = [];
+    foreach (section_rows('study_groups', $sectionId) as $g) {
+        $g['id'] = (int) $g['id'];
+        $g['members'] = [];
+        $groups[$g['id']] = $g;
+    }
+    foreach (section_rows('group_members', $sectionId) as $m) {
+        if (isset($groups[(int) $m['group_id']])) {
+            $groups[(int) $m['group_id']]['members'][] = (int) $m['user_id'];
+        }
+    }
+    return $groups;
+}
+
+/**
+ * [DSA: GRAPH] — connections between classmates. Every two members of the same
+ * group are joined by an undirected edge labelled with the group's name.
+ */
+function build_graph(int $sectionId, array $members, ?array $groups = null): DependencyGraph
 {
     $graph = new DependencyGraph();
     foreach ($members as $m) {
         $graph->addVertex((int) $m['id']);
     }
-    foreach (section_rows('study_groups', $sectionId) as $e) {
-        $graph->addEdge((int) $e['student_a_id'], (int) $e['student_b_id'], $e['project_context']);
+    foreach ($groups ?? load_groups($sectionId) as $g) {
+        $ids = $g['members'];
+        $n = count($ids);
+        for ($i = 0; $i < $n; $i++) {
+            for ($j = $i + 1; $j < $n; $j++) {
+                $graph->addEdge($ids[$i], $ids[$j], $g['name']);
+            }
+        }
     }
     return $graph;
+}
+
+/** Group row ready for JSON, with member names and its subject/task. */
+function present_group(array $g, array $users, array $subjectIndex, array $taskIndex, int $viewerId): array
+{
+    $members = [];
+    foreach ($g['members'] as $id) {
+        $u = $users[$id] ?? null;
+        if ($u) {
+            $members[] = ['id' => $id, 'name' => $u['first_name'] . ' ' . $u['last_name'], 'student_id' => $u['student_id']];
+        }
+    }
+    $task = $g['task_id'] ? ($taskIndex[(int) $g['task_id']] ?? null) : null;
+    $subject = $g['subject_id'] ? ($subjectIndex[(int) $g['subject_id']] ?? null) : null;
+    $mine = false;
+    foreach ($g['members'] as $id) {
+        $mine = $mine || $id === $viewerId;
+    }
+    return [
+        'id' => $g['id'],
+        'name' => $g['name'],
+        'purpose' => $g['purpose'],
+        'max_members' => $g['max_members'] !== null ? (int) $g['max_members'] : null,
+        'min_members' => $task && $task['group_min'] !== null ? (int) $task['group_min'] : null,
+        'created_by' => (int) $g['created_by'],
+        'created_at' => $g['created_at'],
+        'subject' => $subject ? ['id' => $subject['id'], 'code' => $subject['code'], 'title' => $subject['title'], 'color' => $subject['color_tag']] : null,
+        'task' => $task ? ['id' => (int) $task['id'], 'title' => $task['title'], 'deadline_ts' => DsaUtil::deadlineTs($task), 'status' => $task['status']] : null,
+        'members' => $members,
+        'is_member' => $mine,
+    ];
 }
 
 /** Weekly class meetings for the section, with subject info attached. */

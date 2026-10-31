@@ -12,7 +12,7 @@ declare(strict_types=1);
 const DB_PATH = __DIR__ . '/../data/acadsync.db';
 
 /** Bump when schema.sql changes; an older database file is backed up and rebuilt. */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 final class Store
 {
@@ -131,7 +131,7 @@ final class Store
     private static function table(string $name): string
     {
         static $allowed = [
-            'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups',
+            'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
             'approval_queue', 'undo_stack', 'notifications', 'password_resets',
         ];
         foreach ($allowed as $t) {
