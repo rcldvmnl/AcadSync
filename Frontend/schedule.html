@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AcadSync · Class Schedule</title>
+  <link rel="icon" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/tailwind-config.js"></script>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="min-h-screen">
+  <div class="lg:pl-24">
+    <div class="mx-auto max-w-md px-4 pb-32 pt-6 lg:max-w-6xl lg:px-8 lg:pb-10">
+      <header id="header"></header>
+      <main id="main">
+        <div data-role-only="admin" hidden class="mb-4 grid grid-cols-2 gap-3 lg:max-w-md">
+          <a href="add-subject.html" class="btn btn-yellow h-12">+ Add subject</a>
+          <a href="task-form.html" class="btn btn-dark h-12">+ Add task</a>
+        </div>
+        <div class="no-scrollbar -mx-4 mb-5 flex gap-2 overflow-x-auto px-4" role="toolbar" aria-label="Filter">
+          <button class="chip chip-filter" data-filter="today" aria-pressed="true">Today</button>
+          <button class="chip chip-filter" data-filter="urgent" aria-pressed="false">Urgent</button>
+          <button class="chip chip-filter" data-filter="week" aria-pressed="false">This week</button>
+          <button class="chip chip-filter" data-filter="soon" aria-pressed="false">Due soon</button>
+        </div>
+        <div id="content" class="space-y-3">
+          <div class="skeleton h-20"></div><div class="skeleton h-24"></div><div class="skeleton h-24"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/schedule.js"></script>
+</body>
+</html>

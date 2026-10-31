@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AcadSync · Add Subject</title>
+  <link rel="icon" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/tailwind-config.js"></script>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="min-h-screen">
+  <div class="lg:pl-24">
+    <div class="mx-auto max-w-md px-4 pb-32 pt-6 lg:max-w-5xl lg:px-8 lg:pb-10">
+      <header id="header"></header>
+      <main id="main">
+        <form id="subject-form" class="grid gap-5 lg:grid-cols-2 lg:items-start" novalidate>
+          <section class="space-y-4 rounded-[1.75rem] bg-white p-5 shadow-card">
+            <h2 class="text-xl font-bold">Subject</h2>
+            <label class="block"><span class="mb-1.5 block text-xs text-muted">Subject code</span>
+              <span class="field"><span data-icon="hash"></span><input name="code" placeholder="ITEC 207" required></span></label>
+            <label class="block"><span class="mb-1.5 block text-xs text-muted">Subject name</span>
+              <span class="field"><span data-icon="bookOpen"></span><input name="title" placeholder="Systems Analysis &amp; Design" required></span></label>
+            <label class="block"><span class="mb-1.5 block text-xs text-muted">Instructor</span>
+              <span class="field"><span data-icon="user"></span><input name="instructor" placeholder="Prof. R. Garcia"></span></label>
+            <label class="block"><span class="mb-1.5 block text-xs text-muted">Room</span>
+              <span class="field"><span data-icon="mapPin"></span><input name="room" placeholder="Comp Lab 1"></span></label>
+            <div>
+              <div class="mb-1.5 text-xs text-muted">Card colour</div>
+              <div class="flex gap-2" id="colors"></div>
+            </div>
+          </section>
+
+          <div class="space-y-5">
+            <section class="space-y-4 rounded-[1.75rem] bg-white p-5 shadow-card">
+              <h2 class="text-xl font-bold">Weekly schedule</h2>
+              <div>
+                <div class="mb-1.5 text-xs text-muted">Class days</div>
+                <div class="grid grid-cols-6 gap-2" id="days"></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <label class="block"><span class="mb-1.5 block text-xs text-muted">Starts</span>
+                  <span class="field"><span data-icon="clock"></span><input name="start" type="time" value="09:00"></span></label>
+                <label class="block"><span class="mb-1.5 block text-xs text-muted">Ends</span>
+                  <span class="field"><span data-icon="clock"></span><input name="end" type="time" value="10:30"></span></label>
+              </div>
+              <div>
+                <div class="mb-1.5 text-xs text-muted">Length</div>
+                <div class="flex flex-wrap gap-2" id="lengths"></div>
+              </div>
+            </section>
+            <p data-error class="rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+            <button type="submit" class="btn btn-dark w-full">Save subject</button>
+          </div>
+        </form>
+      </main>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/add-subject.js"></script>
+</body>
+</html>

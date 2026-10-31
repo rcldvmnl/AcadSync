@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AcadSync · Find your section</title>
+  <link rel="icon" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/tailwind-config.js"></script>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="min-h-screen">
+  <div class="mx-auto max-w-md px-4 pb-10 pt-6 lg:max-w-4xl lg:px-8 lg:pt-10">
+    <header class="mb-5 flex items-center gap-3">
+      <button type="button" id="back" class="grid h-11 w-11 place-items-center rounded-full bg-white shadow-card" aria-label="Go back"></button>
+      <div class="flex-1">
+        <div class="text-xs text-muted" id="eyebrow">Get started</div>
+        <h1 class="text-xl font-bold tracking-tight lg:text-[28px]" id="title">Find your section</h1>
+      </div>
+      <button type="button" id="logout" class="rounded-full bg-white px-4 py-2.5 text-sm font-semibold shadow-card">Log out</button>
+    </header>
+
+    <!-- Choose -->
+    <section data-view="choose">
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted">Set up your class</p>
+      <h2 class="mt-1 text-[26px] font-bold leading-tight tracking-tight">Create a section or join one</h2>
+      <p class="mt-2 text-sm text-muted">The class officer becomes the admin. Everyone else joins as a client with a 6-character code.</p>
+      <div class="mt-5 grid gap-5 lg:grid-cols-2">
+        <div class="card-pastel lavender rounded-[1.75rem] p-5">
+          <span class="sparkle">✦</span><span class="ring-deco"></span>
+          <div class="flex items-start justify-between">
+            <span class="grid h-12 w-12 place-items-center rounded-full bg-white" data-icon="plus"></span>
+            <span class="chip mt-6 bg-white">Admin · class officer</span>
+          </div>
+          <h3 class="mt-4 text-xl font-bold">Create a new section</h3>
+          <p class="mt-1 text-sm">Set up BSINFO-2A, add subjects and their schedule, then share a class code.</p>
+          <a href="#create" class="btn btn-dark mt-4 w-full">Create section</a>
+        </div>
+        <div class="card-pastel peach rounded-[1.75rem] p-5">
+          <span class="sparkle">✦</span><span class="ring-deco"></span>
+          <div class="flex items-start justify-between">
+            <span class="grid h-12 w-12 place-items-center rounded-full bg-white" data-icon="hash"></span>
+            <span class="chip mt-6 bg-white">Client · student</span>
+          </div>
+          <h3 class="mt-4 text-xl font-bold">Join with a class code</h3>
+          <p class="mt-1 text-sm">Got a code from your officer? Enter it to see your schedule.</p>
+          <a href="#join" class="btn btn-dark mt-4 w-full">Enter class code</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Join -->
+    <section data-view="join" hidden class="mx-auto max-w-md">
+      <form id="join-form" novalidate>
+        <h2 class="text-[26px] font-bold tracking-tight">Have a class code?</h2>
+        <p class="mt-1 text-sm text-muted">Enter the 6-character code from your class officer.</p>
+        <div class="mt-5 grid grid-cols-6 gap-2" id="code-boxes">
+          <input class="code-box" maxlength="1" aria-label="Character 1" autocomplete="off"><input class="code-box" maxlength="1" aria-label="Character 2" autocomplete="off"><input class="code-box" maxlength="1" aria-label="Character 3" autocomplete="off"><input class="code-box" maxlength="1" aria-label="Character 4" autocomplete="off"><input class="code-box" maxlength="1" aria-label="Character 5" autocomplete="off"><input class="code-box" maxlength="1" aria-label="Character 6" autocomplete="off">
+        </div>
+        <div id="found" class="mt-5" aria-live="polite"></div>
+        <p data-error class="mt-4 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+        <button type="submit" class="btn btn-dark mt-5 w-full" disabled>Join section</button>
+      </form>
+    </section>
+
+    <!-- Create -->
+    <section data-view="create" hidden class="mx-auto max-w-md">
+      <form id="create-form" class="rounded-[1.75rem] bg-white p-5 shadow-card" novalidate>
+        <div class="space-y-4">
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Section name</span><span class="field"><input name="name" value="BSINFO-2A" required></span></label>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Program</span>
+            <span class="field"><select name="program"><option>BS Information Technology</option><option>BS Computer Science</option><option>BS Information Systems</option></select><span data-icon="chevronDown"></span></span></label>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Semester</span>
+            <span class="field"><select name="semester"><option>2nd Semester · 2026</option><option>1st Semester · 2026</option><option>1st Semester · 2027</option></select><span data-icon="chevronDown"></span></span></label>
+        </div>
+        <p data-error class="mt-4 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+        <button type="submit" class="btn btn-dark mt-5 w-full">Create section</button>
+      </form>
+      <div id="created" hidden></div>
+    </section>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/section.js"></script>
+</body>
+</html>

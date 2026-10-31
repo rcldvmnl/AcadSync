@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AcadSync · Classmates</title>
+  <link rel="icon" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="js/tailwind-config.js"></script>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="min-h-screen">
+  <div class="lg:pl-24">
+    <div class="mx-auto max-w-md px-4 pb-32 pt-6 lg:max-w-6xl lg:px-8 lg:pb-10">
+      <header id="header"></header>
+      <main id="main" class="grid gap-5 lg:grid-cols-[22rem_1fr] lg:items-start lg:gap-6">
+        <div class="space-y-4">
+          <div id="invite" hidden></div>
+          <form id="search" class="flex items-center gap-2 rounded-full bg-white py-1.5 pl-4 pr-1.5 shadow-card" role="search">
+            <span data-icon="search" class="text-muted"></span>
+            <input name="q" class="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-subtle" placeholder="Search by name…" aria-label="Search classmates">
+            <div class="flex rounded-full bg-canvas p-1 text-xs font-semibold" role="radiogroup" aria-label="Search by">
+              <button type="button" data-mode="name" class="rounded-full px-3 py-1.5">Name</button>
+              <button type="button" data-mode="id" class="rounded-full px-3 py-1.5">ID</button>
+            </div>
+          </form>
+          <div id="groups" class="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:px-0"></div>
+          <p id="algo" class="text-xs text-muted"></p>
+        </div>
+        <div id="list" class="space-y-4">
+          <div class="skeleton h-24"></div><div class="skeleton h-24"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/classmates.js"></script>
+</body>
+</html>
