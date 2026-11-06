@@ -1,135 +1,263 @@
 // Classmates directory (students) / Members (admin).
-// Server-side: Selection Sort A–Z, Linear Search by name, Binary Search by ID,
-// and Graph traversal for study-group filters.
+// Server-side: Selection Sort A–Z, Linear Search by name, Binary Search by ID.
+// The People tab shows every classmate with their group for each group assignment,
+// so "Group 3" always reads as "Group 3 of <that assignment>".
 
-const AVATAR_TONES = ['bg-lavender', 'bg-peach', 'bg-mint', 'bg-sun', 'bg-lavender-light', 'bg-peach-tint'];
-const GROUP_TONES = ['bg-lavender-tint', 'bg-peach-tint', 'bg-mint-tint', 'bg-sun-tint'];
-const url = new URLSearchParams(location.search);
-let state = { q: url.get('q') || '', mode: 'name', group: '', data: null, admin: false };
+/* Pale identity tints for people (initials), stable per person. */
+const PERSON_TINTS = ['#E6E1FD', '#FCE3CF', '#E5F6EE', '#FDF3C7', '#E3EEF9', '#F6E3EE'];
+const personTint = (id) => PERSON_TINTS[Number(id) % PERSON_TINTS.length];
+const initialsOf = (name) => esc(Fmt.initials(name));
+const avatar = (p, cls = '') => `<span class="cm-avatar ${cls}" style="background:${personTint(p.id)}" aria-hidden="true">${initialsOf(p.name)}</span>`;
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const STUDENT_ID = /^\d{4}-\d{4}$/;
+/** "Nov 18" or "Nov 23–25" for a column header. */
+const shortDue = (t) => {
+  if (t.deadline_type === 'unset' || !t.deadline_ts) return 'Date not set';
+  if (t.deadline_type !== 'range' || !t.deadline_end) return Fmt.monthDay(t.deadline_end || t.deadline);
+  const a = Fmt.date(t.deadline); const b = Fmt.date(t.deadline_end);
+  return a.getMonth() === b.getMonth() ? `${Fmt.monthDay(a)}–${b.getDate()}` : `${Fmt.monthDay(a)} – ${Fmt.monthDay(b)}`;
+};
 
-$$('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon, 18, 'text-muted'); });
-$('#search').elements.q.value = state.q;
+/**
+ * Shared data for both tabs: everyone in the section, every group, the group assignments.
+ * Loaded once, reloaded after any change (join, leave, accept…).
+ */
+const Data = {
+  people: [],      // full list, A–Z (Selection Sort on the server)
+  groups: null,    // groups.php: { mine, others, upcoming, members }
+  section: null,
+  me: 0,
+  admin: false,
 
-(async () => {
-  const me = await Shell.init({
-    active: 'classmates',
-    eyebrow: (m) => `${m.section.name} · ${m.section.members} members`,
-    title: (m) => (m.user.role === 'admin' ? 'Members' : 'Classmates'),
-  });
-  state.admin = me.user.role === 'admin';
-  if (state.admin) renderInvite(me.section);
-  await load();
-})().catch((e) => { if (e.message !== 'no section') $('#list').innerHTML = UI.errorBox(e); });
+  async load() {
+    const [people, groups] = await Promise.all([API.get('classmates.php'), API.get('groups.php')]);
+    Data.people = people.members;
+    Data.section = people.section;
+    Data.me = people.me;
+    Data.groups = groups;
+    Data.index();
+    return Data;
+  },
+
+  /** Lookups used by both tabs. */
+  index() {
+    const all = [...Data.groups.mine, ...Data.groups.others];
+    Data.allGroups = all;
+    Data.byId = new Map(Data.people.map((p) => [p.id, p]));
+    // Group assignments still coming up (timeline order), the people table shows the nearest three
+    Data.assignments = Data.groups.upcoming;
+    // Two groups of one assignment can share a name ("Group 3"): tell them apart by a member's first name
+    const byKey = new Map();
+    all.forEach((g) => {
+      g.label = g.name;
+      const key = `${g.task ? g.task.id : 's'}|${g.name.trim().toLowerCase()}`;
+      byKey.set(key, [...(byKey.get(key) || []), g]);
+    });
+    byKey.forEach((list) => list.length > 1 && list.forEach((g) => {
+      const who = g.members.find((m) => m.id === g.created_by) || g.members[0];
+      g.label = who ? `${g.name} (${who.name.split(' ')[0]})` : g.name;
+    }));
+    // personId -> taskId -> group
+    Data.seat = new Map();
+    all.forEach((g) => g.members.forEach((m) => {
+      if (!Data.seat.has(m.id)) Data.seat.set(m.id, new Map());
+      Data.seat.get(m.id).set(g.task ? g.task.id : `s${g.id}`, g);
+    }));
+  },
+
+  groupOf(personId, taskId) { return Data.seat.get(personId)?.get(taskId) || null; },
+
+  /** Assignments this person still has no group for. */
+  missing(personId) { return Data.assignments.filter((t) => !Data.groupOf(personId, t.id)); },
+
+  /** Everyone who shares any group with me. */
+  groupmates() {
+    const ids = new Set();
+    Data.allGroups.filter((g) => g.is_member).forEach((g) => g.members.forEach((m) => m.id !== Data.me && ids.add(m.id)));
+    return ids;
+  },
+};
+
+const People = {
+  q: new URLSearchParams(location.search).get('q') || '',
+  filter: 'all',
+  result: null,      // members returned by the current search (null = everyone)
+  algorithm: '',
+
+  async search() {
+    const q = People.q;
+    if (!q) {
+      People.result = null;
+      People.algorithm = 'Selection Sort (A–Z by last name)';
+    } else if (STUDENT_ID.test(q)) {
+      // A full student ID: [Binary Search] on the server
+      const r = await API.get('classmates.php', { q, mode: 'id' });
+      People.result = r.members; People.algorithm = r.algorithm;
+    } else if (/^[\d-]+$/.test(q)) {
+      // Part of an ID: match the start of the ID in the A–Z list
+      People.result = Data.people.filter((p) => p.student_id.startsWith(q));
+      People.algorithm = 'Selection Sort (A–Z), matching the start of the student ID';
+    } else {
+      const r = await API.get('classmates.php', { q, mode: 'name' });
+      People.result = r.members; People.algorithm = r.algorithm;
+    }
+    People.render();
+  },
+
+  filters() {
+    const base = People.result || Data.people;
+    const mates = Data.groupmates();
+    const list = [
+      ['all', 'Everyone', base],
+      ...(Data.assignments.length ? [['nogroup', 'No group yet', base.filter((p) => Data.missing(p.id).length)]] : []),
+      ...(!Data.admin ? [['mine', 'My groupmates', base.filter((p) => mates.has(p.id))]] : []),
+    ];
+    if (!list.some(([k]) => k === People.filter)) People.filter = 'all';
+    return list;
+  },
+
+  render() {
+    const filters = People.filters();
+    const look = { all: ['peach', 'users'], nogroup: ['lavender', 'user'], mine: ['mint', 'groups'] };
+    $('#filters').innerHTML = filters.map(([k, label, rows]) => `
+      <button type="button" role="radio" aria-checked="${People.filter === k}" data-filter="${k}" class="cm-stat is-${look[k][0]}">
+        <span class="cm-stat-icon">${icon(look[k][1], 18)}</span>
+        <span class="cm-stat-label">${label}</span>
+        <span class="cm-stat-num cm-num">${rows.length}</span>
+      </button>`).join('');
+    $('#filters').style.setProperty('--n', filters.length);
+    $$('[data-filter]').forEach((b) => b.onclick = () => { People.filter = b.dataset.filter; People.render(); });
+
+    const rows = filters.find(([k]) => k === People.filter)[2];
+    const cols = Data.assignments.slice(0, 3);
+    const more = Data.assignments.length - cols.length;
+    $('#algo').textContent = `Using ${People.algorithm}`;
+
+    if (!rows.length) {
+      const why = People.q
+        ? (STUDENT_ID.test(People.q) ? `No classmate has student ID ${People.q}.` : `No classmate matches “${People.q}”.`)
+        : People.filter === 'nogroup' ? 'Everyone has a group for every group assignment.' : 'You’re not in a group with anyone yet.';
+      $('#list').innerHTML = `<div class="cm-empty">${esc(why)}${People.q ? ' <button type="button" data-clear-inline class="cm-link">Clear search</button>' : ''}</div>`;
+      $('[data-clear-inline]')?.addEventListener('click', clearSearch);
+      return;
+    }
+
+    const head = cols.map((t, i) => `<th scope="col"><span class="cm-th-title"><span class="cm-th-dot tone-${i}" aria-hidden="true"></span>${esc(t.title)}</span><span class="cm-th-sub">${esc(t.subject_code)} · ${esc(shortDue(t))}</span></th>`).join('');
+    $('#list').innerHTML = `
+      <table class="cm-table">
+        <caption class="sr-only">Classmates and their group for each group assignment</caption>
+        <thead><tr><th scope="col">Name</th><th scope="col" class="cm-col-id">Student ID</th>${head}</tr></thead>
+        <tbody>${rows.map((p) => People.row(p, cols)).join('')}</tbody>
+      </table>
+      ${more > 0 ? `<p class="cm-table-note">${plural(more, 'more group assignment')} after these. See them all in <button type="button" data-goto-groups class="cm-link">Groups</button>.</p>` : ''}`;
+    $$('[data-member]').forEach((tr) => {
+      tr.onclick = (e) => { if (!e.target.closest('[data-group-link]')) People.open(Number(tr.dataset.member)); };
+      tr.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === tr) { e.preventDefault(); People.open(Number(tr.dataset.member)); } };
+    });
+    $$('[data-group-link]').forEach((a) => a.onclick = (e) => { e.preventDefault(); GroupsTab.focusGroup(Number(a.dataset.groupLink)); });
+    $('[data-goto-groups]')?.addEventListener('click', () => GroupsTab.show('groups'));
+  },
+
+  row(p, cols) {
+    const me = p.id === Data.me;
+    const cells = cols.map((t, ci) => {
+      const g = Data.groupOf(p.id, t.id);
+      return `<td class="cm-col-group" data-label="${esc(t.title)}">${g
+        ? `<a href="#groups&group=${g.id}" data-group-link="${g.id}" class="cm-grouplink tone-${ci} ${g.is_member ? 'is-mine' : ''}">${esc(g.label)}</a>`
+        : '<span class="cm-tag cm-tag-warn">No group</span>'}</td>`;
+    }).join('');
+    return `
+      <tr data-member="${p.id}" tabindex="0" aria-label="${esc(p.first_name)} ${esc(p.last_name)}, ${esc(p.student_id)}. Open details" class="${me ? 'is-me' : ''}">
+        <th scope="row">
+          <span class="cm-person">${avatar(p)}
+            <span class="cm-person-text">
+              <span class="cm-name">${esc(p.last_name)}, ${esc(p.first_name)}${me ? ' <span class="cm-you">you</span>' : ''}${p.role === 'admin' ? ' <span class="cm-tag">Class officer</span>' : ''}</span>
+              <span class="cm-sub cm-id-inline">${esc(p.student_id)}</span>
+            </span>
+          </span>
+        </th>
+        <td class="cm-col-id cm-num">${esc(p.student_id)}</td>
+        ${cells}
+      </tr>`;
+  },
+
+  /** One classmate: contact, and their group for every assignment. */
+  open(id) {
+    const p = Data.byId.get(id) || (People.result || []).find((x) => x.id === id);
+    if (!p) return;
+    const study = Data.allGroups.filter((g) => !g.task && g.members.some((m) => m.id === id));
+    const line = (label, sub, g) => `
+      <div class="cm-sheet-row">
+        <div class="min-w-0 flex-1"><div class="cm-name">${esc(label)}</div><div class="cm-sub">${esc(sub)}</div></div>
+        ${g ? `<button type="button" data-sheet-group="${g.id}" class="cm-grouplink ${g.is_member ? 'is-mine' : ''}">${esc(g.label)} ·${g.members.length}/${UI.groupCap(g) ?? g.members.length}</button>`
+            : '<span class="cm-tag cm-tag-warn">No group yet</span>'}
+      </div>`;
+    UI.sheet(`
+      <div class="flex items-center gap-4">
+        ${avatar(p, 'cm-avatar-lg')}
+        <div class="min-w-0"><h2 class="truncate text-xl font-bold">${esc(p.first_name)} ${esc(p.last_name)}</h2>
+          <div class="truncate text-sm text-[#5C5C66]">${p.role === 'admin' ? 'Class officer' : 'Student'} · <span class="cm-num">${esc(p.student_id)}</span></div></div>
+      </div>
+      <a href="mailto:${esc(p.email)}" class="cm-mail">${icon('mail', 16)}<span class="truncate">${esc(p.email)}</span></a>
+      <h3 class="mt-6 text-sm font-semibold">Group assignments</h3>
+      <div class="mt-1">${Data.assignments.length
+        ? Data.assignments.map((t) => line(t.title, `${t.subject_code} · ${Fmt.due(t)}`, Data.groupOf(id, t.id))).join('')
+        : '<p class="cm-sub py-3">No group assignments right now.</p>'}</div>
+      ${study.length ? `<h3 class="mt-5 text-sm font-semibold">Study groups</h3><div class="mt-1">${study.map((g) => line(g.name, g.subject ? g.subject.code : 'Any subject', g)).join('')}</div>` : ''}
+      <button data-close class="btn btn-dark mt-6 w-full">Close</button>`, {
+      label: `${p.first_name} ${p.last_name}`,
+      onMount: (el, close) => $$('[data-sheet-group]', el).forEach((b) => b.onclick = () => { close(); GroupsTab.focusGroup(Number(b.dataset.sheetGroup)); }),
+    });
+  },
+};
+
+/* ------------------------------------------------------------------ boot */
+$$('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon, 18, 'cm-search-icon'); });
+const searchInput = $('#search').elements.q;
+searchInput.value = People.q;
+
+function syncClear() { $('[data-clear]').hidden = !searchInput.value; }
+function clearSearch() { searchInput.value = ''; People.q = ''; syncClear(); People.search(); searchInput.focus(); }
+$('[data-clear]').innerHTML = icon('x', 16);
+$('[data-clear]').onclick = clearSearch;
+syncClear();
+
+let searchTimer;
+searchInput.addEventListener('input', () => {
+  syncClear();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { People.q = searchInput.value.trim(); People.search().catch(showError); }, 250);
+});
+$('#search').addEventListener('submit', (e) => { e.preventDefault(); People.q = searchInput.value.trim(); People.search().catch(showError); });
+
+function showError(e) {
+  $('#list').innerHTML = `<div class="cm-error">${icon('alert', 16)}<span>Couldn’t load classmates. ${esc(e.message || e)}</span><button type="button" class="cm-link" onclick="location.reload()">Retry</button></div>`;
+}
 
 function renderInvite(section) {
   const el = $('#invite');
   el.hidden = false;
-  el.innerHTML = `
-    <div class="card-pastel dark flex items-center justify-between rounded-[1.75rem] p-5">
-      <span class="sparkle">✦</span><span class="ring-deco"></span>
-      <div><div class="text-[10px] font-semibold uppercase tracking-wider text-white/60">Invite with class code</div>
-        <div class="text-3xl font-extrabold tracking-wider">${esc(section.class_code)}</div></div>
-      <button id="copy-code" class="grid h-12 w-12 place-items-center rounded-full bg-sun text-charcoal" aria-label="Copy class code">${icon('copy', 20)}</button>
-    </div>`;
-  $('#copy-code').onclick = () => navigator.clipboard?.writeText(section.class_code).then(() => UI.toast('Class code copied'));
-  $('#search').elements.q.placeholder = 'Search name or student ID';
+  el.innerHTML = `<span class="cm-sub">Class code</span><span class="cm-code">${esc(section.class_code)}</span>
+    <button id="copy-code" type="button" class="cm-btn cm-btn-ghost">${icon('copy', 14)}Copy</button>`;
+  $('#copy-code').onclick = () => navigator.clipboard?.writeText(section.class_code).then(() => UI.toast('Class code copied', { sub: 'Classmates join with it on “Find your section”' }));
 }
 
-async function load() {
-  $$('[data-mode]').forEach((b) => {
-    const on = b.dataset.mode === state.mode;
-    b.className = `rounded-full px-3 py-1.5 ${on ? 'bg-charcoal text-white' : 'text-muted'}`;
-    b.setAttribute('aria-checked', String(on));
-    b.setAttribute('role', 'radio');
+/** Counts on the tabs: people in the section, groups in it. */
+function renderCounts() {
+  $('[data-count="people"]').textContent = Data.people.length;
+  $('[data-count="groups"]').textContent = Data.allGroups.length;
+}
+
+(async () => {
+  const me = await Shell.init({
+    active: 'classmates',
+    eyebrow: (m) => [m.section.name, m.section.semester].filter(Boolean).join(' · '),
+    title: (m) => (m.user.role === 'admin' ? 'Members' : 'Classmates'),
   });
-  try {
-    state.data = await API.get('classmates.php', { q: state.q, mode: state.mode, group: state.group });
-  } catch (e) {
-    $('#list').innerHTML = UI.errorBox(e);
-    return;
-  }
-  renderGroups();
-  renderList();
-  $('#algo').textContent = `Using ${state.data.algorithm}${state.group ? ' + Graph (study group)' : ''}`;
-}
-
-function groupTone(name) {
-  const i = state.data.groups.indexOf(name);
-  return GROUP_TONES[(i < 0 ? 0 : i) % GROUP_TONES.length];
-}
-
-function renderGroups() {
-  const chips = [['', 'All'], ...state.data.groups.map((g) => [g, g])];
-  $('#groups').innerHTML = `
-    ${chips.map(([v, l]) => `<button data-group="${esc(v)}" aria-pressed="${state.group === v}" class="chip shrink-0 px-3.5 py-2 text-sm ${state.group === v ? 'bg-charcoal text-white' : v ? groupTone(v) : 'bg-white'}">${esc(l)}</button>`).join('')}`;
-  $$('[data-group]').forEach((b) => b.onclick = () => { state.group = b.dataset.group; load(); });
-}
-
-function renderList() {
-  const members = state.data.members;
-  if (!members.length) {
-    $('#list').innerHTML = UI.empty(state.mode === 'id' ? 'No student with that ID' : 'No one found', state.mode === 'id' ? 'Binary Search returned nothing — check the ID (e.g. 2023-1045).' : 'Try another name.', 'search');
-    return;
-  }
-  // Already sorted A–Z by the server; just split into letter sections.
-  const sections = [];
-  members.forEach((m, i) => {
-    const letter = (m.last_name[0] || '#').toUpperCase();
-    if (!sections.length || sections[sections.length - 1].letter !== letter) sections.push({ letter, rows: [] });
-    sections[sections.length - 1].rows.push([m, i]);
-  });
-  $('#list').innerHTML = sections.map((s) => `
-    <section>
-      <div class="mb-2 px-1 text-xs font-semibold text-muted">${esc(s.letter)}</div>
-      <div class="divide-y divide-line rounded-[1.75rem] bg-white px-4 shadow-card">
-        ${s.rows.map(([m, i]) => `
-          <button data-member="${m.id}" class="flex w-full items-center gap-3 py-4 text-left">
-            ${UI.avatar(m.name, AVATAR_TONES[m.id % AVATAR_TONES.length], 'h-12 w-12 text-sm')}
-            <span class="min-w-0 flex-1">
-              <span class="block font-semibold">${esc(m.last_name)}, ${esc(m.first_name)}${m.id === state.data.me ? ' <span class="text-xs font-medium text-muted">(you)</span>' : ''}</span>
-              <span class="block text-xs text-muted">${esc(m.student_id)}</span>
-              <span class="mt-1.5 flex flex-wrap gap-1.5">${m.role === 'admin' ? UI.chip('Admin', 'bg-charcoal text-white') : ''}${m.groups.map((g) => UI.chip(g, groupTone(g))).join('')}</span>
-            </span>
-            ${icon('chevronRight', 18, 'text-muted')}
-          </button>`).join('')}
-      </div>
-    </section>`).join('');
-  $$('[data-member]').forEach((b) => b.onclick = () => openMember(Number(b.dataset.member)));
-}
-
-function openMember(id) {
-  const m = state.data.members.find((x) => x.id === id);
-  // Teammates: everyone sharing a group (edges in the study-group graph).
-  const teams = m.groups.map((g) => ({ g, people: state.data.members.filter((x) => x.id !== m.id && x.groups.includes(g)) }));
-  UI.sheet(`
-    <div class="flex items-center gap-4">
-      ${UI.avatar(m.name, AVATAR_TONES[m.id % AVATAR_TONES.length], 'h-16 w-16 text-lg')}
-      <div class="min-w-0"><h2 class="truncate text-xl font-bold">${esc(m.first_name)} ${esc(m.last_name)}</h2>
-        <div class="truncate text-sm text-muted">${esc(m.email)}</div></div>
-    </div>
-    <div class="mt-4 grid grid-cols-2 gap-3">
-      <div class="rounded-2xl bg-canvas p-3"><div class="text-xs text-muted">Student ID</div><div class="font-semibold">${esc(m.student_id)}</div></div>
-      <div class="rounded-2xl bg-canvas p-3"><div class="text-xs text-muted">Role</div><div class="font-semibold">${m.role === 'admin' ? 'Admin · class officer' : 'Student'}</div></div>
-    </div>
-    <h3 class="mt-5 font-semibold">Study groups</h3>
-    ${teams.length ? teams.map(({ g, people }) => `
-      <div class="mt-2 rounded-2xl ${groupTone(g)} p-3">
-        <div class="text-sm font-semibold">${esc(g)}</div>
-        <div class="mt-1 text-xs text-muted">With ${people.length ? people.map((p) => esc(`${p.first_name} ${p.last_name}`)).join(', ') : 'no one else in this list'}</div>
-      </div>`).join('') : '<p class="mt-1 text-sm text-muted">Not in a study group yet.</p>'}
-    <button data-close class="btn btn-dark mt-6 w-full">Close</button>`, { label: `${m.first_name} ${m.last_name}` });
-}
-
-/* search */
-let timer;
-$('#search').elements.q.addEventListener('input', (e) => {
-  clearTimeout(timer);
-  timer = setTimeout(() => { state.q = e.target.value.trim(); load(); }, 250);
-});
-$('#search').addEventListener('submit', (e) => { e.preventDefault(); state.q = e.target.elements.q.value.trim(); load(); });
-$$('[data-mode]').forEach((b) => b.onclick = () => {
-  state.mode = b.dataset.mode;
-  $('#search').elements.q.placeholder = state.mode === 'id' ? 'Student ID, e.g. 2023-1045' : 'Search by name…';
-  $('#search').elements.q.inputMode = state.mode === 'id' ? 'numeric' : 'text';
-  load();
-});
+  Data.admin = me.user.role === 'admin';
+  if (Data.admin) renderInvite(me.section);
+  await Data.load();
+  renderCounts();
+  await People.search();
+  GroupsTab.boot();
+})().catch((e) => { if (e.message !== 'no section') showError(e); });

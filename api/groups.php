@@ -83,26 +83,39 @@ function task_rules(array $task, array $groups, int $memberCount): array
     $formed = 0;
     $grouped = 0;
     $open = 0;
+    $over = 0;                                   // groups already holding max + 1
     foreach ($groups as $g) {
         if ((int) $g['task_id'] === (int) $task['id']) {
             $formed++;
             $grouped += count($g['members']);
             $open += max(0, $max - count($g['members']));
+            $over += count($g['members']) > $max ? 1 : 0;
         }
     }
     $left = max(0, $memberCount - $grouped);
     if ($count !== null) {
+        // STRICT: exactly $count groups. The seats are $count × $max; whoever doesn't fit is the
+        // excess, and that many groups (at most one extra each) may take ONE extra member —
+        // e.g. 10 students, 3 groups of 3 -> 9 seats, 1 excess -> exactly one group may have 4.
         $groupsLeft = max(0, $count - $formed);
-        $overflow = $left > $open + $groupsLeft * $max;
+        $excess = max(0, $memberCount - $count * $max);
+        $extraSlots = $left > 0 ? max(0, min($excess, $count) - $over) : 0;
+        // Students that still won't fit even with one extra in every group (the prof's numbers are too small)
+        $unplaceable = max(0, $excess - $count);
     } else {
         $groupsLeft = null;
-        $overflow = $left < $min && $left > $open;   // not enough people for one more group
+        // No fixed count: leftovers too few for another group may join a full group as its +1
+        $extraSlots = ($left > 0 && $left < $min && $left > $open) ? $left - $open : 0;
+        $unplaceable = 0;
     }
     return [
         'min' => $min, 'max' => $max, 'count' => $count, 'formed' => $formed,
         'groups_left' => $groupsLeft, 'ungrouped' => $left, 'open_spots' => $open,
         'can_create' => $count === null || $formed < $count,
-        'overflow' => $left > 0 && $overflow,
+        'overflow' => $extraSlots > 0,
+        'extra_slots' => $extraSlots,
+        'over' => $over,
+        'unplaceable' => $unplaceable,
     ];
 }
 
@@ -116,13 +129,22 @@ $rulesFor = function (int $taskId) use ($ctx, $groups) {
     return $cache[$taskId] ??= task_rules($task, $groups, count($ctx['members']));
 };
 
-/** How many members a group can hold right now (max, or max + 1 for leftovers). */
+/**
+ * How many members a group can hold right now. Normally its max. A group that is already FULL
+ * may take one extra member only while the task still has an extra slot for the excess; a group
+ * already at max + 1 keeps that size.
+ */
 $capacity = function (array $g) use ($rulesFor): ?int {
     if ($g['max_members'] === null) {
         return null;
     }
+    $max = (int) $g['max_members'];
+    $n = count($g['members']);
     $rules = $g['task_id'] ? $rulesFor((int) $g['task_id']) : null;
-    return (int) $g['max_members'] + ($rules && $rules['overflow'] ? 1 : 0);
+    if ($n > $max) {
+        return $n;
+    }
+    return $max + ($rules && $n >= $max && $rules['extra_slots'] > 0 ? 1 : 0);
 };
 $isFull = fn (array $g) => $capacity($g) !== null && count($g['members']) >= $capacity($g);
 
@@ -295,6 +317,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'requests_waiting' => $waiting,
                 'can_create' => $rulesFor((int) $t['id'])['can_create'],
                 'overflow' => $rulesFor((int) $t['id'])['overflow'],
+                'extra_slots' => $rulesFor((int) $t['id'])['extra_slots'],
+                'groups_left' => $rulesFor((int) $t['id'])['groups_left'],
+                'unplaceable' => $rulesFor((int) $t['id'])['unplaceable'],
             ];
         }
     }

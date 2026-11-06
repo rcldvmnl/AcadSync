@@ -11,40 +11,44 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="js/tailwind-config.js"></script>
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/classmates.css">
 </head>
 <body class="min-h-screen">
   <div class="lg:pl-24">
-    <div class="mx-auto max-w-md px-4 pb-32 pt-6 lg:max-w-6xl lg:px-8 lg:pb-10">
+    <div class="mx-auto max-w-md px-4 pb-32 pt-6 md:max-w-3xl lg:max-w-6xl lg:px-8 lg:pb-10">
       <header id="header"></header>
-      <div class="mb-5 grid grid-cols-2 rounded-full bg-white p-1.5 shadow-card lg:max-w-sm" role="tablist" aria-label="Classmates view">
-        <button type="button" role="tab" data-tab="people" class="rounded-full py-2.5 text-sm font-semibold">People</button>
-        <button type="button" role="tab" data-tab="groups" class="rounded-full py-2.5 text-sm font-semibold">Groups</button>
+
+      <!-- People | Groups switch, and (admin) the class code on the same line -->
+      <div class="cm-tabbar">
+        <div class="cm-tabs" role="tablist" aria-label="Classmates view">
+          <button type="button" role="tab" id="tab-people" data-tab="people" aria-controls="main">People <span class="cm-count" data-count="people"></span></button>
+          <button type="button" role="tab" id="tab-groups" data-tab="groups" aria-controls="groups-panel">Groups <span class="cm-count" data-count="groups"></span></button>
+        </div>
+        <div id="invite" class="cm-invite" hidden></div>
       </div>
-      <section id="groups-panel" hidden></section>
-      <main id="main" class="grid gap-5 lg:grid-cols-[22rem_1fr] lg:items-start lg:gap-6">
-        <div class="space-y-4">
-          <div id="invite" hidden></div>
-          <form id="search" class="flex items-center gap-2 rounded-full bg-white py-1.5 pl-4 pr-1.5 shadow-card" role="search">
-            <span data-icon="search" class="text-muted"></span>
-            <input name="q" class="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-subtle" placeholder="Search by name…" aria-label="Search classmates">
-            <div class="flex rounded-full bg-canvas p-1 text-xs font-semibold" role="radiogroup" aria-label="Search by">
-              <button type="button" data-mode="name" class="rounded-full px-3 py-1.5">Name</button>
-              <button type="button" data-mode="id" class="rounded-full px-3 py-1.5">ID</button>
-            </div>
-          </form>
-          <div id="groups" class="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:px-0"></div>
-          <p id="algo" class="text-xs text-muted"></p>
+
+      <!-- Groups: one block per group assignment, each group drawn as its seats -->
+      <section id="groups-panel" role="tabpanel" aria-labelledby="tab-groups" hidden></section>
+
+      <!-- People: search + filter, then one row per classmate with their group for each assignment -->
+      <main id="main" role="tabpanel" aria-labelledby="tab-people">
+        <div id="filters" class="cm-stats" role="radiogroup" aria-label="Show"></div>
+        <form id="search" class="cm-search" role="search">
+          <span data-icon="search"></span>
+          <input name="q" autocomplete="off" placeholder="Search name or student ID" aria-label="Search classmates by name or student ID">
+          <button type="button" data-clear class="cm-clear" aria-label="Clear search" hidden></button>
+        </form>
+        <div id="list" class="cm-panel">
+          <div class="cm-loading"><span></span><span></span><span></span><span></span></div>
         </div>
-        <div id="list" class="space-y-4">
-          <div class="skeleton h-24"></div><div class="skeleton h-24"></div>
-        </div>
+        <p id="algo" class="cm-algo"></p>
       </main>
     </div>
   </div>
   <script src="js/api.js"></script>
   <script src="js/ui.js"></script>
-  <script src="js/classmates.js"></script>
   <script src="js/group-work.js"></script>
+  <script src="js/classmates.js"></script>
   <script src="js/groups.js"></script>
 </body>
 </html>
