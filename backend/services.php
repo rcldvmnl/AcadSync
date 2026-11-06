@@ -239,6 +239,76 @@ function load_groups(int $sectionId): array
 }
 
 /**
+ * [DSA: STACK] — each student's own Undo history, kept in their login session per section.
+ * The session stores the stack's items bottom-to-top; every call rebuilds the UndoStack,
+ * pushes or pops, and saves it back. Only the last UNDO_LIMIT actions are kept.
+ */
+const UNDO_LIMIT = 10;
+
+function undo_stack(int $sectionId): UndoStack
+{
+    $stack = new UndoStack();
+    foreach ($_SESSION['undo'][$sectionId] ?? [] as $entry) {   // bottom first, so the newest ends on top
+        $stack->push($entry);
+    }
+    return $stack;
+}
+
+function undo_save(int $sectionId, UndoStack $stack): void
+{
+    $topFirst = $stack->toArray();
+    $bottomFirst = [];
+    for ($i = count($topFirst) - 1; $i >= 0; $i--) {
+        $bottomFirst[] = $topFirst[$i];
+    }
+    $_SESSION['undo'][$sectionId] = $bottomFirst;
+}
+
+/** PUSH an action's reverse, e.g. ['type' => 'rejoin', 'label' => 'Leave “Group 2”', ...]. */
+function undo_push(int $sectionId, array $entry): void
+{
+    $stack = undo_stack($sectionId);
+    $stack->push($entry + ['at' => time()]);
+    if ($stack->size() > UNDO_LIMIT) {        // drop the oldest (bottom) item
+        $keep = $stack->toArray();
+        $stack = new UndoStack();
+        for ($i = UNDO_LIMIT - 1; $i >= 0; $i--) {
+            $stack->push($keep[$i]);
+        }
+    }
+    undo_save($sectionId, $stack);
+}
+
+/** POP the most recent action (LIFO), or null when there is nothing to undo. */
+function undo_pop(int $sectionId): ?array
+{
+    $stack = undo_stack($sectionId);
+    $top = $stack->pop();
+    undo_save($sectionId, $stack);
+    return $top;
+}
+
+/**
+ * Deletes a group with its member rows and its join requests (answered ones too).
+ * Foreign keys are on and group_requests/group_members point at study_groups without a
+ * cascade, so the group row can only go once nothing refers to it any more.
+ */
+function delete_group(int $sectionId, int $groupId): void
+{
+    foreach (section_rows('group_requests', $sectionId) as $r) {
+        if ((int) $r['group_id'] === $groupId) {
+            Store::delete('group_requests', (int) $r['id']);
+        }
+    }
+    foreach (section_rows('group_members', $sectionId) as $m) {
+        if ((int) $m['group_id'] === $groupId) {
+            Store::delete('group_members', (int) $m['id']);
+        }
+    }
+    Store::delete('study_groups', $groupId);
+}
+
+/**
  * [DSA: GRAPH] — connections between classmates. Every two members of the same
  * group are joined by an undirected edge labelled with the group's name.
  */
@@ -253,7 +323,7 @@ function build_graph(int $sectionId, array $members, ?array $groups = null): Dep
         $n = count($ids);
         for ($i = 0; $i < $n; $i++) {
             for ($j = $i + 1; $j < $n; $j++) {
-                $graph->addEdge($ids[$i], $ids[$j], $g['name']);
+                $graph->addEdge($ids[$i], $ids[$j], $g['name'], (int) $g['id']);
             }
         }
     }

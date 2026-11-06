@@ -83,6 +83,7 @@ function renderRows() {
         <div class="mt-2 flex flex-wrap gap-1.5">
           ${LENGTHS.map(([m, l]) => `<button type="button" data-len="${m}" class="rounded-full px-3 py-1.5 text-xs font-medium ${m === len ? 'bg-charcoal text-white' : 'bg-white'}">${l}</button>`).join('')}
         </div>
+        <div data-clash="${d}" aria-live="polite"></div>
       </div>`;
   }).join('') : '<p class="rounded-2xl bg-canvas p-4 text-sm text-muted">No class days yet — tap a day above. You can also save now and set times later.</p>';
 
@@ -98,12 +99,68 @@ function renderRows() {
     $('[data-end]', row).onchange = (e) => { slot.end = e.target.value; renderRows(); };
     $$('[data-len]', row).forEach((b) => b.onclick = () => { slot.end = toHHMM(toMin(slot.start) + Number(b.dataset.len)); renderRows(); });
   });
+  checkClashes();
+}
+
+/* ---------------------------------------------------------------- clash check (server: 2D array WeekGrid) */
+let clashes = [];
+let clashTimer;
+const slotList = () => [...schedule.entries()].map(([day, s]) => ({ day, start: s.start, end: s.end }));
+
+/** Asks the server which other subjects these times overlap, then marks each clashing day. */
+function checkClashes() {
+  clearTimeout(clashTimer);
+  clashTimer = setTimeout(async () => {
+    const slots = slotList().filter((s) => toMin(s.end) > toMin(s.start));
+    try {
+      const r = await API.post('subjects.php', { action: 'check_clash', id: editId ? Number(editId) : undefined, slots });
+      clashes = r.clashes;
+    } catch { clashes = []; }   // the live check is a convenience; saving checks again
+    showClashes();
+  }, 250);
+}
+
+const span = (a, b) => (a && b ? `${Fmt.time(a)}–${Fmt.time(b)}` : '');
+function showClashes() {
+  $$('[data-clash]').forEach((el) => {
+    const mine = clashes.filter((c) => c.day === Number(el.dataset.clash));
+    el.innerHTML = mine.length ? `
+      <div class="mt-3 flex gap-2.5 rounded-xl bg-peach-tint px-3 py-2.5 text-sm">
+        ${icon('alert', 16, 'mt-0.5 shrink-0 text-peach-dark')}
+        <div class="min-w-0">${mine.map((c) => `<div>Overlaps <b>${esc(c.code)}</b> ${esc(c.title)}${c.their_start ? `, ${esc(span(c.their_start, c.their_end))}` : ''}</div>`).join('')}</div>
+      </div>` : '';
+  });
+  if (!clashes.length) $('#clash-confirm').hidden = true;
+}
+
+async function save(d, allowClash = false) {
+  const res = await API.post('subjects.php', {
+    action: editId ? 'update' : 'add', id: editId ? Number(editId) : undefined, ...d, color, slots: slotList(), allow_clash: allowClash || undefined,
+  });
+  location.href = `subject.html?id=${res.id}`;
 }
 
 UI.bindForm(form, async (d) => {
-  const slots = [...schedule.entries()].map(([day, s]) => ({ day, start: s.start, end: s.end }));
-  const bad = slots.find((s) => toMin(s.end) <= toMin(s.start));
+  const bad = slotList().find((s) => toMin(s.end) <= toMin(s.start));
   if (bad) throw new Error(`On ${DAYS_LONG[bad.day]}, the end time must be after the start time.`);
-  const res = await API.post('subjects.php', { action: editId ? 'update' : 'add', id: editId ? Number(editId) : undefined, ...d, color, slots });
-  location.href = `subject.html?id=${res.id}`;
+  try {
+    await save(d);
+  } catch (e) {
+    if (e.status !== 409 || !e.data?.clashes) throw e;
+    // The server found overlaps: show them and let the admin decide
+    clashes = e.data.clashes;
+    showClashes();
+    const box = $('#clash-confirm');
+    box.hidden = false;
+    box.innerHTML = `
+      <div class="font-semibold">${clashes.length === 1 ? 'One class time overlaps' : `${clashes.length} class times overlap`} another subject</div>
+      <ul class="mt-1.5 space-y-1 text-sm">${clashes.map((c) => `<li>${esc(c.day_name)} ${esc(span(c.start, c.end))} overlaps <b>${esc(c.code)}</b>${c.their_start ? ` (${esc(span(c.their_start, c.their_end))})` : ''}</li>`).join('')}</ul>
+      <p class="mt-2 text-xs text-muted">Change the times above, or save anyway if the classes really share a slot (e.g. a lab split between two groups).</p>
+      <button type="button" data-save-anyway class="btn btn-light mt-3 h-11 w-full">Save anyway</button>`;
+    $('[data-save-anyway]', box).onclick = async (ev) => {
+      ev.target.disabled = true;
+      try { await save(Object.fromEntries(new FormData(form)), true); } catch (err) { ev.target.disabled = false; UI.toast(err.message, { iconName: 'alert' }); }
+    };
+    box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
 });

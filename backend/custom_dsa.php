@@ -12,28 +12,31 @@
  *
  *  DATA STRUCTURES (7)       RUBRIC                                   IN ACADSYNC
  *  ----------------------------------------------------------------------------
- *  1. Array       Storing and accessing collections of records.     SubjectArray: a section's subjects
- *  2. Linked List Managing sequences of records through             TaskLinkedList: the task timeline
- *                 insertion and deletion.                           (insert approved, delete expired/removed)
+ *  1. Array       Storing and accessing collections of records.     SubjectArray: a section's subjects;
+ *                                                                   WeekGrid (2D): class-time clash checker
+ *  2. Linked List Managing sequences of records through             TaskLinkedList (doubly linked): the task
+ *                 insertion and deletion.                           timeline, previous / next task
  *  3. HashSet     Preventing duplicate entries or maintaining       HashSet / StudentHashSet: unique e-mails,
  *                 unique records.                                   student IDs, section names, class codes,
  *                                                                   subject codes
- *  4. Stack       Implementing undo operations, history, or         UndoStack: admin "Undo reject"
- *                 backtracking.
+ *  4. Stack       Implementing undo operations, history, or         UndoStack: admin "Undo reject" and the
+ *                 backtracking.                                     students' Undo (leave, cancel, mark done)
  *  5. Queue       Managing waiting lists, service requests, or      ApprovalQueue: student task requests
  *                 tasks in order.                                   reviewed first-come, first-served
  *  6. Tree        Organizing hierarchical data or implementing      SubjectTree: Section -> Subjects -> Tasks,
- *                 tree-based searching.                             searched depth-first by the search bar
+ *                 tree-based searching.                             searched depth-first; ChecklistTree:
+ *                                                                   sub-items, progress rolled up post-order
  *  7. Graph       Representing connections, routes,                 DependencyGraph: study-group links
- *                 relationships, or networks.                       between classmates (adjacency list + BFS)
+ *                 relationships, or networks.                       (adjacency list + BFS, shortest path)
  *
- *  ALGORITHMS (5)
+ *  ALGORITHMS (6)
  *  ----------------------------------------------------------------------------
  *  1. Insertion Sort — TaskLinkedList::insertChronologically()
  *  2. Bubble Sort    — Algorithms::bubbleSortByUrgency()
  *  3. Selection Sort — Algorithms::selectionSortByLastName() / ByStudentId()
  *  4. Linear Search  — Algorithms::linearSearchTasks() / linearSearchByName()
- *  5. Binary Search  — Algorithms::binarySearchByStudentId()
+ *  5. Binary Search  — Algorithms::binarySearchByStudentId() / countDueBy() (deadlines)
+ *  6. Merge Sort     — Algorithms::mergeSortBy() (notification history)
  * ============================================================================
  */
 
@@ -234,16 +237,120 @@ class SubjectArray extends FixedArray
     }
 }
 
+/**
+ * 2D ARRAY — the week as a grid: 6 rows (Monday–Saturday) × 288 columns (one per
+ * 5 minutes of the day). Each cell holds the id of the subject meeting then, or null.
+ * Checking a new meeting for clashes is just reading the cells it would cover:
+ * O(length of the meeting), with no searching through other subjects' times.
+ */
+class WeekGrid
+{
+    public const DAYS = 6;
+    public const STEP = 5;                         // minutes per cell
+    public const CELLS = 288;                      // 24 h × 60 / 5
+
+    /** @var array<int, array<int, ?int>> [day 0–5][cell 0–287] => subject id */
+    private array $cells = [];
+    private int $filled = 0;
+
+    public function __construct()
+    {
+        for ($d = 0; $d < self::DAYS; $d++) {
+            $row = [];
+            for ($c = 0; $c < self::CELLS; $c++) {
+                $row[$c] = null;
+            }
+            $this->cells[$d] = $row;
+        }
+    }
+
+    /** "13:00"–"14:30" -> first and last cell index it covers ([156, 173]). */
+    public static function cellRange(string $start, string $end): array
+    {
+        $s = (int) substr($start, 0, 2) * 60 + (int) substr($start, 3, 2);
+        $e = (int) substr($end, 0, 2) * 60 + (int) substr($end, 3, 2);
+        return [intdiv($s, self::STEP), intdiv($e + self::STEP - 1, self::STEP) - 1];
+    }
+
+    /** Distinct subject ids already sitting in any cell of this meeting (day 1 = Monday). */
+    public function occupants(int $day, string $start, string $end): array
+    {
+        [$from, $to] = self::cellRange($start, $end);
+        $found = [];
+        $row = $this->cells[$day - 1];
+        for ($c = $from; $c <= $to; $c++) {
+            $id = $row[$c];
+            if ($id !== null) {
+                $seen = false;
+                $n = count($found);
+                for ($i = 0; $i < $n; $i++) {
+                    $seen = $seen || $found[$i] === $id;
+                }
+                if (!$seen) {
+                    $found[] = $id;
+                }
+            }
+        }
+        return $found;
+    }
+
+    /** Writes a meeting into its cells. */
+    public function place(int $day, string $start, string $end, int $subjectId): void
+    {
+        [$from, $to] = self::cellRange($start, $end);
+        for ($c = $from; $c <= $to; $c++) {
+            if ($this->cells[$day - 1][$c] === null) {
+                $this->filled++;
+            }
+            $this->cells[$day - 1][$c] = $subjectId;
+        }
+    }
+
+    public function get(int $day, int $cell): ?int
+    {
+        return $this->cells[$day - 1][$cell] ?? null;
+    }
+
+    public function filledCells(): int
+    {
+        return $this->filled;
+    }
+
+    /** One day's row compressed into runs [{from, to, subject}] (cell indexes), for the "How it works" view. */
+    public function runs(int $day): array
+    {
+        $runs = [];
+        $row = $this->cells[$day - 1];
+        $c = 0;
+        while ($c < self::CELLS) {
+            if ($row[$c] === null) {
+                $c++;
+                continue;
+            }
+            $id = $row[$c];
+            $from = $c;
+            while ($c < self::CELLS && $row[$c] === $id) {
+                $c++;
+            }
+            $runs[] = ['from' => $from, 'to' => $c - 1, 'subject' => $id];
+        }
+        return $runs;
+    }
+}
+
 /* ============================================================================
  * 2. LINKED LIST — "Managing sequences of records through insertion and deletion."
- *    A singly linked list of TaskNodes = the section's active task timeline.
+ *    A DOUBLY linked list of TaskNodes = the section's active task timeline.
  *    INSERTION: approved tasks are spliced in chronologically (Insertion Sort).
  *    DELETION:  expired tasks are dropped from the head (head = head->next) and
  *               an admin-removed task is unlinked from the middle (deleteById).
+ *    Each node also points back (prev), so Task Details can step to the
+ *    previous and next task by deadline in O(1) once the node is found.
  * ========================================================================= */
 class TaskNode
 {
     public ?TaskNode $next = null;
+    public ?TaskNode $prev = null;
     public ?int $ts;
 
     public function __construct(public array $task)
@@ -269,6 +376,9 @@ class TaskLinkedList
 
         if ($this->head === null || $this->comesBefore($node, $this->head)) {
             $node->next = $this->head;
+            if ($this->head !== null) {
+                $this->head->prev = $node;
+            }
             $this->head = $node;
             return;
         }
@@ -278,7 +388,28 @@ class TaskLinkedList
             $current = $current->next;
         }
         $node->next = $current->next;
+        $node->prev = $current;
+        if ($current->next !== null) {
+            $current->next->prev = $node;
+        }
         $current->next = $node;
+    }
+
+    /**
+     * The tasks just before and after one task, by deadline, read through the node's
+     * prev / next pointers. Returns ['prev' => ?task, 'next' => ?task, 'position' => 1-based]
+     * or null when the task isn't in the timeline (expired, removed, not approved).
+     */
+    public function neighbors(int $taskId): ?array
+    {
+        $i = 0;
+        for ($n = $this->head; $n !== null; $n = $n->next) {
+            $i++;
+            if ((int) $n->task['id'] === $taskId) {
+                return ['prev' => $n->prev?->task, 'next' => $n->next?->task, 'position' => $i];
+            }
+        }
+        return null;
     }
 
     private function comesBefore(TaskNode $a, TaskNode $b): bool
@@ -303,6 +434,9 @@ class TaskLinkedList
         while ($this->head !== null && $this->head->ts !== null && $this->head->ts < $now) {
             $dropped[] = $this->head->task;
             $this->head = $this->head->next;   // head = head.next
+            if ($this->head !== null) {
+                $this->head->prev = null;
+            }
             $this->length--;
         }
         return $dropped;
@@ -320,6 +454,9 @@ class TaskLinkedList
         if ((int) $this->head->task['id'] === $taskId) {
             $removed = $this->head->task;
             $this->head = $this->head->next;
+            if ($this->head !== null) {
+                $this->head->prev = null;
+            }
             $this->length--;
             return $removed;
         }
@@ -332,6 +469,9 @@ class TaskLinkedList
         }
         $removed = $prev->next->task;
         $prev->next = $prev->next->next;   // unlink
+        if ($prev->next !== null) {
+            $prev->next->prev = $prev;      // and re-point the back link
+        }
         $this->length--;
         return $removed;
     }
@@ -687,6 +827,136 @@ class SubjectTree
     }
 }
 
+/**
+ * A task's checklist as a TREE: the task is the root, items are children, and an
+ * item can have sub-items ("Chapter 1" -> "Introduction", "RRL"). Progress is
+ * rolled up with a POST-ORDER traversal: every child is counted before its parent,
+ * so a parent's total/done is the sum of the leaves under it.
+ */
+class ChecklistTree
+{
+    public TreeNode $root;
+
+    public function __construct(string $label)
+    {
+        $this->root = new TreeNode($label, ['type' => 'root', 'id' => 0]);
+    }
+
+    /** Builds the tree from flat rows that point at their parent (parent_id null = top level). */
+    public static function fromRows(string $label, array $rows): self
+    {
+        $tree = new self($label);
+        $nodes = [];
+        foreach ($rows as $r) {
+            $nodes[(int) $r['id']] = new TreeNode((string) $r['title'], [
+                'type' => 'item', 'id' => (int) $r['id'], 'done' => (bool) (int) $r['done'],
+                'assignee_id' => $r['assignee_id'] !== null ? (int) $r['assignee_id'] : null,
+                'parent_id' => $r['parent_id'] !== null ? (int) $r['parent_id'] : null,
+            ]);
+        }
+        // Second pass, so a child is attached even if it was stored before its parent
+        foreach ($rows as $r) {
+            $node = $nodes[(int) $r['id']];
+            $parent = $r['parent_id'] !== null ? ($nodes[(int) $r['parent_id']] ?? null) : null;
+            ($parent ?? $tree->root)->addChild($node);
+        }
+        return $tree;
+    }
+
+    /**
+     * POST-ORDER roll-up: children first, then the node itself. A leaf counts as 1;
+     * a parent's total and done are the sums over its children. Returns [done, total].
+     */
+    public function rollup(?TreeNode $node = null): array
+    {
+        $node ??= $this->root;
+        $n = count($node->children);
+        if ($n === 0) {
+            $isItem = $node !== $this->root;
+            $done = $isItem && $node->data['done'] ? 1 : 0;
+            $node->data['total'] = $isItem ? 1 : 0;
+            $node->data['done_count'] = $done;
+            return [$done, $node->data['total']];
+        }
+        $done = 0;
+        $total = 0;
+        for ($i = 0; $i < $n; $i++) {
+            [$d, $t] = $this->rollup($node->children[$i]);   // visit the children first…
+            $done += $d;
+            $total += $t;
+        }
+        $node->data['done_count'] = $done;                     // …then the node itself
+        $node->data['total'] = $total;
+        if ($node !== $this->root) {
+            $node->data['done'] = $done === $total;
+        }
+        return [$done, $total];
+    }
+
+    /** The node with this id (depth-first), or null. */
+    public function find(int $id, ?TreeNode $node = null): ?TreeNode
+    {
+        $node ??= $this->root;
+        if ($node !== $this->root && (int) $node->data['id'] === $id) {
+            return $node;
+        }
+        $n = count($node->children);
+        for ($i = 0; $i < $n; $i++) {
+            $hit = $this->find($id, $node->children[$i]);
+            if ($hit !== null) {
+                return $hit;
+            }
+        }
+        return null;
+    }
+
+    /** Ids of a node and everything under it, children before parents (post-order). */
+    public function subtreeIds(TreeNode $node): array
+    {
+        $ids = [];
+        $n = count($node->children);
+        for ($i = 0; $i < $n; $i++) {
+            $child = $this->subtreeIds($node->children[$i]);
+            $m = count($child);
+            for ($j = 0; $j < $m; $j++) {
+                $ids[] = $child[$j];
+            }
+        }
+        if ($node !== $this->root) {
+            $ids[] = (int) $node->data['id'];
+        }
+        return $ids;
+    }
+
+    /** Depth of a node (top-level items are 1). */
+    public function depthOf(int $id, ?TreeNode $node = null, int $depth = 0): int
+    {
+        $node ??= $this->root;
+        if ($node !== $this->root && (int) $node->data['id'] === $id) {
+            return $depth;
+        }
+        $n = count($node->children);
+        for ($i = 0; $i < $n; $i++) {
+            $d = $this->depthOf($id, $node->children[$i], $depth + 1);
+            if ($d > 0) {
+                return $d;
+            }
+        }
+        return 0;
+    }
+
+    public function toArray(?TreeNode $node = null): array
+    {
+        $node ??= $this->root;
+        $children = [];
+        $n = count($node->children);
+        for ($i = 0; $i < $n; $i++) {
+            $children[] = $this->toArray($node->children[$i]);
+        }
+        return ['title' => $node->label] + $node->data + ['children' => $children];
+    }
+}
+
 /* ============================================================================
  * 7. GRAPH — "Representing connections, routes, relationships, or networks."
  *    Undirected graph stored as an adjacency list. Vertices = classmates,
@@ -695,7 +965,7 @@ class SubjectTree
  * ========================================================================= */
 class DependencyGraph
 {
-    /** @var array<int, array<int, array{to:int, context:string}>> */
+    /** @var array<int, array<int, array{to:int, context:string, group:?int}>> */
     private array $adjacency = [];
 
     public function addVertex(int $id): void
@@ -705,12 +975,16 @@ class DependencyGraph
         }
     }
 
-    public function addEdge(int $a, int $b, string $context): void
+    /**
+     * $context is the group's name (for display); $groupId tells apart two groups that share
+     * a name ("Group 3" of two different assignments), so a traversal never mixes them.
+     */
+    public function addEdge(int $a, int $b, string $context, ?int $groupId = null): void
     {
         $this->addVertex($a);
         $this->addVertex($b);
-        $this->adjacency[$a][] = ['to' => $b, 'context' => $context];
-        $this->adjacency[$b][] = ['to' => $a, 'context' => $context];
+        $this->adjacency[$a][] = ['to' => $b, 'context' => $context, 'group' => $groupId];
+        $this->adjacency[$b][] = ['to' => $a, 'context' => $context, 'group' => $groupId];
     }
 
     public function neighbors(int $id): array
@@ -762,9 +1036,10 @@ class DependencyGraph
 
     /**
      * Breadth-first traversal from one student, following only edges of one
-     * group, returns everyone reachable (the whole team).
+     * group, returns everyone reachable (the whole team). With $groupId the
+     * edges are matched by the group's id, otherwise by its name.
      */
-    public function teamMembers(int $start, string $context): array
+    public function teamMembers(int $start, string $context, ?int $groupId = null): array
     {
         $visited = [$start => true];
         $queue = new ApprovalQueue();
@@ -774,13 +1049,69 @@ class DependencyGraph
             $id = $queue->dequeue();
             $team[] = $id;
             foreach ($this->neighbors($id) as $edge) {
-                if ($edge['context'] === $context && !isset($visited[$edge['to']])) {
+                $sameGroup = $groupId !== null ? $edge['group'] === $groupId : $edge['context'] === $context;
+                if ($sameGroup && !isset($visited[$edge['to']])) {
                     $visited[$edge['to']] = true;
                     $queue->enqueue($edge['to']);
                 }
             }
         }
         return $team;
+    }
+
+    /** True when a and b share an edge, i.e. have been in a group together. */
+    public function isLinked(int $a, int $b): bool
+    {
+        foreach ($this->neighbors($a) as $edge) {
+            if ($edge['to'] === $b) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Number of edges at a vertex (0 = has never grouped with anyone). */
+    public function degree(int $id): int
+    {
+        return count($this->neighbors($id));
+    }
+
+    /**
+     * Shortest chain of classmates from a to b: BREADTH-FIRST SEARCH that remembers
+     * which vertex it came from, then walks those parents back from b.
+     * Returns [a, …, b] (ids), or null when they aren't connected at all.
+     */
+    public function shortestPath(int $a, int $b): ?array
+    {
+        if ($a === $b) {
+            return [$a];
+        }
+        $parent = [$a => $a];
+        $queue = new ApprovalQueue();
+        $queue->enqueue($a);
+        while (!$queue->isEmpty()) {
+            $id = $queue->dequeue();
+            foreach ($this->neighbors($id) as $edge) {
+                $to = $edge['to'];
+                if (isset($parent[$to])) {
+                    continue;
+                }
+                $parent[$to] = $id;
+                if ($to === $b) {
+                    $path = [$b];
+                    for ($v = $b; $v !== $a; $v = $parent[$v]) {
+                        $path[] = $parent[$v];
+                    }
+                    $out = [];
+                    for ($i = count($path) - 1; $i >= 0; $i--) {
+                        $out[] = $path[$i];
+                    }
+                    return $out;
+                }
+                $queue->enqueue($to);
+            }
+        }
+        return null;
     }
 
     public function vertexCount(): int
@@ -984,6 +1315,122 @@ final class Algorithms
             $tmp = $items[$i];
             $items[$i] = $items[$j];
             $items[$j] = $tmp;
+        }
+        return $items;
+    }
+
+    /**
+     * BINARY SEARCH on deadlines. $sorted is the timeline (Linked List order:
+     * earliest deadline first, tasks with no date at the end). Finds the first task
+     * due AFTER $limitTs by halving the range, so every task before that index is
+     * "due by" the limit. $steps counts how many middles were checked.
+     */
+    public static function countDueBy(array $sorted, int $limitTs, int &$steps = 0): int
+    {
+        $low = 0;
+        $high = count($sorted);                       // answer is in [low, high]
+        while ($low < $high) {
+            $mid = intdiv($low + $high, 2);
+            $steps++;
+            $ts = DsaUtil::deadlineTs($sorted[$mid]);
+            if ($ts !== null && $ts <= $limitTs) {
+                $low = $mid + 1;                      // due by the limit: the answer is further right
+            } else {
+                $high = $mid;                         // later or no date: the answer is here or left
+            }
+        }
+        return $low;
+    }
+
+    /**
+     * ALGORITHM 6 — MERGE SORT (divide and conquer). Splits the list in halves,
+     * sorts each half, then merges them by repeatedly taking the better front item.
+     * O(n log n) comparisons. $steps counts comparisons so it can be compared with
+     * Bubble and Selection Sort on the same list. Stable: equal keys keep their order.
+     */
+    public static function mergeSortBy(array $items, string $key, bool $desc, int &$steps = 0): array
+    {
+        $n = count($items);
+        if ($n <= 1) {
+            return $items;
+        }
+        $mid = intdiv($n, 2);
+        $left = [];
+        $right = [];
+        for ($i = 0; $i < $n; $i++) {
+            if ($i < $mid) {
+                $left[] = $items[$i];
+            } else {
+                $right[] = $items[$i];
+            }
+        }
+        $left = self::mergeSortBy($left, $key, $desc, $steps);
+        $right = self::mergeSortBy($right, $key, $desc, $steps);
+
+        $out = [];
+        $i = 0;
+        $j = 0;
+        $nl = count($left);
+        $nr = count($right);
+        while ($i < $nl && $j < $nr) {
+            $steps++;
+            $takeLeft = $desc ? $left[$i][$key] >= $right[$j][$key] : $left[$i][$key] <= $right[$j][$key];
+            if ($takeLeft) {
+                $out[] = $left[$i++];
+            } else {
+                $out[] = $right[$j++];
+            }
+        }
+        while ($i < $nl) {
+            $out[] = $left[$i++];
+        }
+        while ($j < $nr) {
+            $out[] = $right[$j++];
+        }
+        return $out;
+    }
+
+    /** BUBBLE SORT on any key, counting comparisons — for the side-by-side comparison only. */
+    public static function bubbleSortBy(array $items, string $key, bool $desc, int &$steps = 0): array
+    {
+        $n = count($items);
+        for ($pass = 0; $pass < $n - 1; $pass++) {
+            $swapped = false;
+            for ($i = 0; $i < $n - 1 - $pass; $i++) {
+                $steps++;
+                $wrong = $desc ? $items[$i][$key] < $items[$i + 1][$key] : $items[$i][$key] > $items[$i + 1][$key];
+                if ($wrong) {
+                    $tmp = $items[$i];
+                    $items[$i] = $items[$i + 1];
+                    $items[$i + 1] = $tmp;
+                    $swapped = true;
+                }
+            }
+            if (!$swapped) {
+                break;
+            }
+        }
+        return $items;
+    }
+
+    /** SELECTION SORT on any key, counting comparisons — for the side-by-side comparison only. */
+    public static function selectionSortBy(array $items, string $key, bool $desc, int &$steps = 0): array
+    {
+        $n = count($items);
+        for ($i = 0; $i < $n - 1; $i++) {
+            $best = $i;
+            for ($j = $i + 1; $j < $n; $j++) {
+                $steps++;
+                $better = $desc ? $items[$j][$key] > $items[$best][$key] : $items[$j][$key] < $items[$best][$key];
+                if ($better) {
+                    $best = $j;
+                }
+            }
+            if ($best !== $i) {
+                $tmp = $items[$i];
+                $items[$i] = $items[$best];
+                $items[$best] = $tmp;
+            }
         }
         return $items;
     }

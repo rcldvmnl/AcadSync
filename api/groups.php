@@ -130,15 +130,28 @@ $rulesFor = function (int $taskId) use ($ctx, $groups) {
 };
 
 /**
+ * A group's size limit. A group made for a task always follows the task's CURRENT group_max
+ * (the stored max_members is only what it was when the group was made), so editing the task
+ * from 3 to 4 per group updates every group of that task. Study groups keep their own limit.
+ */
+$maxOf = function (array $g) use ($ctx): ?int {
+    $task = $g['task_id'] ? ($ctx['taskIndex'][(int) $g['task_id']] ?? null) : null;
+    if ($task && $task['group_max'] !== null) {
+        return (int) $task['group_max'];
+    }
+    return $g['max_members'] !== null ? (int) $g['max_members'] : null;
+};
+
+/**
  * How many members a group can hold right now. Normally its max. A group that is already FULL
  * may take one extra member only while the task still has an extra slot for the excess; a group
  * already at max + 1 keeps that size.
  */
-$capacity = function (array $g) use ($rulesFor): ?int {
-    if ($g['max_members'] === null) {
+$capacity = function (array $g) use ($rulesFor, $maxOf): ?int {
+    $max = $maxOf($g);
+    if ($max === null) {
         return null;
     }
-    $max = (int) $g['max_members'];
     $n = count($g['members']);
     $rules = $g['task_id'] ? $rulesFor((int) $g['task_id']) : null;
     if ($n > $max) {
@@ -212,8 +225,9 @@ foreach (section_rows('group_requests', $sectionId) as $r) {
  * Group + join requests. Members (and the admin) see who is asking to join;
  * everyone sees whether THEY have a request waiting (my_request).
  */
-$present = function (array $g) use ($ctx, $uid, $isAdmin, $groups, $pendingByGroup, $capacity) {
+$present = function (array $g) use ($ctx, $uid, $isAdmin, $groups, $pendingByGroup, $capacity, $maxOf) {
     $p = present_group($g, $ctx['users'], $ctx['subjectIndex'], $ctx['taskIndex'], $uid);
+    $p['max_members'] = $maxOf($g);   // the task's current limit, not the one saved at creation
     $grouped = $g['task_id'] ? grouped_for_task($groups, (int) $g['task_id']) : new HashSet();
     $requests = [];
     $mine = null;
@@ -233,6 +247,35 @@ $present = function (array $g) use ($ctx, $uid, $isAdmin, $groups, $pendingByGro
     return $p + ['requests' => ($p['is_member'] || $isAdmin) ? $requests : [], 'request_count' => count($requests), 'my_request' => $mine,
         'capacity' => $capacity($g)];
 };
+
+/**
+ * [DSA: GRAPH] — suggested groupmates. For each classmate still without a group:
+ *   never: no edge between you (you've never been in a group together) -> listed first
+ *   via:   the shortest chain of classmates linking you (BFS), e.g. you -> Juan -> Ana
+ * Returns [userId => ['never' => bool, 'via' => [names between you and them]]].
+ */
+function suggestions(array $ctx, array $groups, int $uid, array $people): array
+{
+    $graph = build_graph((int) $ctx['section']['id'], $ctx['members'], $groups);
+    $name = fn (int $id) => isset($ctx['users'][$id]) ? $ctx['users'][$id]['first_name'] : '?';
+    $out = [];
+    foreach ($people as $p) {
+        $id = (int) $p['id'];
+        if ($id === $uid) {
+            continue;
+        }
+        $never = !$graph->isLinked($uid, $id);
+        $via = [];
+        if ($never) {
+            $path = $graph->shortestPath($uid, $id);
+            for ($i = 1; $path !== null && $i < count($path) - 1; $i++) {
+                $via[] = $name($path[$i]);
+            }
+        }
+        $out[$id] = ['never' => $never, 'via' => $via];
+    }
+    return $out;
+}
 
 /** The viewer's group for a task, or null. */
 function my_group_for_task(array $groups, int $taskId, int $uid): ?array
@@ -268,6 +311,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'task' => present_task($task, $ctx['subjectIndex'], $ctx['users']),
             'groups' => $out,
             'ungrouped' => $ungrouped,
+            'suggest' => suggestions($ctx, $groups, $uid, $ungrouped),
             'in_group' => $grouped->contains((string) $uid),
             'members' => count($ctx['members']),
             'rules' => $rulesFor($taskId),
@@ -323,7 +367,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             ];
         }
     }
-    respond(['mine' => $mine, 'others' => $others, 'upcoming' => $upcoming, 'members' => count($ctx['members']), 'role' => $user['role'], 'me' => $uid]);
+    // [DSA: GRAPH] — classmates with no edge at all (degree 0) have never been in a group with anyone
+    $isolated = [];
+    if ($isAdmin) {
+        $graph = build_graph($sectionId, $ctx['members'], $groups);
+        foreach (Algorithms::selectionSortByLastName($ctx['members']) as $m) {
+            if ($graph->degree((int) $m['id']) === 0) {
+                $isolated[] = ['id' => (int) $m['id'], 'name' => $m['first_name'] . ' ' . $m['last_name']];
+            }
+        }
+    }
+    respond(['mine' => $mine, 'others' => $others, 'upcoming' => $upcoming, 'members' => count($ctx['members']), 'role' => $user['role'], 'me' => $uid, 'isolated' => $isolated]);
 }
 
 /* ---------------------------------------------------------------- writes */
@@ -435,7 +489,9 @@ switch (param('action')) {
         foreach ($pendingByGroup[$group['id']] ?? [] as $r) {
             if ((int) $r['user_id'] === $uid) {
                 Store::update('group_requests', (int) $r['id'], ['status' => 'cancelled']);
-                respond();
+                // [DSA: STACK] — PUSH the opposite: Undo sends the request again
+                undo_push($sectionId, ['type' => 'request', 'group_id' => $group['id'], 'label' => "Cancelled your request to “{$group['name']}”"]);
+                respond(['undo' => true]);
             }
         }
         fail('You have no request for this group.', 404);
@@ -461,6 +517,11 @@ switch (param('action')) {
         }
         $who = (int) $req['user_id'];
         $accept = filter_var(param('accept', false), FILTER_VALIDATE_BOOLEAN);
+        // They may have left the section after asking: close the request instead of adding a non-member
+        if (!$memberIds->contains((string) $who)) {
+            Store::update('group_requests', (int) $req['id'], ['status' => 'cancelled']);
+            fail('They’re no longer in this section, so the request was closed.', 409);
+        }
         $link = $g['task_id'] ? "task.html?id={$g['task_id']}" : 'classmates.html#groups';
         if (!$accept) {
             Store::update('group_requests', (int) $req['id'], ['status' => 'declined']);
@@ -528,12 +589,27 @@ switch (param('action')) {
         if (!$row) {
             fail('You’re not in this group.', 404);
         }
+        // [DSA: STACK] — PUSH the opposite: Undo puts you back (or re-makes the group if it gets deleted)
+        undo_push($sectionId, ['type' => 'rejoin', 'label' => "Left “{$group['name']}”", 'group' => [
+            'id' => $group['id'], 'name' => $group['name'], 'task_id' => $group['task_id'] !== null ? (int) $group['task_id'] : null,
+            'subject_id' => $group['subject_id'] !== null ? (int) $group['subject_id'] : null, 'purpose' => $group['purpose'],
+            'max_members' => $group['max_members'] !== null ? (int) $group['max_members'] : null, 'created_by' => (int) $group['created_by'],
+        ]]);
+        Store::begin();
         Store::delete('group_members', (int) $row['id']);
-        // An empty group is removed automatically
         if (count($group['members']) === 1) {
-            Store::delete('study_groups', $group['id']);
+            delete_group($sectionId, $group['id']);       // an empty group is removed automatically
+        } elseif ((int) $group['created_by'] === $uid) {
+            // Hand the group to someone still in it, so it can still be managed
+            foreach ($group['members'] as $id) {
+                if ($id !== $uid) {
+                    Store::update('study_groups', $group['id'], ['created_by' => $id]);
+                    break;
+                }
+            }
         }
-        respond();
+        Store::commit();
+        respond(['undo' => true]);
     }
 
     case 'add_members': {
@@ -568,15 +644,7 @@ switch (param('action')) {
             fail('Only the group’s creator or the class admin can delete it.', 403);
         }
         Store::begin();
-        foreach (section_rows('group_members', $sectionId) as $m) {
-            if ((int) $m['group_id'] === $group['id']) {
-                Store::delete('group_members', (int) $m['id']);
-            }
-        }
-        foreach ($pendingByGroup[$group['id']] ?? [] as $r) {
-            Store::update('group_requests', (int) $r['id'], ['status' => 'cancelled']);
-        }
-        Store::delete('study_groups', $group['id']);
+        delete_group($sectionId, $group['id']);
         Store::commit();
         respond();
     }

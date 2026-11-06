@@ -109,8 +109,8 @@ const GroupWork = {
   bind(box, d, reload) {
     const act = async (body, msg) => {
       try {
-        await API.post('groups.php', body);
-        if (msg) UI.toast(msg);
+        const res = await API.post('groups.php', body);
+        if (msg) UI.undoToast(msg, res, reload);
         await reload();
       } catch (e) { UI.toast(e.message, { iconName: 'alert' }); }
     };
@@ -131,16 +131,27 @@ const GroupWork = {
     const t = d.task;
     const group = d.groups.find((g) => g.id === groupId);
     const room = group ? UI.groupCap(group) - group.members.length : t.group_max - 1;
+    // [Graph] classmates you've never been in a group with are listed first, with how you're connected
+    const hint = (m) => d.suggest?.[m.id];
     const people = d.ungrouped.filter((m) => m.id !== me);
+    if (d.suggest) people.sort((a, b) => Number(!!hint(b)?.never) - Number(!!hint(a)?.never));
+    const tag = (m) => {
+      const s = hint(m);
+      if (!s) return '';
+      if (!s.never) return '<span class="chip bg-canvas text-[11px]">Grouped before</span>';
+      return `<span class="chip bg-mint-tint text-[11px]">New teammate${s.via.length ? ` · via ${esc(s.via.join(', '))}` : ''}</span>`;
+    };
     UI.sheet(`
       <form>
         <h2 class="text-2xl font-bold">${group ? `Add to ${esc(group.name)}` : 'Create a group'}</h2>
         <p class="mt-1 text-sm text-muted">${group ? '' : 'You’ll be in it. '}Pick up to ${room} classmate${room === 1 ? '' : 's'} you already grouped with. They’re added right away.</p>
         ${group ? '' : `<div class="mt-4">${UI.field({ name: 'name', label: 'Group name (optional)', placeholder: `Group ${d.groups.length + 1}` })}</div>`}
-        <div class="mt-4 max-h-64 space-y-1 overflow-y-auto">
+        ${d.suggest && people.some((m) => hint(m)?.never) ? '<p class="mt-3 text-xs text-muted">Classmates you’ve never been in a group with are listed first.</p>' : ''}
+        <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
           ${people.map((m) => `<label class="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-canvas">
-            <input type="checkbox" name="m" value="${m.id}" class="h-5 w-5 accent-charcoal">
-            <span class="flex-1 text-sm font-medium">${esc(m.name)}</span><span class="text-xs text-muted">${esc(m.student_id)}</span></label>`).join('') || '<p class="text-sm text-muted">Everyone else already has a group.</p>'}
+            <input type="checkbox" name="m" value="${m.id}" class="h-5 w-5 shrink-0 accent-charcoal">
+            <span class="min-w-0 flex-1"><span class="block text-sm font-medium">${esc(m.name)}</span>
+              <span class="mt-0.5 flex flex-wrap items-center gap-1.5"><span class="text-xs text-muted">${esc(m.student_id)}</span>${tag(m)}</span></span></label>`).join('') || '<p class="text-sm text-muted">Everyone else already has a group.</p>'}
         </div>
         <p class="mt-3 text-xs text-muted">Others can still send a request to join later.</p>
         <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>

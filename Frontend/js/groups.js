@@ -179,7 +179,10 @@ const GroupsTab = {
         <span class="cm-summary-icon">${icon('sparkle', 16)}</span>
         <p>${lead}</p>
         ${waiting ? `<span class="cm-pill cm-pill-dark">${plural(waiting, 'join request')} to answer</span>` : ''}
-      </div>`;
+      </div>
+      ${Data.admin && Data.groups.isolated?.length ? `
+        <p class="cm-isolated">${icon('users', 16)}<span><b>${plural(Data.groups.isolated.length, 'classmate')} ${Data.groups.isolated.length === 1 ? 'hasn’t' : 'haven’t'} been in a group with anyone yet:</b>
+          ${Data.groups.isolated.map((p) => esc(p.name)).join(', ')}.</span></p>` : ''}`;
   },
 
   /** One group assignment: its rule, how many are grouped, every group as seats, and who is left. */
@@ -326,8 +329,8 @@ const GroupsTab = {
     const act = async (btn, body, msg) => {
       btn.disabled = true;
       try {
-        await API.post('groups.php', body);
-        UI.toast(msg);
+        const res = await API.post('groups.php', body);
+        UI.undoToast(msg, res, () => GroupsTab.reload());
         await GroupsTab.reload();
       } catch (e) {
         btn.disabled = false;
@@ -355,7 +358,7 @@ const GroupsTab = {
   },
 
   /** Create a group for assignment taskId, or add classmates to group g. Uses the shared picker. */
-  pick(taskId, g) {
+  async pick(taskId, g) {
     const t = Data.assignments.find((x) => x.id === taskId) || { id: taskId, group_max: UI.groupCap(g) ?? 99 };
     const d = {
       task: t,
@@ -363,6 +366,8 @@ const GroupsTab = {
       ungrouped: (g ? GroupsTab.addable(g) : Data.people.filter((p) => !Data.groupOf(p.id, taskId)))
         .map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`, student_id: p.student_id })),
     };
+    // Suggested groupmates come from the server's Graph (never grouped with you first)
+    if (taskId) d.suggest = await API.get('groups.php', { task_id: taskId }).then((r) => r.suggest).catch(() => null);
     GroupWork.pickMembers(d, g ? g.id : null, () => GroupsTab.reload());
   },
 

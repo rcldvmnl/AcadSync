@@ -38,6 +38,43 @@ function new_class_code(): string
     return $code;
 }
 
+/**
+ * Someone leaving a section must not stay behind in its groups: their seats are freed,
+ * their pending join requests are closed, a group left empty is deleted (with the requests
+ * waiting on it), and a group they made is handed to a remaining member so it can still be managed.
+ */
+function leave_groups(int $sectionId, int $userId): void
+{
+    $groups = load_groups($sectionId);
+    foreach (section_rows('group_members', $sectionId) as $gm) {
+        if ((int) $gm['user_id'] === $userId) {
+            Store::delete('group_members', (int) $gm['id']);
+        }
+    }
+    $requests = section_rows('group_requests', $sectionId);
+    foreach ($requests as $r) {
+        if ($r['status'] === 'pending' && (int) $r['user_id'] === $userId) {
+            Store::update('group_requests', (int) $r['id'], ['status' => 'cancelled']);
+        }
+    }
+    foreach ($groups as $g) {
+        if (!in_array($userId, $g['members'], true) && (int) $g['created_by'] !== $userId) {
+            continue;
+        }
+        $rest = [];
+        foreach ($g['members'] as $id) {
+            if ($id !== $userId) {
+                $rest[] = $id;
+            }
+        }
+        if (!$rest) {
+            delete_group($sectionId, $g['id']);
+        } elseif ((int) $g['created_by'] === $userId) {
+            Store::update('study_groups', $g['id'], ['created_by' => $rest[0]]);
+        }
+    }
+}
+
 function open_section(int $userId, int $sectionId): void
 {
     Store::update('users', $userId, ['active_section_id' => $sectionId]);
@@ -127,7 +164,10 @@ switch (param('action')) {
         if ($m['role'] === 'admin') {
             fail('Class admins can’t leave their own section.', 409);
         }
+        Store::begin();
         Store::delete('memberships', (int) $m['id']);
+        leave_groups($sid, $uid);
+        Store::commit();
         if ((int) $user['active_section_id'] === $sid) {
             $others = user_sections($uid);
             Store::update('users', $uid, ['active_section_id' => $others ? $others[0]['id'] : null]);

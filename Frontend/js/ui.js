@@ -77,6 +77,9 @@ function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/** "1 task", "3 tasks" */
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -260,8 +263,9 @@ const UI = {
       const next = b.getAttribute('aria-pressed') !== 'true';
       b.disabled = true;
       try {
-        await API.post('tasks.php', { action: 'done', task_id: id, done: next });
-        UI.toast(next ? 'Marked as done' : 'Marked as not done', { sub: next ? 'It stays on your schedule, checked off' : '' });
+        const res = await API.post('tasks.php', { action: 'done', task_id: id, done: next });
+        UI.undoToast(next ? 'Marked as done' : 'Marked as not done', res, () => onChange?.(id, !next),
+          { sub: next ? 'It stays on your schedule, checked off' : '' });
         onChange?.(id, next);
       } catch (err) {
         UI.toast(err.message, { iconName: 'alert' });
@@ -347,6 +351,30 @@ const UI = {
     clearTimeout(UI._toastTimer);
     UI._toastTimer = setTimeout(() => el.remove(), duration);
     return el;
+  },
+
+  /**
+   * Toast for an action the server can reverse (its reply has undo: true). "Undo" POPs the
+   * student's UndoStack on the server (api/undo.php), then onUndone() refreshes the page's view.
+   */
+  undoToast(message, res, onUndone, { sub = '' } = {}) {
+    if (!res?.undo) { UI.toast(message, { sub }); return; }
+    UI.toast(message, {
+      sub,
+      duration: 6000,
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          try {
+            const r = await API.post('undo.php', {});
+            UI.toast('Undone', { sub: r.undone, iconName: 'undo' });
+            await onUndone?.();
+          } catch (e) {
+            UI.toast(e.message, { iconName: 'alert' });
+          }
+        },
+      },
+    });
   },
 
   /* ---------------------------------------------------------- sheet (bottom on mobile, dialog on desktop) */

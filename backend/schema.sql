@@ -189,13 +189,33 @@ CREATE TABLE IF NOT EXISTS task_done (
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
+-- 10c. SUBTASKS — a task's checklist as a TREE: parent_id points at the item it belongs
+--      under (NULL = top level). A group task's checklist is shared by the group
+--      (group_id); otherwise it belongs to one person (owner_id).
+CREATE TABLE IF NOT EXISTS subtasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    task_id INTEGER NOT NULL,
+    group_id INTEGER,                   -- shared with this group, or…
+    owner_id INTEGER,                   -- …this one person's own list
+    parent_id INTEGER,                  -- the item it sits under (tree edge)
+    title TEXT NOT NULL,
+    assignee_id INTEGER,                -- who in the group does it
+    done INTEGER NOT NULL DEFAULT 0,
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(task_id) REFERENCES tasks(id)
+);
+
 -- 11. PASSWORD_RESETS -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS password_resets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT NOT NULL,
     code TEXT NOT NULL,
     expires_at INTEGER NOT NULL,
-    used INTEGER NOT NULL DEFAULT 0
+    used INTEGER NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0   -- wrong guesses; the code closes after 5
 );
 
 -- ============================================================================

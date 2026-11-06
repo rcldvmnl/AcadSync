@@ -6,7 +6,7 @@
 // Tasks marked as done never disappear or move — they stay in place, checked off.
 
 let data;
-let filter = ['today', 'urgent', 'week', 'soon'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today';
+let filter = ['today', 'urgent', 'week', 'friday', 'soon'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today';
 let selectedDow;
 let workFilter = 'all';   // all | individual | group
 
@@ -135,6 +135,16 @@ function tasksSection() {
     return `${heading(`Due this week`, count(items))}
       <p class="-mt-1 text-xs text-muted">From today until Sunday, ${Fmt.monthDay(sunday)}.</p>
       ${list(items, 'Nothing due this week')}`;
+  }
+  if (filter === 'friday') {
+    // The server binary-searched the date-sorted timeline for the cut-off (Friday 11:59 PM)
+    const d = data.due_by;
+    const ids = new Set(d.ids);
+    const items = timeline.filter((t) => ids.has(t.id));
+    const fri = Fmt.date(d.date);
+    return `${heading(`Due by ${DAYS_LONG[fri.getDay()]}`, count(items))}
+      <p class="-mt-1 text-xs text-muted">Everything due by ${esc(Fmt.short(fri))}, 11:59 PM. Found with Binary Search: ${plural(d.steps, 'check')} through ${plural(d.searched, 'task')} sorted by deadline.</p>
+      ${list(items, `Nothing due by ${DAYS_LONG[fri.getDay()]}`)}`;
   }
   if (filter === 'soon') {
     const items = dated.filter((t) => t.deadline_ts > b.endTomorrow);

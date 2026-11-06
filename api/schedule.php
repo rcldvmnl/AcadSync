@@ -90,6 +90,21 @@ foreach ($ctx['subjects']->toArray() as $s) {
 
 $members = $ctx['members'];
 
+// [ALGORITHM: BINARY SEARCH] — "Due by Friday": the timeline is already sorted by deadline,
+// so halving it finds where Friday 11:59 PM falls; everything before that index is due by then.
+// ?before=YYYY-MM-DD picks another day. Default: this Friday (next Friday on a weekend).
+$beforeParam = (string) param('before', '');
+$dueByDay = preg_match('/^\d{4}-\d{2}-\d{2}$/', $beforeParam) && strtotime($beforeParam)
+    ? strtotime($beforeParam)
+    : strtotime((int) date('N', $now) >= 6 ? 'friday next week' : 'friday this week', $now);
+$limit = strtotime(date('Y-m-d', $dueByDay) . ' 23:59:59');
+$steps = 0;
+$k = Algorithms::countDueBy($active, $limit, $steps);
+$dueByIds = [];
+for ($i = 0; $i < $k; $i++) {
+    $dueByIds[] = (int) $active[$i]['id'];
+}
+
 respond([
     'now' => $now,
     'role' => $user['role'],
@@ -98,6 +113,7 @@ respond([
     'timeline' => array_map($present, $active),
     'by_urgency' => array_map($present, $byUrgency),
     'week' => ['monday' => date('Y-m-d', $monday), 'days' => $days],
+    'due_by' => ['date' => date('Y-m-d', $limit), 'ids' => $dueByIds, 'steps' => $steps, 'searched' => count($active)],
     'subjects' => $subjects,
     'stats' => [
         'due_today' => $dueToday,

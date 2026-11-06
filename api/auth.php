@@ -20,6 +20,14 @@ require_once __DIR__ . '/../backend/bootstrap.php';
 
 const EMAIL_PATTERN = '/^(\d{4}-\d{4})@lspu\.edu\.ph$/';
 const EMAIL_HINT = 'Use your university e-mail, e.g. 0000-0000@lspu.edu.ph.';
+const MAX_RESET_TRIES = 5;
+
+/** True when the browser runs on this same computer (the local demo/grading setup). */
+function is_local_request(): bool
+{
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    return $ip === '127.0.0.1' || $ip === '::1';
+}
 
 /** Returns the student number inside a valid university e-mail, or null. */
 function student_number(string $email): ?string
@@ -176,10 +184,18 @@ switch (param('action')) {
         if (!hashset_of('users', 'email')->contains($email)) {
             fail('No account uses that e-mail.', 404);
         }
+        // A new code replaces any older one, so only the latest code works
+        foreach (Store::all('password_resets') as $r) {
+            if ($r['email'] === $email && !(int) $r['used']) {
+                Store::update('password_resets', (int) $r['id'], ['used' => 1]);
+            }
+        }
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         Store::insert('password_resets', ['email' => $email, 'code' => $code, 'expires_at' => time() + 900]);
-        // No SMTP during local grading — the code is returned so it can be shown on screen.
-        respond(['message' => 'Reset code sent.', 'dev_code' => $code]);
+        // No SMTP during local grading: the code is shown on screen, but ONLY to a browser on this
+        // computer. Anyone reaching the server from elsewhere never sees it, so they can't use
+        // "forgot password" to take over someone else's account.
+        respond(['message' => 'Reset code sent.'] + (is_local_request() ? ['dev_code' => $code] : []));
     }
 
     case 'reset': {
@@ -189,15 +205,25 @@ switch (param('action')) {
         if (strlen($password) < 8) {
             fail('Password must be at least 8 characters.');
         }
-        $match = null;
+        // The one live code for this e-mail (older ones were closed when it was issued)
+        $live = null;
         foreach (Store::all('password_resets') as $r) {
-            if ($r['email'] === $email && $r['code'] === $code && !(int) $r['used'] && (int) $r['expires_at'] >= time()) {
-                $match = $r;
+            if ($r['email'] === $email && !(int) $r['used'] && (int) $r['expires_at'] >= time()) {
+                $live = $r;
             }
         }
-        if (!$match) {
-            fail('That code is invalid or expired.');
+        if (!$live) {
+            fail('That code is invalid or expired. Ask for a new one.');
         }
+        if (!hash_equals($live['code'], $code)) {
+            // Wrong guess: after MAX_RESET_TRIES the code is closed, so 6 digits can't be brute-forced
+            $tries = (int) $live['attempts'] + 1;
+            Store::update('password_resets', (int) $live['id'], ['attempts' => $tries, 'used' => $tries >= MAX_RESET_TRIES ? 1 : 0]);
+            fail($tries >= MAX_RESET_TRIES
+                ? 'Too many wrong codes. Ask for a new code.'
+                : 'That code is wrong. ' . (MAX_RESET_TRIES - $tries) . (MAX_RESET_TRIES - $tries === 1 ? ' try' : ' tries') . ' left.');
+        }
+        $match = $live;
         $user = find_user_by_login($email);
         Store::update('users', (int) $user['id'], ['password_hash' => password_hash($password, PASSWORD_DEFAULT)]);
         Store::update('password_resets', (int) $match['id'], ['used' => 1]);

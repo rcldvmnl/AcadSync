@@ -45,7 +45,10 @@ final class Store
     /** Columns added after a database was first created (keeps existing data, no rebuild). */
     private static function addMissingColumns(): void
     {
-        $added = ['tasks' => ['group_count' => 'INTEGER']];
+        $added = [
+            'tasks' => ['group_count' => 'INTEGER'],
+            'password_resets' => ['attempts' => 'INTEGER NOT NULL DEFAULT 0'],
+        ];
         foreach ($added as $table => $cols) {
             $have = [];
             foreach (self::$pdo->query("PRAGMA table_info($table)")->fetchAll() as $c) {
@@ -150,7 +153,7 @@ final class Store
     {
         static $allowed = [
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
-            'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests',
+            'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests', 'subtasks',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

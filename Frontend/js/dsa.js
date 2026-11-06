@@ -6,13 +6,18 @@
   $('#main').innerHTML = `
     <p class="mb-5 max-w-2xl text-sm text-muted">Each card shows one data structure built from scratch in <code class="rounded bg-white px-1.5 py-0.5 text-charcoal">backend/custom_dsa.php</code>, filled with ${esc(d.section.name)}’s real records right now.</p>
     <div class="grid gap-5 lg:grid-cols-2 lg:items-start">
-      ${card(1, 'Array', 'Storing and accessing collections of records.', 'SubjectArray holds this section’s subject records in fixed, indexed slots.', arrayView(d.array))}
-      ${card(2, 'Linked List', 'Managing sequences of records through insertion and deletion.', `TaskLinkedList keeps active tasks in date order: approved tasks are inserted in place (Insertion Sort); expired or removed ones are deleted by re-pointing <i>next</i>. ${d.linked_list.expired_dropped} expired task${d.linked_list.expired_dropped === 1 ? ' was' : 's were'} dropped from the head.`, listView(d.linked_list.items))}
+      ${card(1, 'Array', 'Storing and accessing collections of records.', 'SubjectArray holds this section’s subject records in fixed, indexed slots. A second, 2D array (WeekGrid) is the week itself: 6 days × 288 five-minute cells. Saving a subject reads only the cells its class times cover, so a clash is found without comparing against every other subject.', arrayView(d.array) + weekGridView(d.week_grid))}
+      ${card(2, 'Linked List', 'Managing sequences of records through insertion and deletion.', `TaskLinkedList keeps active tasks in date order: approved tasks are inserted in place (Insertion Sort); expired or removed ones are deleted by re-pointing <i>next</i>. It is doubly linked, so each task also points back (<i>prev</i>): that is how Task Details shows the previous and next task. ${d.linked_list.expired_dropped} expired task${d.linked_list.expired_dropped === 1 ? ' was' : 's were'} dropped from the head.`, listView(d.linked_list.items))}
       ${card(3, 'HashSet', 'Preventing duplicate entries or maintaining unique records.', `Each e-mail is hashed (djb2) into one of ${d.hashset.buckets} buckets, so checking “is this e-mail taken?” is O(1). The same set keeps student IDs, section names, class codes and subject codes unique.`, hashView(d.hashset))}
-      ${card(4, 'Stack', 'Implementing undo operations, history, or backtracking.', 'UndoStack holds rejected requests. Undo pops the top (most recent) one back into the queue.', stackView(d.stack))}
+      ${card(4, 'Stack', 'Implementing undo operations, history, or backtracking.', 'UndoStack holds rejected requests; the admin’s Undo pops the most recent one back into the queue. Every student has their own stack too: leaving a group, cancelling a join request or ticking a task pushes its opposite, and the Undo button pops it.', stackView(d.stack) + undoMineView(d.undo_mine))}
       ${card(5, 'Queue', 'Managing waiting lists, service requests, or tasks in order.', 'ApprovalQueue lines up student requests first-come, first-served. The admin can only decide the front.', queueView(d.queue))}
-      ${card(6, 'Tree', 'Organizing hierarchical data or implementing tree-based searching.', 'SubjectTree organises Section › Subjects › Tasks. The search bar walks it depth-first.', `<div class="max-h-80 overflow-y-auto rounded-2xl bg-canvas p-3 text-sm">${treeView(d.tree)}</div>`)}
-      ${card(7, 'Graph', 'Representing connections, routes, relationships, or networks.', 'DependencyGraph stores classmates as vertices and study-group links as edges (adjacency list). Group filters use breadth-first search.', graphView(d.graph))}
+      ${card(6, 'Tree', 'Organizing hierarchical data or implementing tree-based searching.', 'SubjectTree organises Section › Subjects › Tasks. The search bar walks it depth-first. A task’s checklist is a tree too: steps hold sub-steps, and progress is added up post-order, children before their parent.', `<div class="max-h-80 overflow-y-auto rounded-2xl bg-canvas p-3 text-sm">${treeView(d.tree)}</div>${checklistView(d.checklist)}`)}
+      ${card(7, 'Graph', 'Representing connections, routes, relationships, or networks.', 'DependencyGraph stores classmates as vertices and study-group links as edges (adjacency list). Breadth-first search finds your groupmates, the shortest chain linking you to someone, and who you’ve never worked with.', graphView(d.graph) + isolatedView(d.isolated))}
+    </div>
+    <h2 class="mb-3 mt-8 text-xl font-bold">Algorithms, measured on this section’s data</h2>
+    <div class="grid gap-5 lg:grid-cols-2 lg:items-start">
+      ${algoCard('Sorting compared', 'Your notification history sorted newest first by all three. Each count is how many pairs of items were compared.', sortView(d.sorting))}
+      ${algoCard('Binary Search on deadlines', '“Due by Friday” on the Schedule. The timeline is already sorted by deadline, so the search halves it to find where Friday 11:59 PM falls, instead of checking every task.', binaryView(d.binary_search))}
     </div>`;
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
@@ -30,6 +35,89 @@ function card(n, name, rubric, how, body) {
 }
 
 const none = (text) => `<p class="rounded-2xl bg-canvas p-4 text-sm text-muted">${text}</p>`;
+
+function algoCard(name, how, body) {
+  return `
+    <section class="rounded-[1.75rem] bg-white p-5 shadow-card">
+      <h3 class="text-lg font-bold">${name}</h3>
+      <p class="mt-1 text-xs text-muted">${how}</p>
+      <div class="mt-4">${body}</div>
+    </section>`;
+}
+
+const TINT = { lavender: '#E6E1FD', peach: '#FCE3CF', yellow: '#FDF3C7', mint: '#E5F6EE' };
+
+/** The 2D week grid, 7 AM to 9 PM: each filled run of cells is one class meeting. */
+function weekGridView(g) {
+  const from = 7 * 60 / g.step;
+  const to = 21 * 60 / g.step;
+  const pct = (c) => ((Math.min(Math.max(c, from), to) - from) / (to - from)) * 100;
+  const rows = g.days.map((d) => `
+    <div class="flex items-center gap-2">
+      <span class="w-9 shrink-0 text-[11px] font-semibold text-muted">${esc(d.day.slice(0, 3))}</span>
+      <div class="relative h-7 flex-1 rounded-lg bg-canvas">
+        ${d.runs.map((r) => `<span class="absolute inset-y-0 flex items-center overflow-hidden rounded-md px-1 text-[10px] font-bold" style="left:${pct(r.from)}%;width:${pct(r.to + 1) - pct(r.from)}%;background:${TINT[r.color] || TINT.lavender}" title="${esc(r.code)}">${esc(r.code)}</span>`).join('')}
+      </div>
+    </div>`).join('');
+  return `
+    <div class="mt-4 rounded-2xl border border-line p-3">
+      <div class="mb-2 text-xs font-semibold">WeekGrid, 7 AM – 9 PM</div>
+      <div class="space-y-1.5">${rows}</div>
+      <div class="ml-11 mt-1 flex justify-between text-[10px] text-muted"><span>7 AM</span><span>12 PM</span><span>5 PM</span><span>9 PM</span></div>
+      <p class="mt-2 text-xs text-muted">${g.filled} of ${g.cells} cells taken</p>
+    </div>`;
+}
+
+function undoMineView(items) {
+  return `<div class="mt-4">
+    <div class="mb-1.5 text-xs font-semibold">Your Undo stack</div>
+    ${items.length ? `<div class="space-y-1.5">${items.map((l, i) => `<div class="flex items-center gap-2 rounded-xl ${i === 0 ? 'bg-charcoal text-white' : 'bg-canvas'} px-3 py-2 text-sm">
+      <span class="w-7 text-[10px] font-semibold ${i === 0 ? 'text-sun' : 'text-muted'}">${i === 0 ? 'top' : ''}</span><span class="flex-1 truncate">${esc(l)}</span></div>`).join('')}</div>`
+      : none('Empty. Leave a group, cancel a request or tick a task, and its Undo lands here.')}
+  </div>`;
+}
+
+function checklistView(c) {
+  if (!c) return `<div class="mt-4">${none('No checklists yet. Open a task and add steps to see a second tree here.')}</div>`;
+  const node = (n, depth) => `<div style="padding-left:${depth ? 14 : 0}px" class="${depth ? 'border-l border-line' : ''}">
+    <div class="flex justify-between gap-2 py-0.5"><span>${depth ? '└ ' : ''}${depth ? esc(n.title) : `<b>${esc(n.title)}</b>`}</span>
+      <span class="shrink-0 text-xs ${n.total && n.done_count === n.total ? 'text-success' : 'text-muted'}">${n.done_count}/${n.total}</span></div>
+    ${n.children.map((x) => node(x, depth + 1)).join('')}</div>`;
+  return `<div class="mt-4"><div class="mb-1.5 text-xs font-semibold">Checklist tree: ${esc(c.task)}, ${c.done} of ${c.total} done</div>
+    <div class="max-h-64 overflow-y-auto rounded-2xl bg-canvas p-3 text-sm">${node(c.tree, 0)}</div></div>`;
+}
+
+function isolatedView(list) {
+  return `<p class="mt-3 text-xs text-muted">${list.length
+    ? `No edges yet (degree 0): ${list.map(esc).join(', ')}.`
+    : 'Everyone has at least one edge: each classmate has been in a group with someone.'}</p>`;
+}
+
+function sortView(s) {
+  if (s.n < 2) return none('You need at least 2 notifications to compare sorting.');
+  const max = Math.max(s.bubble, s.selection, s.merge, 1);
+  const bar = (name, n, best) => `
+    <div>
+      <div class="flex justify-between text-sm"><span class="font-semibold">${name}</span><span>${plural(n, 'comparison')}</span></div>
+      <div class="mt-1 h-3 rounded-full bg-canvas"><div class="h-full rounded-full ${best ? 'bg-success' : 'bg-charcoal'}" style="width:${Math.max(2, (n / max) * 100)}%"></div></div>
+    </div>`;
+  const best = Math.min(s.bubble, s.selection, s.merge);
+  return `<div class="space-y-3">
+    ${bar('Bubble Sort', s.bubble, s.bubble === best)}
+    ${bar('Selection Sort', s.selection, s.selection === best)}
+    ${bar('Merge Sort', s.merge, s.merge === best)}
+  </div>
+  <p class="mt-3 text-xs text-muted">${plural(s.n, 'notification')} sorted. ${s.same ? 'All three give the same order.' : 'The orders differ.'} Merge Sort grows like n log n; the other two grow like n², so the gap widens as the history gets longer.</p>`;
+}
+
+function binaryView(b) {
+  const day = Fmt.short(b.date);
+  return `<div class="grid grid-cols-2 gap-3">
+      <div class="rounded-2xl bg-mint-tint p-4"><div class="text-3xl font-extrabold">${b.steps}</div><div class="text-xs text-muted">checks by Binary Search</div></div>
+      <div class="rounded-2xl bg-canvas p-4"><div class="text-3xl font-extrabold">${b.searched}</div><div class="text-xs text-muted">checks scanning one by one (worst case)</div></div>
+    </div>
+    <p class="mt-3 text-sm">${plural(b.found, 'task')} due by ${esc(day)}, 11:59 PM.</p>`;
+}
 
 function arrayView(a) {
   if (!a.items.length) return none('No subjects stored yet.');

@@ -8,7 +8,6 @@ const PERSON_TINTS = ['#E6E1FD', '#FCE3CF', '#E5F6EE', '#FDF3C7', '#E3EEF9', '#F
 const personTint = (id) => PERSON_TINTS[Number(id) % PERSON_TINTS.length];
 const initialsOf = (name) => esc(Fmt.initials(name));
 const avatar = (p, cls = '') => `<span class="cm-avatar ${cls}" style="background:${personTint(p.id)}" aria-hidden="true">${initialsOf(p.name)}</span>`;
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const STUDENT_ID = /^\d{4}-\d{4}$/;
 /** "Nov 18" or "Nov 23–25" for a column header. */
 const shortDue = (t) => {
@@ -30,11 +29,18 @@ const Data = {
   admin: false,
 
   async load() {
-    const [people, groups] = await Promise.all([API.get('classmates.php'), API.get('groups.php')]);
+    // "My groupmates" comes from the server's Graph: a breadth-first walk from you through your groups
+    const [people, groups, mates] = await Promise.all([
+      API.get('classmates.php'),
+      API.get('groups.php'),
+      Data.admin ? Promise.resolve(null) : API.get('classmates.php', { mates: 1 }),
+    ]);
     Data.people = people.members;
     Data.section = people.section;
     Data.me = people.me;
     Data.groups = groups;
+    Data.mates = new Set(mates ? mates.mates : []);
+    Data.matesAlgorithm = mates ? mates.algorithm : '';
     Data.index();
     return Data;
   },
@@ -70,12 +76,8 @@ const Data = {
   /** Assignments this person still has no group for. */
   missing(personId) { return Data.assignments.filter((t) => !Data.groupOf(personId, t.id)); },
 
-  /** Everyone who shares any group with me. */
-  groupmates() {
-    const ids = new Set();
-    Data.allGroups.filter((g) => g.is_member).forEach((g) => g.members.forEach((m) => m.id !== Data.me && ids.add(m.id)));
-    return ids;
-  },
+  /** Everyone who shares any group with me, as found by the server's Graph BFS (classmates.php?mates=1). */
+  groupmates() { return Data.mates || new Set(); },
 };
 
 const People = {
@@ -131,7 +133,9 @@ const People = {
     const rows = filters.find(([k]) => k === People.filter)[2];
     const cols = Data.assignments.slice(0, 3);
     const more = Data.assignments.length - cols.length;
-    $('#algo').textContent = `Using ${People.algorithm}`;
+    $('#algo').textContent = People.filter === 'mine' && Data.matesAlgorithm
+      ? `Using ${Data.matesAlgorithm}${People.q ? `, then ${People.algorithm}` : ''}`
+      : `Using ${People.algorithm}`;
 
     if (!rows.length) {
       const why = People.q
@@ -204,10 +208,32 @@ const People = {
         ? Data.assignments.map((t) => line(t.title, `${t.subject_code} · ${Fmt.due(t)}`, Data.groupOf(id, t.id))).join('')
         : '<p class="cm-sub py-3">No group assignments right now.</p>'}</div>
       ${study.length ? `<h3 class="mt-5 text-sm font-semibold">Study groups</h3><div class="mt-1">${study.map((g) => line(g.name, g.subject ? g.subject.code : 'Any subject', g)).join('')}</div>` : ''}
+      ${id !== Data.me ? '<h3 class="mt-5 text-sm font-semibold">How you’re connected</h3><div data-path class="cm-sub mt-1">Finding the shortest path…</div>' : ''}
       <button data-close class="btn btn-dark mt-6 w-full">Close</button>`, {
       label: `${p.first_name} ${p.last_name}`,
-      onMount: (el, close) => $$('[data-sheet-group]', el).forEach((b) => b.onclick = () => { close(); GroupsTab.focusGroup(Number(b.dataset.sheetGroup)); }),
+      onMount: (el, close) => {
+        $$('[data-sheet-group]', el).forEach((b) => b.onclick = () => { close(); GroupsTab.focusGroup(Number(b.dataset.sheetGroup)); });
+        if (id !== Data.me) People.showPath(id, $('[data-path]', el));
+      },
     });
+  },
+
+  /** [Graph] Shortest chain of shared groups from you to them (BFS on the server). */
+  async showPath(id, box) {
+    try {
+      const r = await API.get('classmates.php', { path_to: id });
+      if (!r.path) {
+        box.textContent = 'You haven’t been in a group with them, or with anyone they’ve grouped with.';
+        return;
+      }
+      const steps = r.path.map((s, i) => `<span class="cm-path-step ${i === 0 || i === r.path.length - 1 ? 'is-end' : ''}">${i === 0 ? 'You' : esc(s.name.split(' ')[0])}</span>`)
+        .join(icon('chevronRight', 14));
+      const hops = r.path.length - 1;
+      box.innerHTML = `${hops === 1 ? 'You’ve been in a group together.' : `Linked through ${plural(hops - 1, 'classmate')} you’ve grouped with.`}
+        <div class="cm-path">${steps}</div>`;
+    } catch {
+      box.textContent = 'Couldn’t load this right now.';
+    }
   },
 };
 

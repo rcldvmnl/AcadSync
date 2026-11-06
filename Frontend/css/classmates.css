@@ -202,6 +202,13 @@
 .cm-summary p b { font-weight: 800; }
 .cm-summary-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; background: var(--cm-lav-tint); color: var(--cm-lav-deep); }
 
+.cm-isolated { display: flex; gap: 10px; align-items: flex-start; margin-top: -8px; padding: 12px 16px; border-radius: 20px; background: var(--cm-paper); font-size: 14px; line-height: 20px; }
+.cm-isolated svg { flex: none; margin-top: 2px; color: var(--cm-muted); }
+.cm-path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.cm-path-step { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; background: var(--cm-sand); font-size: 13px; font-weight: 700; }
+.cm-path-step.is-end { background: var(--cm-ink); color: #fff; }
+.cm-path svg { color: var(--cm-muted); }
+
 /* ---------------------------------------------------------------- groups: one fold per subject */
 .cm-fold { display: grid; gap: 12px; }
 .cm-fold-head {

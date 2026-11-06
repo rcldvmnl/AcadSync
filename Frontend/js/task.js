@@ -3,14 +3,34 @@
 const taskId = new URLSearchParams(location.search).get('id');
 
 (async () => {
-  const { task: t, role } = await API.get('tasks.php', { id: taskId });
+  const { task: t, role, nav } = await API.get('tasks.php', { id: taskId });
   await Shell.init({ active: 'schedule', eyebrow: `${t.subject_code} · ${t.subject_title}`, title: 'Task Details' });
   document.title = `AcadSync · ${t.title}`;
-  $('#main').innerHTML = render(t, role === 'admin');
+  $('#main').innerHTML = render(t, role === 'admin') + navBar(nav);
+  if (t.status === 'approved') Checklist.mount($('#checklist'), t);
   $('#delete-task')?.addEventListener('click', () => confirmDelete(t));
   if ($('#done-card')) bindDoneCard(t);
   if (t.work_mode === 'group' && t.status === 'approved') loadGroups(t);
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
+
+/* ------------------------------------------------------------------ previous / next (doubly linked timeline) */
+function navBar(nav) {
+  if (!nav || (!nav.prev && !nav.next)) return '';
+  const when = (x) => (x.deadline_ts ? Fmt.monthDay(new Date(x.deadline_ts * 1000)) : 'No date yet');
+  const link = (x, dir) => (x
+    ? `<a href="task.html?id=${x.id}" class="task-step ${dir === 'next' ? 'is-next' : ''}" rel="${dir}">
+        ${dir === 'prev' ? `<span class="task-step-arrow">${icon('chevronLeft', 18)}</span>` : ''}
+        <span class="min-w-0 flex-1"><span class="block text-xs text-muted">${dir === 'prev' ? 'Previous' : 'Next'} · ${esc(when(x))}</span>
+          <span class="block truncate font-semibold">${esc(x.title)}</span></span>
+        ${dir === 'next' ? `<span class="task-step-arrow">${icon('chevronRight', 18)}</span>` : ''}
+      </a>`
+    : '<span class="hidden sm:block"></span>');
+  return `
+    <nav class="mt-6" aria-label="Other tasks by deadline">
+      <p class="mb-2 text-xs text-muted">Task ${nav.position} of ${nav.length} on the timeline, by deadline</p>
+      <div class="grid gap-3 sm:grid-cols-2">${link(nav.prev, 'prev')}${link(nav.next, 'next')}</div>
+    </nav>`;
+}
 
 /* ------------------------------------------------------------------ groups for a group task */
 async function loadGroups(t) {
@@ -143,6 +163,7 @@ function render(t, admin) {
           ${checklist.length ? `<h3 class="mt-4 text-lg font-semibold">What to prepare</h3>
             <ul class="mt-2 space-y-2">${checklist.map((c) => `<li class="flex items-center gap-3 text-[15px]"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-mint-tint text-success">${icon('check', 14)}</span>${esc(c)}</li>`).join('')}</ul>` : ''}
         </div>
+        ${t.status === 'approved' ? '<div id="checklist"></div>' : ''}
         ${t.status === 'approved' ? doneCard(t) : ''}
         ${t.work_mode === 'group' && t.status === 'approved' ? `<div id="groups">${UI.skeleton(1, 'h-40')}</div>` : ''}
         ${t.status === 'approved' ? (admin

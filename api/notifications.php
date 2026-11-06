@@ -22,11 +22,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     respond();
 }
 
-// Rows are stored oldest-first, so walking backwards gives newest-first.
+// [ALGORITHM: MERGE SORT] — newest first by time (ties: the later row first).
+// Divide-and-conquer keeps a long history fast: O(n log n) comparisons.
+$keyed = [];
+foreach ($mine as $n) {
+    $keyed[] = $n + ['sort_key' => (int) strtotime((string) $n['created_at']) * 1000000 + (int) $n['id']];
+}
+$steps = 0;
+$sorted = Algorithms::mergeSortBy($keyed, 'sort_key', true, $steps);
+
 $out = [];
 $unread = 0;
-for ($i = count($mine) - 1; $i >= 0; $i--) {
-    $n = $mine[$i];
+foreach ($sorted as $n) {
     $out[] = [
         'id' => (int) $n['id'],
         'type' => $n['type'],
@@ -40,4 +47,4 @@ for ($i = count($mine) - 1; $i >= 0; $i--) {
         $unread++;
     }
 }
-respond(['notifications' => $out, 'unread' => $unread]);
+respond(['notifications' => $out, 'unread' => $unread, 'sorted_by' => 'Merge Sort', 'steps' => $steps]);

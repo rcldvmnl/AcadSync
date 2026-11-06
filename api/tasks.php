@@ -36,12 +36,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             break;
         }
     }
+    $changed = ($want && !$row) || (!$want && $row);
     if ($want && !$row) {
         Store::insert('task_done', ['section_id' => $sectionId, 'task_id' => $taskId, 'user_id' => $uid]);
     } elseif (!$want && $row) {
         Store::delete('task_done', (int) $row['id']);
     }
-    respond(['task_id' => $taskId, 'done' => $want]);
+    if ($changed) {
+        // [DSA: STACK] — PUSH the opposite so Undo can set it back
+        undo_push($sectionId, [
+            'type' => 'done', 'task_id' => $taskId, 'done' => !$want,
+            'label' => ($want ? 'Marked “' : 'Unmarked “') . $task['title'] . '”',
+        ]);
+    }
+    respond(['task_id' => $taskId, 'done' => $want, 'undo' => $changed]);
 }
 
 if (param('history')) {
@@ -111,8 +119,17 @@ if ($task['status'] !== 'approved' && $user['role'] !== 'admin' && !$isOwner) {
     fail('This task is still waiting for admin approval.', 403);
 }
 
+// [DSA: DOUBLY LINKED LIST] — previous / next task by deadline, read from the node's prev and next
+$timeline = build_timeline($ctx['tasks'], time());
+$near = $timeline->neighbors((int) $task['id']);
+$brief = fn (?array $t) => $t ? ['id' => (int) $t['id'], 'title' => $t['title'], 'deadline_ts' => DsaUtil::deadlineTs($t)] : null;
+
 respond([
     'task' => $present($task),
     'role' => $user['role'],
     'now' => time(),
+    'nav' => $near ? [
+        'prev' => $brief($near['prev']), 'next' => $brief($near['next']),
+        'position' => $near['position'], 'length' => $timeline->length(),
+    ] : null,
 ]);

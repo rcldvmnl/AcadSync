@@ -49,6 +49,52 @@ function insert_slots(int $sectionId, int $subjectId, array $slots): void
     }
 }
 
+/**
+ * [DSA: 2D ARRAY] — clash check. Every other subject's meetings are written into a
+ * WeekGrid (6 days × 288 five-minute cells); each new meeting then reads only the cells
+ * it would cover. New meetings are written in too, so two new ones can't overlap either.
+ * Returns [{day, start, end, code, title, their_start, their_end}] — empty when nothing clashes.
+ */
+function find_clashes(array $existing, array $newSlots, array $subjectIndex, ?int $ignoreSubjectId): array
+{
+    $grid = new WeekGrid();
+    foreach ($existing as $s) {
+        if ($ignoreSubjectId === null || $s['subject_id'] !== $ignoreSubjectId) {
+            $grid->place($s['day_of_week'], $s['start_time'], $s['end_time'], $s['subject_id']);
+        }
+    }
+    $clashes = [];
+    foreach ($newSlots as $n) {
+        foreach ($grid->occupants($n['day'], $n['start'], $n['end']) as $other) {
+            $theirs = null;   // which of their meetings it hits, to name its time
+            foreach ($existing as $s) {
+                if ($s['subject_id'] === $other && $s['day_of_week'] === $n['day']
+                    && to_minutes($s['start_time']) < to_minutes($n['end']) && to_minutes($n['start']) < to_minutes($s['end_time'])) {
+                    $theirs = $s;
+                }
+            }
+            $subject = $other > 0 ? ($subjectIndex[$other] ?? null) : null;
+            $clashes[] = [
+                'day' => $n['day'], 'day_name' => DAY_NAMES[$n['day']], 'start' => $n['start'], 'end' => $n['end'],
+                'code' => $subject['code'] ?? 'This subject', 'title' => $subject['title'] ?? 'another meeting you just added',
+                'their_start' => $theirs['start_time'] ?? null, 'their_end' => $theirs['end_time'] ?? null,
+            ];
+        }
+        $grid->place($n['day'], $n['start'], $n['end'], -1);   // -1 = the subject being saved
+    }
+    return $clashes;
+}
+
+/** Stops the save with the clash list, unless the admin chose "Save anyway" (allow_clash). */
+function guard_clashes(array $clashes): void
+{
+    if ($clashes && !param('allow_clash')) {
+        $c = $clashes[0];
+        $more = count($clashes) > 1 ? ' (and ' . (count($clashes) - 1) . ' more)' : '';
+        fail("This overlaps {$c['code']} on {$c['day_name']}{$more}.", 409, ['clashes' => $clashes]);
+    }
+}
+
 /** "Mon 1:00 PM" summaries for notifications. */
 function slot_summary(array $slots): string
 {
@@ -101,6 +147,13 @@ $ctx = load_context($admin);
 $sectionId = (int) $ctx['section']['id'];
 
 switch (param('action')) {
+    case 'check_clash': {
+        // Live check while the admin edits times (nothing is saved)
+        $id = param('id') ? (int) param('id') : null;
+        $slots = clean_slots((array) param('slots', []));
+        respond(['clashes' => find_clashes(class_slots($sectionId, $ctx['subjectIndex']), $slots, $ctx['subjectIndex'], $id)]);
+    }
+
     case 'add':
     case 'update': {
         $editing = param('action') === 'update';
@@ -130,6 +183,7 @@ switch (param('action')) {
         }
 
         $slots = clean_slots((array) param('slots', []));
+        guard_clashes(find_clashes(class_slots($sectionId, $ctx['subjectIndex']), $slots, $ctx['subjectIndex'], $editing ? $id : null));
         $row = [
             'code' => $code,
             'title' => $title,
@@ -163,6 +217,8 @@ switch (param('action')) {
             fail('Subject not found.', 404);
         }
         $slots = clean_slots([['day' => param('day_of_week'), 'start' => param('start_time'), 'end' => param('end_time')]]);
+        // Here the subject's own other meetings count too, so the grid ignores no one
+        guard_clashes(find_clashes(class_slots($sectionId, $ctx['subjectIndex']), $slots, $ctx['subjectIndex'], null));
         insert_slots($sectionId, $subjectId, $slots);
         respond([], 201);
     }
