@@ -9,111 +9,15 @@ const taskId = new URLSearchParams(location.search).get('id');
   $('#main').innerHTML = render(t, role === 'admin');
   $('#delete-task')?.addEventListener('click', () => confirmDelete(t));
   if ($('#done-card')) bindDoneCard(t);
-  if (t.work_mode === 'group' && t.status === 'approved') loadGroups(t, role === 'admin');
+  if (t.work_mode === 'group' && t.status === 'approved') loadGroups(t);
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
 /* ------------------------------------------------------------------ groups for a group task */
-async function loadGroups(t, admin) {
+async function loadGroups(t) {
   const box = $('#groups');
-  let d;
-  try {
-    d = await API.get('groups.php', { task_id: t.id });
-  } catch (e) {
-    box.innerHTML = UI.errorBox(e);
-    return;
-  }
-  const me = Shell.me.user.id;
-  const total = d.groups.reduce((n, g) => n + g.members.length, 0) + d.ungrouped.length;
-  const pct = total ? Math.round(((total - d.ungrouped.length) / total) * 100) : 0;
-  box.innerHTML = `
-    <div class="rounded-[1.75rem] bg-white p-5 shadow-card">
-      <div class="flex items-center justify-between">
-        <h3 class="text-lg font-semibold">Groups</h3>
-        <span class="chip bg-canvas">${UI.groupSize(t)} per group</span>
-      </div>
-      <div class="mt-3 h-2 overflow-hidden rounded-full bg-canvas"><div class="h-full rounded-full bg-success" style="width:${pct}%"></div></div>
-      <p class="mt-1.5 text-xs text-muted">${total - d.ungrouped.length} of ${total} classmates are in a group · ${d.groups.length} group${d.groups.length === 1 ? '' : 's'}</p>
-
-      <div class="mt-4 space-y-3">
-        ${d.groups.map((g) => {
-          const full = g.max_members !== null && g.members.length >= g.max_members;
-          const under = g.min_members !== null && g.members.length < g.min_members;
-          const canManage = admin || g.created_by === me;
-          return `
-          <div class="rounded-2xl ${g.is_member ? 'bg-lavender-tint' : 'bg-canvas'} p-3">
-            <div class="flex items-center justify-between gap-2">
-              <div class="font-semibold">${esc(g.name)}${g.is_member ? ' <span class="text-xs font-medium text-lavender-dark">· your group</span>' : ''}</div>
-              <span class="chip ${under ? 'bg-sun-tint' : 'bg-white'}">${g.members.length}/${g.max_members ?? '∞'}${under ? ' · needs more' : full ? ' · full' : ''}</span>
-            </div>
-            <div class="mt-2 flex flex-wrap gap-1.5">${g.members.map((m) => `<span class="chip bg-white">${esc(m.name)}</span>`).join('')}</div>
-            <div class="mt-2 flex flex-wrap gap-2">
-              ${g.is_member ? `<button data-leave="${g.id}" class="chip bg-white px-3 py-1.5 text-xs font-semibold">Leave</button>` : ''}
-              ${!g.is_member && !d.in_group && !full ? `<button data-join="${g.id}" class="chip bg-charcoal px-3 py-1.5 text-xs font-semibold text-white">Join</button>` : ''}
-              ${canManage && !full && d.ungrouped.length ? `<button data-add="${g.id}" class="chip bg-white px-3 py-1.5 text-xs font-semibold">+ Add classmates</button>` : ''}
-            </div>
-          </div>`;
-        }).join('') || '<p class="rounded-2xl bg-canvas p-4 text-sm text-muted">No groups yet. Be the first to make one.</p>'}
-      </div>
-
-      ${!d.in_group ? `<button id="new-group" class="btn btn-dark mt-4 w-full">${icon('plus', 18)}Create a group</button>` : ''}
-
-      ${d.ungrouped.length ? `
-        <div class="mt-5">
-          <div class="text-sm font-semibold">Still without a group (${d.ungrouped.length})</div>
-          <div class="mt-2 flex flex-wrap gap-1.5">${d.ungrouped.map((m) => `<span class="chip ${m.id === me ? 'bg-sun-tint' : 'bg-canvas'}">${esc(m.name)}${m.id === me ? ' (you)' : ''}</span>`).join('')}</div>
-          ${admin ? `<button id="auto-group" class="btn btn-light mt-3 w-full border border-line">Auto-group the remaining ${d.ungrouped.length}
-            <span class="text-xs font-normal text-muted">→ ${d.plan.length} group${d.plan.length === 1 ? '' : 's'} of ${d.plan.join(', ')}</span></button>` : ''}
-        </div>` : '<p class="mt-4 rounded-2xl bg-mint-tint p-3 text-sm">Everyone has a group. 🎉</p>'}
-    </div>`;
-
-  const act = async (body, msg) => {
-    try {
-      await API.post('groups.php', body);
-      if (msg) UI.toast(msg);
-      loadGroups(t, admin);
-    } catch (e) { UI.toast(e.message, { iconName: 'alert' }); }
-  };
-  $$('[data-join]', box).forEach((b) => b.onclick = () => act({ action: 'join', group_id: Number(b.dataset.join) }, 'You joined the group'));
-  $$('[data-leave]', box).forEach((b) => b.onclick = () => act({ action: 'leave', group_id: Number(b.dataset.leave) }, 'You left the group'));
-  $$('[data-add]', box).forEach((b) => b.onclick = () => pickMembers(d, Number(b.dataset.add), t, admin));
-  $('#new-group', box)?.addEventListener('click', () => pickMembers(d, null, t, admin));
-  $('#auto-group', box)?.addEventListener('click', () => act({ action: 'auto_assign', task_id: t.id }, 'Remaining classmates were grouped'));
-}
-
-/** Sheet to create a group for this task (groupId = null) or add classmates to one. */
-function pickMembers(d, groupId, t, admin) {
-  const me = Shell.me.user.id;
-  const group = d.groups.find((g) => g.id === groupId);
-  const room = (group ? group.max_members - group.members.length : t.group_max - 1);
-  const people = d.ungrouped.filter((m) => m.id !== me);
-  UI.sheet(`
-    <form>
-      <h2 class="text-2xl font-bold">${group ? `Add to ${esc(group.name)}` : 'Create a group'}</h2>
-      <p class="mt-1 text-sm text-muted">${group ? '' : 'You’ll be in it. '}Pick up to ${room} more classmate${room === 1 ? '' : 's'} who don’t have a group yet.</p>
-      ${group ? '' : `<div class="mt-4">${UI.field({ name: 'name', label: 'Group name (optional)', placeholder: `Group ${d.groups.length + 1}` })}</div>`}
-      <div class="mt-4 max-h-64 space-y-1 overflow-y-auto">
-        ${people.map((m) => `<label class="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-canvas">
-          <input type="checkbox" name="m" value="${m.id}" class="h-5 w-5 accent-charcoal">
-          <span class="flex-1 text-sm font-medium">${esc(m.name)}</span><span class="text-xs text-muted">${esc(m.student_id)}</span></label>`).join('') || '<p class="text-sm text-muted">Everyone else already has a group.</p>'}
-      </div>
-      <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
-      <button type="submit" class="btn btn-dark mt-5 w-full">${group ? 'Add to group' : 'Create group'}</button>
-    </form>`, {
-    label: group ? 'Add classmates' : 'Create a group',
-    onMount(el, close) {
-      const form = $('form', el);
-      UI.bindForm(form, async (f) => {
-        const ids = $$('input[name=m]:checked', form).map((c) => Number(c.value));
-        if (ids.length > room) throw new Error(`You can add at most ${room}.`);
-        await API.post('groups.php', group
-          ? { action: 'add_members', group_id: group.id, member_ids: ids }
-          : { action: 'create', task_id: t.id, name: f.name, member_ids: ids });
-        close();
-        UI.toast(group ? 'Classmates added' : 'Group created');
-        loadGroups(t, admin);
-      });
-    },
-  });
+  box.className = 'rounded-[1.75rem] bg-white p-5 shadow-card';
+  await GroupWork.mount(box, t.id);
+  if (location.hash === '#groups' && !loadGroups.scrolled) { loadGroups.scrolled = true; box.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 }
 
 /** Admin: remove a published task (it is unlinked from the timeline's Linked List). */
@@ -164,6 +68,16 @@ function bindDoneCard(t) {
   });
 }
 
+/** "How to submit" — In class / Hardcopy / Softcopy / Online chips plus the details text. */
+function submitCell(t) {
+  const { modes, detail } = Submission.parse(t.location);
+  return `<div class="col-span-2 rounded-2xl bg-white p-3.5 shadow-card">
+    <div class="text-xs text-muted">How to submit</div>
+    ${modes.length ? `<div class="mt-1.5 flex flex-wrap gap-1.5">${modes.map((m) => `<span class="chip ${SUBMIT_MODES[m].chip}">${icon(SUBMIT_MODES[m].icon, 14)}${esc(m)}</span>`).join('')}</div>` : ''}
+    <div class="mt-1 text-[15px] font-medium leading-snug">${esc(detail || (modes.length ? '' : '—'))}</div>
+  </div>`;
+}
+
 function render(t, admin) {
   const unset = t.deadline_type === 'unset' || !t.deadline_ts;
   const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
@@ -193,9 +107,8 @@ function render(t, admin) {
   const info = [
     ['Subject', t.subject_code],
     ['Type', t.category],
-    ['Where', t.location || '—'],
     ['Posted by', `${posted} · ${Fmt.monthDay(t.created_at.slice(0, 10))}`],
-    ['Work', t.work_mode === 'group' ? `Group · ${UI.groupSize(t)} per group` : 'Individual'],
+    ['Work', t.work_mode === 'group' ? `Group · ${UI.groupRule(t)}` : 'Individual'],
   ];
 
   return `
@@ -217,6 +130,7 @@ function render(t, admin) {
         </div>
         <div class="grid grid-cols-2 gap-3">
           ${info.map(([k, v]) => `<div class="rounded-2xl bg-white p-3.5 shadow-card ${k === 'Work' ? 'col-span-2' : ''}"><div class="text-xs text-muted">${k}</div><div class="mt-0.5 text-[15px] font-medium leading-snug">${esc(v)}</div></div>`).join('')}
+          ${submitCell(t)}
         </div>
       </div>
 

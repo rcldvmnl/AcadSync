@@ -81,6 +81,7 @@ function present_task(array $t, array $subjectIndex, array $users): array
         'work_mode' => $t['work_mode'] ?? 'individual',
         'group_min' => isset($t['group_min']) ? (int) $t['group_min'] : null,
         'group_max' => isset($t['group_max']) ? (int) $t['group_max'] : null,
+        'group_count' => isset($t['group_count']) ? (int) $t['group_count'] : null,
         'status' => $t['status'],
         'kind' => $t['kind'],
         'target_task_id' => $t['target_task_id'] !== null ? (int) $t['target_task_id'] : null,

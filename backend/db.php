@@ -33,12 +33,30 @@ final class Store
         self::$pdo = self::open(DB_PATH);
         self::$pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
         self::$pdo->exec('PRAGMA user_version = ' . SCHEMA_VERSION);
+        self::addMissingColumns();
 
         if ($fresh) {
             require_once __DIR__ . '/seed.php';
             seed_database();
         }
         return self::$pdo;
+    }
+
+    /** Columns added after a database was first created (keeps existing data, no rebuild). */
+    private static function addMissingColumns(): void
+    {
+        $added = ['tasks' => ['group_count' => 'INTEGER']];
+        foreach ($added as $table => $cols) {
+            $have = [];
+            foreach (self::$pdo->query("PRAGMA table_info($table)")->fetchAll() as $c) {
+                $have[$c['name']] = true;
+            }
+            foreach ($cols as $name => $type) {
+                if (!isset($have[$name])) {
+                    self::$pdo->exec("ALTER TABLE $table ADD COLUMN $name $type");
+                }
+            }
+        }
     }
 
     private static function open(string $path): PDO
@@ -132,7 +150,7 @@ final class Store
     {
         static $allowed = [
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
-            'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done',
+            'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

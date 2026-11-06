@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     work_mode TEXT NOT NULL DEFAULT 'individual', -- individual | group
     group_min INTEGER,                  -- group work: smallest allowed group (e.g. 3)
     group_max INTEGER,                  -- group work: largest allowed group (e.g. 4)
+    group_count INTEGER,                -- group work: exact number of groups the prof wants (NULL = any)
     status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected | removed | withdrawn
     kind TEXT NOT NULL DEFAULT 'new',   -- new | change (edit request for target_task_id)
     target_task_id INTEGER,
@@ -127,6 +128,18 @@ CREATE TABLE IF NOT EXISTS group_members (
     user_id INTEGER NOT NULL,
     joined_at DATETIME DEFAULT (datetime('now', 'localtime')),
     UNIQUE (group_id, user_id),
+    FOREIGN KEY(group_id) REFERENCES study_groups(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- 7c. GROUP_REQUESTS — "can I join your group?" Any member of the group can accept or decline.
+CREATE TABLE IF NOT EXISTS group_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    group_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,           -- who wants to join
+    status TEXT NOT NULL DEFAULT 'pending', -- pending | accepted | declined | cancelled
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY(group_id) REFERENCES study_groups(id),
     FOREIGN KEY(user_id) REFERENCES users(id)
 );

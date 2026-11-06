@@ -98,12 +98,17 @@ function task_fields(array $ctx, ?array $base): array
 
     // Individual or group work (group size can be a range, e.g. 3–4)
     $mode = (string) param('work_mode', $base['work_mode'] ?? 'individual');
-    $min = $max = null;
+    $min = $max = $count = null;
     if ($mode === 'group') {
         $min = (int) param('group_min', $base['group_min'] ?? 0);
         $max = (int) param('group_max', $base['group_max'] ?? $min);
         if ($min < 2 || $max < $min || $max > 20) {
             fail('Group size: at least 2 per group, and the maximum can’t be below the minimum (up to 20).');
+        }
+        // Optional exact number of groups (e.g. the prof says “make 5 groups”)
+        $count = (int) (array_key_exists('group_count', input()) ? param('group_count') : ($base['group_count'] ?? 0)) ?: null;
+        if ($count !== null && ($count < 1 || $count > 50)) {
+            fail('Number of groups must be between 1 and 50.');
         }
     } else {
         $mode = 'individual';
@@ -127,6 +132,7 @@ function task_fields(array $ctx, ?array $base): array
         'work_mode' => $mode,
         'group_min' => $min,
         'group_max' => $max,
+        'group_count' => $count,
     ];
 }
 

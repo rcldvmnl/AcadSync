@@ -15,7 +15,8 @@ const OTHER_SUGGESTIONS = ['Seatwork', 'Recitation', 'Laboratory', 'Film viewing
 let picker, times, mode, task = null, sectionSize = 0;
 let category = 'Reporting';
 let otherLabel = '';
-let work = { mode: 'individual', min: 3, max: 4 };
+let work = { mode: 'individual', min: 3, max: 4, count: 0 };   // count 0 = any number of groups
+let submit = { modes: [], detail: '' };   // how the task is passed (see SUBMIT_MODES in ui.js)
 
 (async () => {
   const me = await API.get('auth.php');
@@ -80,7 +81,7 @@ function limitNotice(mine) {
   return `<div class="flex items-center gap-3 rounded-[1.5rem] ${full ? 'bg-danger-tint' : 'bg-white shadow-card'} p-4">
     <div class="flex gap-1">${Array.from({ length: mine.limit }, (_, i) => `<span class="h-2.5 w-6 rounded-full ${i < mine.pending ? 'bg-charcoal' : 'bg-line'}"></span>`).join('')}</div>
     <div class="flex-1 text-sm"><b>${mine.pending} of ${mine.limit}</b> requests waiting
-      ${full ? '<div class="text-xs">Edit or withdraw one in <a href="account.html#requests" class="font-semibold underline">My requests</a>, or wait for the admin.</div>' : ''}</div>
+      ${full ? '<div class="text-xs">Edit or withdraw one in <a href="my-tasks.html#pending" class="font-semibold underline">My tasks</a>, or wait for the admin.</div>' : ''}</div>
   </div>`;
 }
 
@@ -89,7 +90,8 @@ function render(subjects, markers, mine) {
   if (task) {
     if (CATEGORIES.includes(task.category)) category = task.category;
     else { category = 'Other'; otherLabel = task.category; }
-    if (task.work_mode === 'group') work = { mode: 'group', min: task.group_min, max: task.group_max };
+    if (task.work_mode === 'group') work = { mode: 'group', min: task.group_min, max: task.group_max, count: task.group_count || 0 };
+    submit = Submission.parse(task.location);
   }
   const full = mine && mine.pending >= mine.limit && mode !== 'fix';
   const nowLabel = task ? (task.deadline_ts ? `Now: ${Fmt.monthDay(task.deadline_end || task.deadline)}${task.deadline_time ? ` · ${Fmt.time(task.deadline_time)}` : ''}` : 'Now: not set') : '';
@@ -129,8 +131,13 @@ function render(subjects, markers, mine) {
             <span class="field"><input name="title" maxlength="120" placeholder="e.g. Reporting — Chapter 3" value="${esc(task?.title || '')}" required></span></label>
           <label class="block"><span class="mb-1.5 block text-xs text-muted">Description ${mode === 'change' ? '· add details or what should change' : ''}</span>
             <span class="field area"><textarea name="description" rows="5" maxlength="2000" placeholder="Add instructions or notes… Start a line with “- ” to add a checklist item.">${esc(task?.description || '')}</textarea></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Where</span>
-            <span class="field">${icon('mapPin', 18)}<input name="location" placeholder="In class · Room 204" value="${esc(task?.location || '')}"></span></label>
+          <div>
+            <div class="mb-1.5 text-xs text-muted">How to submit <span class="text-subtle">· pick one or more</span></div>
+            <div class="grid grid-cols-3 gap-2" id="submit-modes" role="group" aria-label="How to submit"></div>
+            <label class="mt-2 block"><span class="sr-only">Submission details</span>
+              <span class="field"><span id="submit-icon">${icon('mapPin', 18)}</span><input name="location" list="submit-suggestions" maxlength="120" value="${esc(submit.detail)}"></span>
+              <datalist id="submit-suggestions"></datalist></label>
+          </div>
           <div id="dupes" aria-live="polite"></div>
         </div>
         <p data-error class="rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
@@ -143,6 +150,7 @@ function render(subjects, markers, mine) {
 
   renderCats();
   renderWork();
+  renderSubmit();
   picker = createDatePicker($('#picker'), {
     type: task?.deadline_type || 'exact',
     start: task?.deadline || null,
@@ -176,10 +184,11 @@ function render(subjects, markers, mine) {
       category: cat,
       title: d.title,
       description: d.description,
-      location: d.location,
+      location: Submission.format(submit.modes, d.location),
       work_mode: work.mode,
       group_min: work.mode === 'group' ? work.min : null,
       group_max: work.mode === 'group' ? work.max : null,
+      group_count: work.mode === 'group' ? (work.count || null) : null,
       deadline_type: when.type,
       deadline: when.start,
       deadline_end: when.type === 'range' ? when.end : null,
@@ -192,7 +201,7 @@ function render(subjects, markers, mine) {
       return;
     }
     if (mode === 'fix') {
-      location.href = 'account.html#requests';
+      location.href = 'my-tasks.html#pending';
       return;
     }
     UI.sheet(`
@@ -201,8 +210,28 @@ function render(subjects, markers, mine) {
       <p class="mt-2 text-sm text-muted">It’s <b class="text-charcoal">#${res.queue_position}</b> in the approval queue. Your admin reviews requests in the order they arrive.</p>
       <p class="mt-2 text-xs text-muted">You now have ${res.pending} of ${res.limit} requests waiting.</p>
       ${res.similar?.length ? `<p class="mt-3 rounded-2xl bg-sun-tint px-4 py-3 text-xs">Heads-up: it looks similar to “${esc(res.similar[0].task.title)}”.</p>` : ''}
-      <a href="account.html#requests" class="btn btn-dark mt-6 w-full">See my requests</a>
+      <a href="my-tasks.html#pending" class="btn btn-dark mt-6 w-full">See my requests</a>
       <a href="schedule.html" class="mt-3 block py-2 text-center text-sm font-semibold">Back to schedule</a>`, { label: 'Request sent' });
+  });
+}
+
+/** In class / Hardcopy / Softcopy / Online — toggle chips; the details box hint follows the last pick. */
+function renderSubmit() {
+  $('#submit-modes').innerHTML = Object.entries(SUBMIT_MODES).map(([k, m]) => {
+    const on = submit.modes.includes(k);
+    return `<button type="button" data-submit="${k}" aria-pressed="${on}" class="flex items-center justify-center gap-1.5 rounded-full px-3 py-2.5 text-sm font-medium transition ${on ? 'bg-charcoal text-white' : 'bg-canvas'}">${icon(on ? 'check' : m.icon, 16)}${k}</button>`;
+  }).join('');
+  const last = submit.modes[submit.modes.length - 1];
+  const input = $('#task-form').elements.location;
+  input.placeholder = last ? SUBMIT_MODES[last].hint : 'Details, e.g. Room 204 or Google Classroom';
+  $('#submit-icon').innerHTML = icon(last ? SUBMIT_MODES[last].icon : 'mapPin', 18);
+  $('#submit-suggestions').innerHTML = submit.modes.includes('Softcopy / Online')
+    ? ONLINE_SUGGESTIONS.map((o) => `<option>${o}</option>`).join('') : '';
+  $$('[data-submit]').forEach((b) => b.onclick = () => {
+    const k = b.dataset.submit;
+    submit.modes = submit.modes.includes(k) ? submit.modes.filter((x) => x !== k) : [...submit.modes, k];
+    submit.modes.sort((a, z) => Object.keys(SUBMIT_MODES).indexOf(a) - Object.keys(SUBMIT_MODES).indexOf(z));
+    renderSubmit();
   });
 }
 
@@ -216,10 +245,11 @@ function renderCats() {
   });
 }
 
-/** Mirrors Algorithms::planGroupSizes on the server: fewest groups within max, spread evenly. */
-function planGroups(n, min, max) {
+/** Mirrors Algorithms::planGroupSizes: the prof's exact count if given, else the fewest groups; leftovers become +1s. */
+function planGroups(n, min, max, count = 0) {
   if (n <= 0) return [];
-  const g = Math.ceil(n / max);
+  let g = count || Math.ceil(n / max);
+  if (!count && Math.floor(n / g) < min) g = Math.max(1, Math.floor(n / min));
   const base = Math.floor(n / g);
   return Array.from({ length: g }, (_, i) => base + (i < n % g ? 1 : 0));
 }
@@ -240,17 +270,34 @@ function renderWork() {
         <button type="button" data-step="${key}" data-d="1" class="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" aria-label="More">+</button>
       </div>
     </div>`;
-  const sizes = planGroups(sectionSize, work.min, work.max);
+  const sizes = planGroups(sectionSize, work.min, work.max, work.count);
   const small = sizes.filter((s) => s < work.min).length;
+  const plusOne = sizes.filter((s) => s === work.max + 1).length;
+  const tooBig = sizes.filter((s) => s > work.max + 1).length;
   const summary = {};
   sizes.forEach((s) => { summary[s] = (summary[s] || 0) + 1; });
   box.innerHTML = `
-    <div class="mb-1.5 text-xs text-muted">Members per group (a range is fine when the class doesn’t divide evenly)</div>
+    <div class="mb-1.5 text-xs text-muted">Members per group (same number twice = strict size, e.g. 3 to 3)</div>
     <div class="flex items-center gap-2">${stepper('min', 'At least')}<span class="text-muted">to</span>${stepper('max', 'At most')}</div>
-    <p class="mt-2 rounded-2xl bg-lavender-tint px-3 py-2 text-xs">
-      ${sectionSize} members → about <b>${sizes.length} groups</b>
+    <div class="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-canvas p-3">
+      <div class="min-w-0"><div class="text-[11px] text-muted">Number of groups</div>
+        <div class="text-xs text-muted">Set it if the prof said “make 5 groups”</div></div>
+      <div class="flex shrink-0 items-center gap-2">
+        <button type="button" data-count="-1" class="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" aria-label="Fewer groups">−</button>
+        <span class="min-w-[2.75rem] text-center text-xl font-bold" aria-live="polite">${work.count || 'Any'}</span>
+        <button type="button" data-count="1" class="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" aria-label="More groups">+</button>
+      </div>
+    </div>
+    <p class="mt-2 rounded-2xl ${tooBig ? 'bg-danger-tint' : 'bg-lavender-tint'} px-3 py-2 text-xs">
+      ${sectionSize} members → ${work.count ? 'exactly' : 'about'} <b>${sizes.length} group${sizes.length === 1 ? '' : 's'}</b>
       (${Object.entries(summary).sort((a, b) => b[0] - a[0]).map(([s, n]) => `${n} of ${s}`).join(', ')})${small ? ` · ${small} group${small === 1 ? '' : 's'} would be under ${work.min}` : ''}
+      ${plusOne && !tooBig ? `<br>Not enough classmates left for another group, so ${plusOne} group${plusOne === 1 ? '' : 's'} get${plusOne === 1 ? 's' : ''} <b>1 extra member</b>.` : ''}
+      ${tooBig ? '<br>Too few groups for this class: some would need more than 1 extra member. Add groups or allow bigger groups.' : ''}
     </p>`;
+  $$('[data-count]', box).forEach((b) => b.onclick = () => {
+    work.count = Math.min(50, Math.max(0, work.count + Number(b.dataset.count)));
+    renderWork();
+  });
   $$('[data-step]', box).forEach((b) => b.onclick = () => {
     const key = b.dataset.step;
     work[key] = Math.min(20, Math.max(2, work[key] + Number(b.dataset.d)));

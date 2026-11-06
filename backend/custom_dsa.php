@@ -942,20 +942,31 @@ final class Algorithms
     }
 
     /**
-     * Group-size planner for group work with a size RANGE (e.g. 3–4 per group).
-     * Class sizes rarely divide evenly (size % group != 0), so:
-     *   g = ceil(n / max)   -> the fewest groups that never exceed max
-     * then spread the students evenly: (n % g) groups get one extra member.
-     * Even spreading makes the smallest group as big as possible; if it is
-     * still below min (e.g. 5 students, 3–4 each -> [3, 2]) the caller warns.
-     * Example: 10 students, 3–4 per group -> g = 3 -> sizes [4, 3, 3].
+     * Group-size planner for group work with a size RANGE (e.g. 3–4 per group),
+     * optionally with an exact number of groups ("make 5 groups").
+     *   - count given:  g = count
+     *   - otherwise:    g = ceil(n / max), the fewest groups that never exceed max;
+     *                   if that would leave groups under min (e.g. strict 3 and
+     *                   4 students -> [2, 2]) use fewer groups, g = floor(n / min).
+     * Students are then spread evenly; (n % g) groups get one extra member. When
+     * there aren't enough people left for another proper group, that extra is
+     * the "+1" a group may take above max.
+     * Examples: 10 students, 3–4 -> [4, 3, 3];  17 students, exactly 3 -> [4, 4, 3, 3, 3];
+     *           17 students, 3 each, 5 groups -> [4, 4, 3, 3, 3].
      */
-    public static function planGroupSizes(int $n, int $min, int $max): array
+    public static function planGroupSizes(int $n, int $min, int $max, ?int $count = null): array
     {
         if ($n <= 0) {
             return [];
         }
-        $g = intdiv($n + $max - 1, $max);      // ceil(n / max)
+        if ($count !== null && $count > 0) {
+            $g = $count;
+        } else {
+            $g = intdiv($n + $max - 1, $max);      // ceil(n / max)
+            if (intdiv($n, $g) < $min) {
+                $g = max(1, intdiv($n, $min));      // fewer, fuller groups; leftovers become +1s
+            }
+        }
         $base = intdiv($n, $g);
         $extra = $n % $g;
         $sizes = [];

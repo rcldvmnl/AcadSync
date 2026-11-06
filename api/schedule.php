@@ -22,8 +22,16 @@ $byUrgency = Algorithms::bubbleSortByUrgency($active, $now);
 
 // Tasks this user marked as done stay on the schedule, flagged with `done`
 $done = done_map((int) $user['id'], (int) $ctx['section']['id']);
+// Group tasks: which group (if any) this user is in, so cards can say "Your group" / "Needs a group"
+$myGroupForTask = [];
+foreach (load_groups((int) $ctx['section']['id']) as $g) {
+    if ($g['task_id'] !== null && in_array((int) $user['id'], $g['members'], true)) {
+        $myGroupForTask[(int) $g['task_id']] = $g['name'];
+    }
+}
 $present = fn (array $t) => present_task($t, $ctx['subjectIndex'], $ctx['users'])
-    + ['done' => isset($done[(int) $t['id']]), 'done_at' => $done[(int) $t['id']] ?? null];
+    + ['done' => isset($done[(int) $t['id']]), 'done_at' => $done[(int) $t['id']] ?? null,
+       'my_group' => $myGroupForTask[(int) $t['id']] ?? null];
 
 // Week grid (Mon–Sat) for the requested week
 $anchor = strtotime((string) param('week', date('Y-m-d', $now))) ?: $now;

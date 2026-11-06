@@ -3,6 +3,10 @@
 const ICON_PATHS = {
   home: '<path d="M3 10.2 12 3l9 7.2V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
   calendar: '<rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/>',
+  groups: '<circle cx="12" cy="8" r="3"/><path d="M6.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="5" cy="10" r="2.25"/><path d="M1.5 19a3.75 3.75 0 0 1 4.5-3.6"/><circle cx="19" cy="10" r="2.25"/><path d="M22.5 19a3.75 3.75 0 0 0-4.5-3.6"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  laptop: '<rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 20h20"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
@@ -134,6 +138,34 @@ const TONES = {
 const tone = (c) => TONES[c] || TONES.lavender;
 const CATEGORY_CHIP = { Reporting: 'bg-lavender-tint', Quiz: 'bg-peach-tint', Exam: 'bg-peach-tint', Activity: 'bg-mint-tint', Project: 'bg-sun-tint' };
 
+/*
+ * How a task is passed. Stored in the task's `location` text as
+ * "Hardcopy + Softcopy · Room 204 / email prof" so no database change is needed.
+ */
+const SUBMIT_MODES = {
+  'In class': { icon: 'mapPin', hint: 'e.g. Room 204', chip: 'bg-lavender-tint' },
+  Hardcopy: { icon: 'file', hint: 'e.g. Pass to the instructor’s table · Room 204', chip: 'bg-sun-tint' },
+  'Softcopy / Online': { icon: 'laptop', hint: 'e.g. Google Classroom, or PDF to prof@lspu.edu.ph', chip: 'bg-mint-tint' },
+};
+/** Older saved names that now mean the combined option. */
+const SUBMIT_ALIASES = { Softcopy: 'Softcopy / Online', Online: 'Softcopy / Online' };
+const ONLINE_SUGGESTIONS = ['Google Classroom', 'MS Teams', 'Google Drive', 'Messenger group chat', 'Email', 'Canvas'];
+const Submission = {
+  /** "Softcopy / Online · Google Classroom" -> { modes: ['Softcopy / Online'], detail: 'Google Classroom' } (old free text -> detail only). */
+  parse(text) {
+    const s = String(text || '').trim();
+    const cut = s.indexOf(' · ');
+    const head = cut === -1 ? s : s.slice(0, cut);
+    const parts = head.split(' + ').map((p) => SUBMIT_ALIASES[p.trim()] || p.trim());
+    if (head && parts.every((p) => SUBMIT_MODES[p])) return { modes: [...new Set(parts)], detail: cut === -1 ? '' : s.slice(cut + 3).trim() };
+    return { modes: [], detail: s };
+  },
+  format(modes, detail) {
+    const d = String(detail || '').trim();
+    return [modes.join(' + '), d].filter(Boolean).join(' · ');
+  },
+};
+
 /* ------------------------------------------------------------------ pieces */
 const UI = {
   icon, esc,
@@ -142,6 +174,19 @@ const UI = {
 
   /** "Group · 3–4" badge for group work (nothing for individual tasks). */
   groupSize(t) { return t.group_min === t.group_max ? `${t.group_min}` : `${t.group_min}–${t.group_max}`; },
+  /** "3 per group · 5 groups" — includes the prof's exact number of groups when set. */
+  groupRule(t) { return `${UI.groupSize(t)} per group${t.group_count ? ` · ${t.group_count} group${t.group_count === 1 ? '' : 's'}` : ''}`; },
+  /** Spots a group really has: its max, or max + 1 when leftovers may join as an extra. */
+  groupCap(g) { return g.capacity ?? g.max_members; },
+  /** Size label: "2/3", "3/3 · full", "3/3 · +1 ok" (a leftover may still join), "4/3 · +1 extra". */
+  groupBadge(g) {
+    const n = g.members.length;
+    if (g.max_members === null) return `${n}`;
+    const label = `${n}/${g.max_members}`;
+    if (n > g.max_members) return `${label} · +1 extra`;
+    if (n >= UI.groupCap(g)) return `${label} · full`;
+    return UI.groupCap(g) > g.max_members ? `${label} · +1 ok` : label;
+  },
   workBadge(t) {
     return t.work_mode === 'group'
       ? `<span class="chip gap-1 bg-charcoal px-2 text-white">${icon('users', 12)}Group · ${UI.groupSize(t)}</span>`
@@ -156,29 +201,46 @@ const UI = {
   taskCard(t, { compact = false, toggle = false } = {}) {
     const d = t.deadline_ts ? new Date(t.deadline_ts * 1000) : null;
     const done = !!t.done;
+    const group = t.work_mode === 'group';
+    const badgeBg = done ? 'bg-mint-tint' : group ? 'bg-charcoal text-white' : 'bg-lavender-tint';
     const body = `
-        <div class="grid h-14 w-12 shrink-0 place-items-center rounded-2xl ${done ? 'bg-mint-tint' : 'bg-lavender-tint'} text-center leading-none">
-          ${d ? `<div><div class="text-xl font-bold">${String(d.getDate()).padStart(2, '0')}</div><div class="mt-1 text-[10px] font-semibold uppercase text-muted">${MONTHS[d.getMonth()]}</div></div>`
-              : '<div class="text-xs font-bold text-muted">TBA</div>'}
+        <div class="relative grid h-14 w-12 shrink-0 place-items-center rounded-2xl ${badgeBg} text-center leading-none">
+          ${d ? `<div><div class="text-xl font-bold">${String(d.getDate()).padStart(2, '0')}</div><div class="mt-1 text-[10px] font-semibold uppercase ${group && !done ? 'text-white/70' : 'text-muted'}">${MONTHS[d.getMonth()]}</div></div>`
+              : `<div class="text-xs font-bold ${group && !done ? 'text-white/70' : 'text-muted'}">TBA</div>`}
+          ${group ? `<span class="absolute -bottom-1.5 -right-1.5 grid h-6 w-6 place-items-center rounded-full bg-sun text-charcoal ring-2 ring-white">${icon('users', 12)}</span>` : ''}
         </div>
         <div class="min-w-0 flex-1">
           <div class="truncate font-semibold ${done ? 'text-muted line-through decoration-1' : ''}">${esc(t.title)}</div>
-          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">${done ? UI.chip('Done', 'bg-mint-tint text-success') : ''}${UI.chip(t.category, CATEGORY_CHIP[t.category] || 'bg-canvas')}${UI.workBadge(t)}<span class="text-xs text-muted">${esc(t.subject_code)}</span></div>
+          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">${done ? UI.chip('Done', 'bg-mint-tint text-success') : ''}${UI.chip(t.category, CATEGORY_CHIP[t.category] || 'bg-canvas')}<span class="text-xs text-muted">${esc(t.subject_code)}</span></div>
           <div class="mt-1.5 truncate text-xs text-muted">${esc(Fmt.due(t))}</div>
         </div>`;
-    const shell = `rounded-3xl bg-white shadow-card transition ${compact ? 'lg:bg-canvas lg:shadow-none' : ''} ${done ? 'opacity-75' : ''}`;
+    // Group work gets a strip across the top: size + whether you already have a group
+    const strip = group ? `
+        <a href="classmates.html#groups&task=${t.id}" class="flex items-center gap-2 rounded-t-3xl bg-sun-tint px-4 py-2 text-xs">
+          ${icon('users', 14)}<span class="font-bold uppercase tracking-wide">Group work</span><span class="text-muted">· ${UI.groupRule(t)}</span>
+          <span class="ml-auto">${t.my_group
+            ? `<span class="chip bg-white px-2 py-0.5 text-[11px] font-semibold text-success">${icon('check', 11)}${esc(t.my_group)}</span>`
+            : t.my_group === null && !done ? '<span class="chip bg-charcoal px-2 py-0.5 text-[11px] font-semibold text-white">Needs a group</span>' : ''}</span>
+        </a>` : '';
+    const shell = `rounded-3xl bg-white shadow-card transition ${compact ? 'lg:bg-canvas lg:shadow-none' : ''} ${done ? 'opacity-75' : ''} ${group ? 'ring-1 ring-sun' : ''}`;
     if (toggle) {
       return `
-      <div class="flex items-center gap-2 pr-3 ${shell}">
-        <a href="task.html?id=${t.id}" class="flex min-w-0 flex-1 items-center gap-3 p-4 pr-1">${body}</a>
-        ${UI.doneButton(t)}
+      <div class="${shell}">
+        ${strip}
+        <div class="flex items-center gap-2 pr-3">
+          <a href="task.html?id=${t.id}" class="flex min-w-0 flex-1 items-center gap-3 p-4 pr-1">${body}</a>
+          ${UI.doneButton(t)}
+        </div>
       </div>`;
     }
     return `
-      <a href="task.html?id=${t.id}" class="group flex items-center gap-3 p-4 hover:-translate-y-0.5 ${shell}">
-        ${body}
-        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full ${done ? 'bg-success' : 'bg-charcoal'} text-white">${icon(done ? 'check' : 'arrowRight', 18)}</span>
-      </a>`;
+      <div class="hover:-translate-y-0.5 ${shell}">
+        ${strip}
+        <a href="task.html?id=${t.id}" class="group flex items-center gap-3 p-4">
+          ${body}
+          <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full ${done ? 'bg-success' : 'bg-charcoal'} text-white">${icon(done ? 'check' : 'arrowRight', 18)}</span>
+        </a>
+      </div>`;
   },
 
   /** Round check button that marks a task as done / not done (wire with UI.bindDone). */
@@ -346,8 +408,10 @@ const Shell = {
       ? [
           { key: 'home', href: 'home.html', icon: 'home', label: 'Home' },
           { key: 'schedule', href: 'schedule.html', icon: 'calendar', label: 'Schedule' },
-          { key: 'add', href: 'task-form.html', icon: 'plus', label: 'Add task', fab: true },
           { key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true },
+          { key: 'add', href: 'task-form.html', icon: 'plus', label: 'Add task', fab: true },
+          { key: 'classmates', href: 'classmates.html', icon: 'users', label: 'Members' },
+          { key: 'groups', href: 'classmates.html#groups', icon: 'groups', label: 'Groups' },
           { key: 'account', href: 'account.html', icon: 'user', label: 'My account' },
         ]
       : [
@@ -414,14 +478,21 @@ const Shell = {
 
   renderNav(active, role, queueCount) {
     const items = Shell.navItems(role);
+    // Classmates page opened on its Groups tab (e.g. coming back from My account): highlight Groups, not Members
+    if (active === 'classmates' && location.hash.startsWith('#groups') && items.some((it) => it.key === 'groups')) active = 'groups';
     const badge = (it) => (it.badge && queueCount ? `<span class="nav-badge">${queueCount}</span>` : '');
 
     const mobile = document.createElement('nav');
     mobile.setAttribute('aria-label', 'Main');
-    mobile.className = 'nav-pill fixed inset-x-4 bottom-4 z-40 mx-auto flex h-16 max-w-[22.5rem] items-center justify-between rounded-full px-2 lg:hidden';
-    mobile.innerHTML = items.map((it) => it.fab
-      ? `<a href="${it.href}" class="nav-fab" aria-label="${it.label}">${icon('plus', 22)}</a>`
-      : `<a href="${it.href}" class="nav-item ${active === it.key ? 'active' : ''}" aria-label="${it.label}" ${active === it.key ? 'aria-current="page"' : ''}>${icon(it.icon, 20)}${badge(it)}</a>`).join('');
+    // Left side | + | right side — both sides take equal width so the + stays centred
+    // no matter how many items each side has (students 2|2, admins 2|3).
+    mobile.className = 'nav-pill fixed inset-x-4 bottom-4 z-40 mx-auto flex h-16 max-w-[24rem] items-center rounded-full px-1.5 lg:hidden';
+    const fabAt = items.findIndex((it) => it.fab);
+    const link = (it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${active === it.key ? 'active' : ''}" aria-label="${it.label}" ${active === it.key ? 'aria-current="page"' : ''}>${icon(it.icon, 20)}${badge(it)}</a>`;
+    const side = (list) => `<div class="flex min-w-0 flex-1 items-center justify-evenly">${list.map(link).join('')}</div>`;
+    mobile.innerHTML = `${side(items.slice(0, fabAt))}
+      <a href="${items[fabAt].href}" class="nav-fab mx-1 shrink-0" aria-label="${items[fabAt].label}">${icon('plus', 22)}</a>
+      ${side(items.slice(fabAt + 1))}`;
 
     const rail = document.createElement('nav');
     rail.setAttribute('aria-label', 'Main');
@@ -432,7 +503,7 @@ const Shell = {
     rail.innerHTML = `
       <a href="home.html" class="mb-8 grid h-11 w-11 place-items-center rounded-xl bg-lavender text-sm font-bold text-charcoal" aria-label="AcadSync home">AS</a>
       <div class="flex flex-col items-center gap-3">
-        ${railItems.map((it) => `<a href="${it.href}" class="nav-item ${active === it.key ? 'active' : ''}" title="${it.label}" aria-label="${it.label}">${icon(it.icon, 20)}${badge(it)}</a>`).join('')}
+        ${railItems.map((it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${active === it.key ? 'active' : ''}" title="${it.label}" aria-label="${it.label}">${icon(it.icon, 20)}${badge(it)}</a>`).join('')}
         <a href="${fab.href}" class="nav-fab mt-1" title="${fab.label}" aria-label="${fab.label}">${icon('plus', 22)}</a>
       </div>
       <button type="button" data-open-account class="mt-auto grid h-12 w-12 place-items-center rounded-full ${active === 'account' ? 'bg-sun' : 'bg-peach'} text-charcoal" title="${acct.label}" aria-label="${acct.label}">${icon('user', 20)}</button>`;

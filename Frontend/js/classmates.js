@@ -61,10 +61,8 @@ function groupTone(name) {
 function renderGroups() {
   const chips = [['', 'All'], ...state.data.groups.map((g) => [g, g])];
   $('#groups').innerHTML = `
-    <button id="new-group" class="chip shrink-0 bg-charcoal px-3.5 py-2 text-sm text-white">+ New group</button>
     ${chips.map(([v, l]) => `<button data-group="${esc(v)}" aria-pressed="${state.group === v}" class="chip shrink-0 px-3.5 py-2 text-sm ${state.group === v ? 'bg-charcoal text-white' : v ? groupTone(v) : 'bg-white'}">${esc(l)}</button>`).join('')}`;
   $$('[data-group]').forEach((b) => b.onclick = () => { state.group = b.dataset.group; load(); });
-  $('#new-group')?.addEventListener('click', () => GroupsTab.openCreate());
 }
 
 function renderList() {

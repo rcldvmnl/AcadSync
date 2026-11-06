@@ -53,6 +53,7 @@ if ($action === 'approve') {
             'work_mode' => $task['work_mode'],
             'group_min' => $task['group_min'],
             'group_max' => $task['group_max'],
+            'group_count' => $task['group_count'] ?? null,
             'category' => $task['category'],
             'title' => $task['title'],
             'description' => $task['description'],

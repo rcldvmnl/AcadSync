@@ -68,7 +68,160 @@ function next_group_name(array $groups, int $taskId): string
     return "Group $n";
 }
 
-$present = fn (array $g) => present_group($g, $ctx['users'], $ctx['subjectIndex'], $ctx['taskIndex'], $uid);
+/**
+ * Group rules for one group task.
+ *   can_create: false once the prof's exact number of groups exists
+ *   overflow:   the classmates still without a group can't make another proper
+ *               group (too few, or the group limit is reached) and the open
+ *               spots can't hold them all -> every group may take ONE extra member
+ */
+function task_rules(array $task, array $groups, int $memberCount): array
+{
+    $min = (int) $task['group_min'];
+    $max = (int) $task['group_max'];
+    $count = isset($task['group_count']) && $task['group_count'] !== null ? (int) $task['group_count'] : null;
+    $formed = 0;
+    $grouped = 0;
+    $open = 0;
+    foreach ($groups as $g) {
+        if ((int) $g['task_id'] === (int) $task['id']) {
+            $formed++;
+            $grouped += count($g['members']);
+            $open += max(0, $max - count($g['members']));
+        }
+    }
+    $left = max(0, $memberCount - $grouped);
+    if ($count !== null) {
+        $groupsLeft = max(0, $count - $formed);
+        $overflow = $left > $open + $groupsLeft * $max;
+    } else {
+        $groupsLeft = null;
+        $overflow = $left < $min && $left > $open;   // not enough people for one more group
+    }
+    return [
+        'min' => $min, 'max' => $max, 'count' => $count, 'formed' => $formed,
+        'groups_left' => $groupsLeft, 'ungrouped' => $left, 'open_spots' => $open,
+        'can_create' => $count === null || $formed < $count,
+        'overflow' => $left > 0 && $overflow,
+    ];
+}
+
+/** Rules per task id, worked out once per request. */
+$rulesFor = function (int $taskId) use ($ctx, $groups) {
+    static $cache = [];
+    $task = $ctx['taskIndex'][$taskId] ?? null;
+    if (!$task) {
+        return null;
+    }
+    return $cache[$taskId] ??= task_rules($task, $groups, count($ctx['members']));
+};
+
+/** How many members a group can hold right now (max, or max + 1 for leftovers). */
+$capacity = function (array $g) use ($rulesFor): ?int {
+    if ($g['max_members'] === null) {
+        return null;
+    }
+    $rules = $g['task_id'] ? $rulesFor((int) $g['task_id']) : null;
+    return (int) $g['max_members'] + ($rules && $rules['overflow'] ? 1 : 0);
+};
+$isFull = fn (array $g) => $capacity($g) !== null && count($g['members']) >= $capacity($g);
+
+/**
+ * Auto-group plan for one task. $sizes = current sizes of the task's groups, $u = students left.
+ *   1. top up groups below the minimum
+ *   2. new groups: up to the prof's exact count, or as many proper groups as the rest can make
+ *   3. leftovers fill open spots, then each group may take ONE extra member (+1)
+ * Returns add[i] (people added to existing group i), new (sizes of new groups), left (still ungrouped).
+ */
+function auto_plan(array $sizes, int $u, int $min, int $max, ?int $count): array
+{
+    $n = count($sizes);
+    $add = array_fill(0, $n, 0);
+    foreach ($sizes as $i => $s) {
+        while ($sizes[$i] < $min && $u > 0) {
+            $sizes[$i]++;
+            $add[$i]++;
+            $u--;
+        }
+    }
+    $new = [];
+    if ($count !== null) {
+        $k = max(0, $count - $n);
+        $take = min($u, $k * $max);
+        if ($take > 0) {
+            $new = Algorithms::planGroupSizes($take, $min, $max, min($k, $take));
+            $u -= $take;
+        }
+    } elseif ($u >= $min) {
+        $new = Algorithms::planGroupSizes($u, $min, $max);
+        $u = 0;
+    }
+    $all = array_merge($sizes, $new);
+    foreach ([$max, $max + 1] as $cap) {          // open spots first, then the +1
+        while ($u > 0) {
+            $best = -1;
+            foreach ($all as $i => $s) {
+                if ($s < $cap && ($best < 0 || $s < $all[$best])) {
+                    $best = $i;
+                }
+            }
+            if ($best < 0) {
+                break;
+            }
+            $all[$best]++;
+            if ($best < $n) {
+                $add[$best]++;
+            }
+            $u--;
+        }
+    }
+    return ['add' => $add, 'new' => array_slice($all, $n), 'left' => $u, 'joins_existing' => array_sum($add)];
+}
+
+/** Pending join requests, grouped by group id. */
+$pendingByGroup = [];
+foreach (section_rows('group_requests', $sectionId) as $r) {
+    if ($r['status'] === 'pending' && isset($groups[(int) $r['group_id']])) {
+        $pendingByGroup[(int) $r['group_id']][] = $r;
+    }
+}
+
+/**
+ * Group + join requests. Members (and the admin) see who is asking to join;
+ * everyone sees whether THEY have a request waiting (my_request).
+ */
+$present = function (array $g) use ($ctx, $uid, $isAdmin, $groups, $pendingByGroup, $capacity) {
+    $p = present_group($g, $ctx['users'], $ctx['subjectIndex'], $ctx['taskIndex'], $uid);
+    $grouped = $g['task_id'] ? grouped_for_task($groups, (int) $g['task_id']) : new HashSet();
+    $requests = [];
+    $mine = null;
+    foreach ($pendingByGroup[$g['id']] ?? [] as $r) {
+        $who = (int) $r['user_id'];
+        if ($who === $uid) {
+            $mine = (int) $r['id'];
+        }
+        if ($grouped->contains((string) $who)) {
+            continue;   // already found a group for this task
+        }
+        $u = $ctx['users'][$who] ?? null;
+        if ($u) {
+            $requests[] = ['id' => (int) $r['id'], 'user_id' => $who, 'name' => $u['first_name'] . ' ' . $u['last_name'], 'student_id' => $u['student_id'], 'created_at' => $r['created_at']];
+        }
+    }
+    return $p + ['requests' => ($p['is_member'] || $isAdmin) ? $requests : [], 'request_count' => count($requests), 'my_request' => $mine,
+        'capacity' => $capacity($g)];
+};
+
+/** The viewer's group for a task, or null. */
+function my_group_for_task(array $groups, int $taskId, int $uid): ?array
+{
+    foreach ($groups as $g) {
+        if ((int) $g['task_id'] === $taskId && in_array($uid, $g['members'], true)) {
+            return $g;
+        }
+    }
+    return null;
+}
 
 /* ---------------------------------------------------------------- reads */
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -94,7 +247,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'groups' => $out,
             'ungrouped' => $ungrouped,
             'in_group' => $grouped->contains((string) $uid),
-            'plan' => Algorithms::planGroupSizes(count($ungrouped), (int) $task['group_min'], (int) $task['group_max']),
+            'members' => count($ctx['members']),
+            'rules' => $rulesFor($taskId),
+            'plan' => auto_plan(array_map(fn ($g) => count($g['members']), array_values(array_filter($groups, fn ($g) => (int) $g['task_id'] === $taskId))), count($ungrouped), (int) $task['group_min'], (int) $task['group_max'], isset($task['group_count']) ? ((int) $task['group_count'] ?: null) : null),
             'role' => $user['role'],
         ]);
     }
@@ -120,10 +275,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             foreach ($groups as $g) {
                 $count += (int) $g['task_id'] === (int) $t['id'] ? 1 : 0;
             }
+            $mineG = my_group_for_task($groups, (int) $t['id'], $uid);
+            $asked = 0;     // my pending requests to groups of this task
+            $waiting = 0;   // requests waiting for MY group to answer
+            foreach ($groups as $g) {
+                if ((int) $g['task_id'] !== (int) $t['id']) {
+                    continue;
+                }
+                $pg = $present($g);
+                $asked += $pg['my_request'] ? 1 : 0;
+                $waiting += $pg['is_member'] ? $pg['request_count'] : 0;
+            }
             $upcoming[] = present_task($t, $ctx['subjectIndex'], $ctx['users']) + [
                 'groups_formed' => $count,
                 'grouped_count' => $grouped->size(),
                 'in_group' => $grouped->contains((string) $uid),
+                'my_group' => $mineG ? ['id' => $mineG['id'], 'name' => $mineG['name'], 'size' => count($mineG['members'])] : null,
+                'my_requests' => $asked,
+                'requests_waiting' => $waiting,
+                'can_create' => $rulesFor((int) $t['id'])['can_create'],
+                'overflow' => $rulesFor((int) $t['id'])['overflow'],
             ];
         }
     }
@@ -147,6 +318,10 @@ switch (param('action')) {
     case 'create': {
         $taskId = param('task_id') ? (int) param('task_id') : null;
         $task = group_task($ctx, $taskId);
+        if ($task && !$rulesFor($taskId)['can_create']) {
+            $n = $rulesFor($taskId)['count'];
+            fail("This task needs exactly $n group" . ($n === 1 ? '' : 's') . ' and they’re all made. Ask to join one instead.', 409);
+        }
         $name = preg_replace('/\s+/', ' ', (string) param('name', ''));
         if ($name === '') {
             $name = $task ? next_group_name($groups, $taskId) : '';
@@ -202,7 +377,100 @@ switch (param('action')) {
         respond(['id' => $gid], 201);
     }
 
+    case 'request_join': {
+        if (!$group) {
+            fail('Pick a group.');
+        }
+        if (in_array($uid, $group['members'], true)) {
+            fail('You’re already in this group.', 409);
+        }
+        if ($group['task_id'] && grouped_for_task($groups, (int) $group['task_id'])->contains((string) $uid)) {
+            fail('You’re already in a group for this task. Leave it first.', 409);
+        }
+        if ($isFull($group)) {
+            fail('This group is full.', 409);
+        }
+        foreach ($pendingByGroup[$group['id']] ?? [] as $r) {
+            if ((int) $r['user_id'] === $uid) {
+                fail('You already asked to join this group.', 409);
+            }
+        }
+        $rid = Store::insert('group_requests', ['section_id' => $sectionId, 'group_id' => $group['id'], 'user_id' => $uid]);
+        $link = $group['task_id'] ? "classmates.html#groups&task={$group['task_id']}" : 'classmates.html#groups';
+        foreach ($group['members'] as $id) {
+            notify($id, $sectionId, 'group', "$fullName asked to join “{$group['name']}”", $link);
+        }
+        respond(['request_id' => $rid], 201);
+    }
+
+    case 'cancel_request': {
+        if (!$group) {
+            fail('Pick a group.');
+        }
+        foreach ($pendingByGroup[$group['id']] ?? [] as $r) {
+            if ((int) $r['user_id'] === $uid) {
+                Store::update('group_requests', (int) $r['id'], ['status' => 'cancelled']);
+                respond();
+            }
+        }
+        fail('You have no request for this group.', 404);
+    }
+
+    case 'respond_request': {
+        // Any member of the group (or the class admin) can answer
+        $req = null;
+        foreach (section_rows('group_requests', $sectionId) as $r) {
+            if ((int) $r['id'] === (int) param('request_id', 0)) {
+                $req = $r;
+            }
+        }
+        if (!$req || $req['status'] !== 'pending') {
+            fail('That request was already answered.', 404);
+        }
+        $g = $groups[(int) $req['group_id']] ?? null;
+        if (!$g) {
+            fail('Group not found.', 404);
+        }
+        if (!$isAdmin && !in_array($uid, $g['members'], true)) {
+            fail('Only members of this group can answer join requests.', 403);
+        }
+        $who = (int) $req['user_id'];
+        $accept = filter_var(param('accept', false), FILTER_VALIDATE_BOOLEAN);
+        $link = $g['task_id'] ? "task.html?id={$g['task_id']}" : 'classmates.html#groups';
+        if (!$accept) {
+            Store::update('group_requests', (int) $req['id'], ['status' => 'declined']);
+            notify($who, $sectionId, 'group', "Your request to join “{$g['name']}” was declined", $link);
+            respond(['accepted' => false]);
+        }
+        if ($isFull($g)) {
+            fail('Your group is already full.', 409);
+        }
+        if ($g['task_id'] && grouped_for_task($groups, (int) $g['task_id'])->contains((string) $who)) {
+            Store::update('group_requests', (int) $req['id'], ['status' => 'cancelled']);
+            fail('They already joined another group for this task.', 409);
+        }
+        Store::begin();
+        Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $g['id'], 'user_id' => $who]);
+        Store::update('group_requests', (int) $req['id'], ['status' => 'accepted']);
+        // Their other requests for the same task are no longer needed
+        foreach ($pendingByGroup as $gid => $rows) {
+            foreach ($rows as $r) {
+                $sameTask = $g['task_id'] && (int) ($groups[$gid]['task_id'] ?? 0) === (int) $g['task_id'];
+                if ((int) $r['user_id'] === $who && (int) $r['id'] !== (int) $req['id'] && $sameTask) {
+                    Store::update('group_requests', (int) $r['id'], ['status' => 'cancelled']);
+                }
+            }
+        }
+        Store::commit();
+        notify($who, $sectionId, 'group', "You’re in! “{$g['name']}” accepted your request", $link);
+        respond(['accepted' => true]);
+    }
+
     case 'join': {
+        // Direct join is for the class admin; students send a request_join instead
+        if (!$isAdmin) {
+            fail('Send a join request — the group’s members will accept you.', 403);
+        }
         if (!$group) {
             fail('Pick a group.');
         }
@@ -214,7 +482,7 @@ switch (param('action')) {
         if ($group['task_id'] && grouped_for_task($groups, (int) $group['task_id'])->contains((string) $uid)) {
             fail('You’re already in a group for this task. Leave it first.', 409);
         }
-        if ($group['max_members'] !== null && count($group['members']) >= (int) $group['max_members']) {
+        if ($isFull($group)) {
             fail('This group is full.', 409);
         }
         Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $group['id'], 'user_id' => $uid]);
@@ -259,8 +527,9 @@ switch (param('action')) {
                 $added[] = $id;
             }
         }
-        if ($group['max_members'] !== null && count($group['members']) + count($added) > (int) $group['max_members']) {
-            fail("This group can have at most {$group['max_members']} members.");
+        $cap = $capacity($group);
+        if ($cap !== null && count($group['members']) + count($added) > $cap) {
+            fail("This group can have at most $cap members right now.");
         }
         foreach ($added as $id) {
             Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $group['id'], 'user_id' => $id]);
@@ -278,6 +547,9 @@ switch (param('action')) {
             if ((int) $m['group_id'] === $group['id']) {
                 Store::delete('group_members', (int) $m['id']);
             }
+        }
+        foreach ($pendingByGroup[$group['id']] ?? [] as $r) {
+            Store::update('group_requests', (int) $r['id'], ['status' => 'cancelled']);
         }
         Store::delete('study_groups', $group['id']);
         Store::commit();
@@ -305,28 +577,32 @@ switch (param('action')) {
             fail('Everyone already has a group.', 409);
         }
 
-        // First top up existing groups that are below the minimum
-        Store::begin();
-        $filled = 0;
+        // Plan first (same plan the admin previewed), then place students in queue order
+        $taskGroups = [];
         foreach ($groups as $g) {
             if ((int) $g['task_id'] === $taskId) {
-                $size = count($g['members']);
-                while ($size < $min && !$waiting->isEmpty()) {
-                    Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $g['id'], 'user_id' => $waiting->dequeue()]);
-                    $size++;
-                    $filled++;
-                }
+                $taskGroups[] = $g;
             }
         }
-        // Then split everyone left into new groups sized within [min, max]
-        $sizes = Algorithms::planGroupSizes($waiting->size(), $min, $max);
+        $plan = auto_plan(array_map(fn ($g) => count($g['members']), $taskGroups), $waiting->size(), $min, $max,
+            isset($task['group_count']) ? ((int) $task['group_count'] ?: null) : null);
+        Store::begin();
+        $filled = 0;
+        foreach ($taskGroups as $i => $g) {
+            for ($n = 0; $n < $plan['add'][$i] && !$waiting->isEmpty(); $n++) {
+                $id = $waiting->dequeue();
+                Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $g['id'], 'user_id' => $id]);
+                notify($id, $sectionId, 'group', "You were placed in “{$g['name']}” for “{$task['title']}”", "task.html?id=$taskId");
+                $filled++;
+            }
+        }
         $made = 0;
-        foreach ($sizes as $size) {
+        foreach ($plan['new'] as $size) {
             $gid = Store::insert('study_groups', [
                 'section_id' => $sectionId, 'name' => next_group_name(load_groups($sectionId), $taskId), 'subject_id' => (int) $task['subject_id'],
                 'task_id' => $taskId, 'purpose' => $task['title'], 'max_members' => $max, 'created_by' => $uid,
             ]);
-            for ($i = 0; $i < $size; $i++) {
+            for ($i = 0; $i < $size && !$waiting->isEmpty(); $i++) {
                 $id = $waiting->dequeue();      // DEQUEUE students in order
                 Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $gid, 'user_id' => $id]);
                 notify($id, $sectionId, 'group', "You were placed in a group for “{$task['title']}”", "task.html?id=$taskId");
@@ -334,7 +610,7 @@ switch (param('action')) {
             $made++;
         }
         Store::commit();
-        respond(['groups_created' => $made, 'sizes' => $sizes, 'topped_up' => $filled]);
+        respond(['groups_created' => $made, 'sizes' => $plan['new'], 'topped_up' => $filled, 'left' => $plan['left']]);
     }
 
     default:

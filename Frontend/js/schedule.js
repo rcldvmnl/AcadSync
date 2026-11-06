@@ -31,7 +31,7 @@ function render() {
   $('#content').innerHTML = `
     ${showDays ? `<section>${dayPicker()}<div id="classes" class="mt-3 space-y-2"></div>
       <a href="week.html" class="btn btn-light mt-3 w-full shadow-card">${admin ? 'Edit whole week' : 'See whole week'}</a></section>` : ''}
-    <section class="space-y-3 ${showDays ? '' : 'lg:col-span-2 lg:max-w-2xl'}">${workSwitch()}${tasksSection()}</section>`;
+    <section class="space-y-3 ${showDays ? '' : 'lg:col-span-2 lg:max-w-2xl'}">${workSwitch()}${groupWorkLink()}${tasksSection()}</section>`;
   if (showDays) renderClasses();
   $$('[data-work]').forEach((b) => b.onclick = () => { workFilter = b.dataset.work; render(); });
   UI.bindDone($('#content'), (id, done) => {
@@ -47,6 +47,20 @@ function workSwitch() {
     ${[['all', 'All'], ['individual', 'Individual'], ['group', 'Group']].map(([k, l]) => `
       <button type="button" role="radio" data-work="${k}" aria-checked="${workFilter === k}" class="rounded-full py-2 ${workFilter === k ? 'bg-charcoal text-white' : 'text-muted'}">${l} <span class="text-xs opacity-70">${count(k)}</span></button>`).join('')}
   </div>`;
+}
+
+/** Group filter: shortcut to Classmates › Groups (create a group, request to join, answer requests). */
+function groupWorkLink() {
+  if (workFilter !== 'group') return '';
+  const groupTasks = data.timeline.filter((t) => t.work_mode === 'group' && !t.done);
+  const needs = groupTasks.filter((t) => !t.my_group).length;
+  return `
+    <a href="classmates.html#groups" class="flex items-center gap-3 rounded-[1.5rem] bg-charcoal p-3 pl-4 text-white shadow-card transition hover:-translate-y-0.5">
+      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sun text-charcoal">${icon('users', 18)}</span>
+      <span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Open group work</span>
+        <span class="block truncate text-xs text-white/70">${needs ? `${needs} task${needs === 1 ? '' : 's'} still need${needs === 1 ? 's' : ''} your group` : 'Create groups, request to join, see members'}</span></span>
+      ${icon('arrowRight', 18, 'mr-1 shrink-0')}
+    </a>`;
 }
 
 const byWork = (items) => items.filter((t) => workFilter === 'all' || t.work_mode === workFilter);
