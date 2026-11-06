@@ -41,8 +41,9 @@ const inLabel = (ts) => {
 
 /* --------------------------------------------------------------- student */
 function studentView(d) {
-  const next = d.timeline[0];
-  const upcoming = d.timeline.slice(0, 4);
+  const open = d.timeline.filter((t) => !t.done);   // finished tasks are on Schedule / My tasks, not "next up"
+  const next = open[0];
+  const upcoming = open.slice(0, 4);
   return `
     <div class="grid gap-5 lg:grid-cols-[1fr_20rem] lg:gap-6">
       <a href="schedule.html" class="card-pastel lavender block min-h-[11rem] rounded-[1.75rem] p-5 lg:min-h-[13rem] lg:p-8">
@@ -61,7 +62,7 @@ function studentView(d) {
       </a>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-1">
-        <a href="account.html#requests" class="relative overflow-hidden rounded-[1.75rem] border-2 border-lavender-light bg-white p-4 shadow-card">
+        <a href="my-tasks.html#pending" class="relative overflow-hidden rounded-[1.75rem] border-2 border-lavender-light bg-white p-4 shadow-card">
           <span class="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-lavender-tint"></span>
           <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white text-lavender-dark shadow-card">${icon('inbox', 18)}</span>
           <div class="text-xs text-muted">Pending</div>
@@ -92,6 +93,12 @@ function studentView(d) {
           <a href="schedule.html" class="text-sm font-semibold">See all</a>
         </div>
         <div class="space-y-3">${upcoming.length ? upcoming.map((t) => UI.taskCard(t, { compact: true })).join('') : UI.empty('All caught up', 'No upcoming deadlines.')}</div>
+        <a href="my-tasks.html#history" class="mt-3 flex items-center gap-3 rounded-2xl bg-white p-3 shadow-card lg:bg-canvas lg:shadow-none">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-mint-tint text-success">${icon('check', 16)}</span>
+          <span class="min-w-0 flex-1"><span class="block text-sm font-semibold">Task history</span>
+            <span class="block text-xs text-muted">${d.stats.done || 0} done · past deadlines · request results</span></span>
+          ${icon('chevronRight', 18, 'text-muted')}
+        </a>
       </section>
     </div>`;
 }

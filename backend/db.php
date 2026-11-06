@@ -132,7 +132,7 @@ final class Store
     {
         static $allowed = [
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
-            'approval_queue', 'undo_stack', 'notifications', 'password_resets',
+            'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

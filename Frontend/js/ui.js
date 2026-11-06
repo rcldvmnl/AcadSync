@@ -148,21 +148,85 @@ const UI = {
       : '';
   },
 
-  /** Date badge + title + category chip + due line + arrow — "Task Card v2". */
-  taskCard(t, { compact = false } = {}) {
+  /**
+   * Date badge + title + category chip + due line + arrow — "Task Card v2".
+   * toggle: show a "mark as done" check button instead of the arrow.
+   * Done tasks stay in the list; they're just dimmed with a check.
+   */
+  taskCard(t, { compact = false, toggle = false } = {}) {
     const d = t.deadline_ts ? new Date(t.deadline_ts * 1000) : null;
-    return `
-      <a href="task.html?id=${t.id}" class="group flex items-center gap-3 rounded-3xl bg-white p-4 shadow-card transition hover:-translate-y-0.5 ${compact ? 'lg:bg-canvas lg:shadow-none' : ''}">
-        <div class="grid h-14 w-12 shrink-0 place-items-center rounded-2xl bg-lavender-tint text-center leading-none">
+    const done = !!t.done;
+    const body = `
+        <div class="grid h-14 w-12 shrink-0 place-items-center rounded-2xl ${done ? 'bg-mint-tint' : 'bg-lavender-tint'} text-center leading-none">
           ${d ? `<div><div class="text-xl font-bold">${String(d.getDate()).padStart(2, '0')}</div><div class="mt-1 text-[10px] font-semibold uppercase text-muted">${MONTHS[d.getMonth()]}</div></div>`
               : '<div class="text-xs font-bold text-muted">TBA</div>'}
         </div>
         <div class="min-w-0 flex-1">
-          <div class="truncate font-semibold">${esc(t.title)}</div>
-          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">${UI.chip(t.category, CATEGORY_CHIP[t.category] || 'bg-canvas')}${UI.workBadge(t)}<span class="text-xs text-muted">${esc(t.subject_code)}</span></div>
+          <div class="truncate font-semibold ${done ? 'text-muted line-through decoration-1' : ''}">${esc(t.title)}</div>
+          <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">${done ? UI.chip('Done', 'bg-mint-tint text-success') : ''}${UI.chip(t.category, CATEGORY_CHIP[t.category] || 'bg-canvas')}${UI.workBadge(t)}<span class="text-xs text-muted">${esc(t.subject_code)}</span></div>
           <div class="mt-1.5 truncate text-xs text-muted">${esc(Fmt.due(t))}</div>
+        </div>`;
+    const shell = `rounded-3xl bg-white shadow-card transition ${compact ? 'lg:bg-canvas lg:shadow-none' : ''} ${done ? 'opacity-75' : ''}`;
+    if (toggle) {
+      return `
+      <div class="flex items-center gap-2 pr-3 ${shell}">
+        <a href="task.html?id=${t.id}" class="flex min-w-0 flex-1 items-center gap-3 p-4 pr-1">${body}</a>
+        ${UI.doneButton(t)}
+      </div>`;
+    }
+    return `
+      <a href="task.html?id=${t.id}" class="group flex items-center gap-3 p-4 hover:-translate-y-0.5 ${shell}">
+        ${body}
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full ${done ? 'bg-success' : 'bg-charcoal'} text-white">${icon(done ? 'check' : 'arrowRight', 18)}</span>
+      </a>`;
+  },
+
+  /** Round check button that marks a task as done / not done (wire with UI.bindDone). */
+  doneButton(t, cls = 'h-10 w-10') {
+    const done = !!t.done;
+    return `<button type="button" data-done="${t.id}" aria-pressed="${done}" title="${done ? 'Mark as not done' : 'Mark as done'}"
+      aria-label="${done ? 'Mark as not done' : 'Mark as done'}: ${esc(t.title)}"
+      class="grid ${cls} shrink-0 place-items-center rounded-full transition ${done ? 'bg-success text-white' : 'border-2 border-line bg-white text-subtle hover:border-success hover:text-success'}">${icon('check', 18)}</button>`;
+  },
+
+  /** Wires every [data-done] button in root. onChange(taskId, done) runs after the server saves it. */
+  bindDone(root, onChange) {
+    $$('[data-done]', root).forEach((b) => b.onclick = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = Number(b.dataset.done);
+      const next = b.getAttribute('aria-pressed') !== 'true';
+      b.disabled = true;
+      try {
+        await API.post('tasks.php', { action: 'done', task_id: id, done: next });
+        UI.toast(next ? 'Marked as done' : 'Marked as not done', { sub: next ? 'It stays on your schedule, checked off' : '' });
+        onChange?.(id, next);
+      } catch (err) {
+        UI.toast(err.message, { iconName: 'alert' });
+      } finally {
+        b.disabled = false;
+      }
+    });
+  },
+
+  /** One-line class row for tight spaces (the Class Schedule day view). */
+  classRowCompact(c) {
+    const now = new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const toM = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+    const live = c.today && mins >= toM(c.start_time) && mins < toM(c.end_time);
+    return `
+      <a href="subject.html?id=${c.subject_id}" class="flex items-center gap-3 rounded-2xl bg-white px-3 py-2.5 shadow-card transition hover:-translate-y-0.5 ${live ? 'ring-2 ring-charcoal' : ''}">
+        <span class="h-8 w-1 shrink-0 rounded-full" style="background:${tone(c.color).bar}"></span>
+        <div class="w-[4.25rem] shrink-0 leading-tight">
+          <div class="text-xs font-semibold">${Fmt.time(c.start_time)}</div>
+          <div class="text-[10px] text-muted">${Fmt.time(c.end_time)}</div>
         </div>
-        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-charcoal text-white">${icon('arrowRight', 18)}</span>
+        <div class="min-w-0 flex-1 leading-tight">
+          <div class="truncate text-sm font-semibold">${esc(c.title)}</div>
+          <div class="truncate text-[11px] text-muted">${esc([c.code, c.room].filter(Boolean).join(' · '))}</div>
+        </div>
+        ${live ? '<span class="chip shrink-0 bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">NOW</span>' : ''}
       </a>`;
   },
 
@@ -400,7 +464,7 @@ const Shell = {
         <h3 class="mt-5 font-semibold">My sections</h3>
         <div class="mt-2">${Shell.sectionList()}</div>
         <div class="mt-5 space-y-1">
-          ${[['user', 'Edit profile', 'account.html#profile'], ['bell', 'Notifications', 'notifications.html'], ['lock', 'Change password', 'account.html#password']]
+          ${[['user', 'Edit profile', 'account.html#profile'], ...(admin ? [] : [['inbox', 'My tasks · pending & history', 'my-tasks.html']]), ['bell', 'Notifications', 'notifications.html'], ['lock', 'Change password', 'account.html#password']]
             .map(([i, l, h]) => `<a href="${h}" class="flex items-center gap-3 rounded-2xl px-1 py-2 hover:bg-canvas"><span class="grid h-9 w-9 place-items-center rounded-full bg-canvas">${icon(i, 18)}</span><span class="flex-1 text-sm font-medium">${l}</span>${icon('chevronRight', 18, 'text-muted')}</a>`).join('')}
         </div>
         <div class="mt-auto pt-6"><button data-logout class="btn btn-danger w-full">Log out</button></div>

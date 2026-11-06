@@ -20,7 +20,10 @@ $active = $timeline->toArray();
 // [ALGORITHM: BUBBLE SORT] — the "Urgent" toggle
 $byUrgency = Algorithms::bubbleSortByUrgency($active, $now);
 
-$present = fn (array $t) => present_task($t, $ctx['subjectIndex'], $ctx['users']);
+// Tasks this user marked as done stay on the schedule, flagged with `done`
+$done = done_map((int) $user['id'], (int) $ctx['section']['id']);
+$present = fn (array $t) => present_task($t, $ctx['subjectIndex'], $ctx['users'])
+    + ['done' => isset($done[(int) $t['id']]), 'done_at' => $done[(int) $t['id']] ?? null];
 
 // Week grid (Mon–Sat) for the requested week
 $anchor = strtotime((string) param('week', date('Y-m-d', $now))) ?: $now;
@@ -40,9 +43,13 @@ $dueToday = 0;
 $dueWeek = 0;
 $subjectsDueToday = [];
 $dueBySubject = [];
+$nextDue = null;   // earliest deadline the user hasn't finished yet
 foreach ($active as $t) {
+    if ($nextDue === null && !isset($done[(int) $t['id']])) {
+        $nextDue = DsaUtil::deadlineTs($t);
+    }
     $ts = DsaUtil::deadlineTs($t);
-    if ($ts === null) {
+    if ($ts === null || isset($done[(int) $t['id']])) {   // finished work doesn't count as "due"
         continue;
     }
     if ($ts <= $endOfToday) {
@@ -91,7 +98,8 @@ respond([
         'queue_size' => $queue->size(),
         'my_pending' => $mine,
         'oldest_request' => $oldest,
-        'next_due_ts' => $active && DsaUtil::deadlineTs($active[0]) !== null ? DsaUtil::deadlineTs($active[0]) : null,
+        'next_due_ts' => $nextDue,
+        'done' => count($done),
     ],
     // [DSA: TREE] — Section -> Subjects -> Tasks
     'tree' => build_tree($ctx['section'], $ctx['subjects'], $timeline)->toArray(),

@@ -109,6 +109,18 @@ function build_timeline(array $tasks, int $now): TaskLinkedList
     return $list;
 }
 
+/** task_id => done_at for every task this user has marked as done in the section. */
+function done_map(int $userId, int $sectionId): array
+{
+    $map = [];
+    foreach (section_rows('task_done', $sectionId) as $row) {
+        if ((int) $row['user_id'] === $userId) {
+            $map[(int) $row['task_id']] = $row['done_at'];
+        }
+    }
+    return $map;
+}
+
 /** id => task row for the section. */
 function task_index(array $tasks): array
 {

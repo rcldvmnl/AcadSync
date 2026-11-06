@@ -8,6 +8,7 @@ const taskId = new URLSearchParams(location.search).get('id');
   document.title = `AcadSync · ${t.title}`;
   $('#main').innerHTML = render(t, role === 'admin');
   $('#delete-task')?.addEventListener('click', () => confirmDelete(t));
+  if ($('#done-card')) bindDoneCard(t);
   if (t.work_mode === 'group' && t.status === 'approved') loadGroups(t, role === 'admin');
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
@@ -142,6 +143,27 @@ function confirmDelete(t) {
   });
 }
 
+/** "Mark as done" — personal check-off; the task stays on the schedule either way. */
+function doneCard(t) {
+  return `
+    <div id="done-card" class="flex items-center gap-3 rounded-[1.75rem] p-4 shadow-card ${t.done ? 'bg-mint-tint' : 'bg-white'}">
+      ${UI.doneButton(t, 'h-12 w-12')}
+      <div class="min-w-0 flex-1">
+        <div class="font-semibold">${t.done ? 'You finished this' : 'Finished this task?'}</div>
+        <div class="text-xs text-muted">${t.done ? `Checked off${t.done_at ? ` ${esc(Fmt.monthDay(t.done_at.slice(0, 10)))}` : ''} · it stays on your schedule. Tap to undo.` : 'Tap the check to mark it as done. It stays on your schedule.'}</div>
+      </div>
+    </div>`;
+}
+
+function bindDoneCard(t) {
+  UI.bindDone($('#done-card'), (_, done) => {
+    t.done = done;
+    t.done_at = done ? Fmt.iso(new Date()) : null;
+    $('#done-card').outerHTML = doneCard(t);
+    bindDoneCard(t);
+  });
+}
+
 function render(t, admin) {
   const unset = t.deadline_type === 'unset' || !t.deadline_ts;
   const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
@@ -207,6 +229,7 @@ function render(t, admin) {
           ${checklist.length ? `<h3 class="mt-4 text-lg font-semibold">What to prepare</h3>
             <ul class="mt-2 space-y-2">${checklist.map((c) => `<li class="flex items-center gap-3 text-[15px]"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-mint-tint text-success">${icon('check', 14)}</span>${esc(c)}</li>`).join('')}</ul>` : ''}
         </div>
+        ${t.status === 'approved' ? doneCard(t) : ''}
         ${t.work_mode === 'group' && t.status === 'approved' ? `<div id="groups">${UI.skeleton(1, 'h-40')}</div>` : ''}
         ${t.status === 'approved' ? (admin
           ? `<div class="grid grid-cols-2 gap-3">

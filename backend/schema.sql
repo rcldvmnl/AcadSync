@@ -163,6 +163,19 @@ CREATE TABLE IF NOT EXISTS notifications (
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
+-- 10b. TASK_DONE — a student's personal "I finished this" mark on a task.
+--      The task stays on everyone's schedule; it is only shown as done for that user.
+CREATE TABLE IF NOT EXISTS task_done (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    task_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    done_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (task_id, user_id),
+    FOREIGN KEY(task_id) REFERENCES tasks(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
 -- 11. PASSWORD_RESETS -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS password_resets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

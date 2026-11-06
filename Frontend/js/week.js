@@ -31,24 +31,121 @@ async function load() {
 function render() {
   // Classes meet Monday–Saturday; Sunday only appears on the Class Schedule day picker.
   const days = state.data.week.days.filter((d) => d.dow <= 6 && (d.dow <= 5 || d.classes.length || state.admin));
+  if (!state.admin) { $('#main').innerHTML = weekCalendar(days); return; }
   $('#main').innerHTML = `
-    ${state.admin ? `<div class="mb-5 flex gap-3 rounded-[1.5rem] bg-lavender-tint p-4 lg:max-w-xl">
+    <div class="mb-5 flex gap-3 rounded-[1.5rem] bg-lavender-tint p-4 lg:max-w-xl">
       ${icon('calendar', 20, 'mt-0.5 shrink-0')}
       <div><div class="text-sm font-semibold">Classes repeat every week</div><div class="text-xs text-muted">Tap + to add a class to a day, or × to remove one. Each class can have its own time and length.</div></div>
-    </div>${unscheduled()}` : ''}
-    <div class="grid gap-5 lg:grid-cols-2 lg:items-start">${days.map(state.admin ? adminDay : studentDay).join('')}</div>`;
-  if (state.admin) bindAdmin();
+    </div>${unscheduled()}
+    <div class="grid gap-5 lg:grid-cols-2 lg:items-start">${days.map(adminDay).join('')}</div>`;
+  bindAdmin();
 }
 
-function studentDay(d) {
+/* ------------------------------------------------------------------ student: week calendar
+ * Days across the top, hours down the side, each class a block sized by its length.
+ * On phones the grid scrolls sideways inside its card; the page itself never scrolls sideways.
+ */
+const HOUR_PX = 64;
+
+function weekCalendar(days) {
+  const all = days.flatMap((d) => d.classes);
+  let startH = 7;
+  let endH = 17;
+  if (all.length) {
+    startH = Math.min(...all.map((c) => Math.floor(toMin(c.start_time) / 60)));
+    endH = Math.max(...all.map((c) => Math.ceil(toMin(c.end_time) / 60)));
+  }
+  const hours = Array.from({ length: endH - startH }, (_, i) => startH + i);
+  const height = hours.length * HOUR_PX;
+  const today = Fmt.iso(new Date());
+  const cols = `3.25rem repeat(${days.length}, minmax(6.5rem, 1fr))`;
+  const hourLabel = (h) => `${((h + 11) % 12) + 1} ${h < 12 ? 'AM' : 'PM'}`;
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowTop = ((nowMin - startH * 60) / 60) * HOUR_PX;
+  const showNow = nowMin >= startH * 60 && nowMin <= endH * 60;
+
   return `
-    <section>
-      <div class="mb-3 flex items-baseline justify-between">
-        <h2 class="text-xl font-bold">${DAYS_LONG[d.dow]} · ${esc(Fmt.monthDay(d.date))}</h2>
-        <span class="text-xs text-muted">${d.classes.length} class${d.classes.length === 1 ? '' : 'es'}</span>
+    <div class="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+      ${legend(all)}
+    </div>
+    <div class="overflow-hidden rounded-[1.75rem] bg-white shadow-card">
+      <div class="overflow-x-auto">
+        <div class="min-w-max lg:min-w-0">
+          <div class="grid border-b border-line" style="grid-template-columns:${cols}">
+            <div></div>
+            ${days.map((d) => {
+              const isToday = d.date === today;
+              return `<div class="flex flex-col items-center gap-0.5 border-l border-line py-3">
+                <span class="text-[10px] font-semibold uppercase ${isToday ? 'text-charcoal' : 'text-muted'}">${DAYS[d.dow % 7]}</span>
+                <span class="grid h-8 w-8 place-items-center rounded-full text-base font-bold ${isToday ? 'bg-charcoal text-white' : ''}">${Fmt.date(d.date).getDate()}</span>
+              </div>`;
+            }).join('')}
+          </div>
+          <div class="grid" style="grid-template-columns:${cols}">
+            <div class="relative" style="height:${height}px">
+              ${hours.map((h, i) => `<span class="absolute right-2 -translate-y-1/2 text-[10px] font-medium text-muted" style="top:${i * HOUR_PX}px">${i ? hourLabel(h) : ''}</span>`).join('')}
+            </div>
+            ${days.map((d) => `
+              <div class="relative border-l border-line ${d.date === today ? 'bg-lavender-tint/30' : ''}" style="height:${height}px;background-image:linear-gradient(to bottom,#ECE8E2 1px,transparent 1px);background-size:100% ${HOUR_PX}px">
+                ${layout(d.classes).map(({ c, lane, lanes }) => classBlock(c, startH, lane, lanes)).join('')}
+                ${d.date === today && showNow ? `<div class="pointer-events-none absolute inset-x-0 z-10 flex items-center" style="top:${nowTop}px"><span class="-ml-1 h-2 w-2 rounded-full bg-danger"></span><span class="h-0.5 flex-1 bg-danger"></span></div>` : ''}
+              </div>`).join('')}
+          </div>
+        </div>
       </div>
-      <div class="space-y-3">${d.classes.length ? d.classes.map((c) => UI.classRow(c)).join('') : '<div class="rounded-3xl bg-white/60 p-4 text-sm text-muted">No classes</div>'}</div>
-    </section>`;
+    </div>
+    ${all.length ? '' : `<div class="mt-4">${UI.empty('No classes yet', 'Your class officer hasn’t set this week’s classes.', 'calendar')}</div>`}`;
+}
+
+/** Puts overlapping classes side by side (simple lane assignment). */
+function layout(classes) {
+  const sorted = [...classes].sort((a, b) => toMin(a.start_time) - toMin(b.start_time));
+  const out = [];
+  let cluster = [];
+  let clusterEnd = -1;
+  const flush = () => {
+    const laneEnds = [];
+    const placed = cluster.map((c) => {
+      let lane = laneEnds.findIndex((end) => end <= toMin(c.start_time));
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = toMin(c.end_time);
+      return { c, lane };
+    });
+    placed.forEach((p) => out.push({ ...p, lanes: laneEnds.length }));
+    cluster = [];
+  };
+  sorted.forEach((c) => {
+    if (cluster.length && toMin(c.start_time) >= clusterEnd) flush();
+    cluster.push(c);
+    clusterEnd = Math.max(clusterEnd, toMin(c.end_time));
+  });
+  if (cluster.length) flush();
+  return out;
+}
+
+function classBlock(c, startH, lane, lanes) {
+  const top = ((toMin(c.start_time) - startH * 60) / 60) * HOUR_PX;
+  const h = Math.max(28, ((toMin(c.end_time) - toMin(c.start_time)) / 60) * HOUR_PX);
+  const t = tone(c.color);
+  const width = 100 / lanes;
+  const short = h < 56;
+  return `
+    <a href="subject.html?id=${c.subject_id}" title="${esc(`${c.code} · ${c.title} · ${Fmt.time(c.start_time)}–${Fmt.time(c.end_time)}${c.room ? ` · ${c.room}` : ''}`)}"
+      class="absolute overflow-hidden rounded-xl ${t.chip} px-2 py-1.5 leading-tight transition hover:z-20 hover:shadow-card"
+      style="top:${top + 2}px;height:${h - 4}px;left:calc(${lane * width}% + 3px);width:calc(${width}% - 6px)">
+      <div class="flex items-center gap-1 text-[11px] font-bold"><span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:${t.bar}"></span><span class="truncate">${esc(c.code)}</span></div>
+      ${short ? '' : `<div class="mt-0.5 line-clamp-2 text-[11px] font-medium">${esc(c.title)}</div>`}
+      <div class="mt-0.5 truncate text-[10px] text-muted">${Fmt.time(c.start_time).replace(' ', '')}–${Fmt.time(c.end_time).replace(' ', '')}</div>
+      ${!short && c.room ? `<div class="truncate text-[10px] text-muted">${esc(c.room)}</div>` : ''}
+    </a>`;
+}
+
+/** Subject colour key above the calendar. */
+function legend(all) {
+  const seen = new Map();
+  all.forEach((c) => { if (!seen.has(c.code)) seen.set(c.code, c); });
+  return [...seen.values()].map((c) => `<span class="chip bg-white"><span class="h-2 w-2 rounded-full" style="background:${tone(c.color).bar}"></span>${esc(c.code)}</span>`).join('');
 }
 
 function adminDay(d) {
@@ -128,7 +225,7 @@ function bindAdmin() {
     keep();
   };
   $('[data-end]', form).onchange = (e) => { state.adding.end = e.target.value; keep(); };
-  $('[data-len]', form).forEach((b) => b.onclick = () => { state.adding.end = toHHMM(toMin(state.adding.start) + Number(b.dataset.len)); keep(); });
+  $$('[data-len]', form).forEach((b) => b.onclick = () => { state.adding.end = toHHMM(toMin(state.adding.start) + Number(b.dataset.len)); keep(); });
   $('[data-cancel]', form).onclick = () => { state.adding = null; render(); };
   UI.bindForm(form, async (d) => {
     await API.post('subjects.php', { action: 'add_slot', subject_id: Number(d.subject_id), day_of_week: state.adding.dow, start_time: state.adding.start, end_time: state.adding.end });

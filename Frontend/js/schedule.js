@@ -1,8 +1,9 @@
 // Class Schedule — day picker + classes, and the task timeline in four views.
-//   Today     -> Linked List order (Insertion Sort), split into "due today" + upcoming
-//   Urgent    -> Bubble Sort by time left
-//   This week -> tasks due before Sunday
-//   Due soon  -> tasks due in the next 3 days
+//   Today     -> Linked List order (Insertion Sort): due today, rest of this week, later, date not set
+//   Urgent    -> Bubble Sort by time left, only tasks due by the end of tomorrow
+//   This week -> tasks due from now until Sunday night
+//   Due soon  -> every dated task due after tomorrow (next 7 days, then later)
+// Tasks marked as done never disappear or move — they stay in place, checked off.
 
 let data;
 let filter = ['today', 'urgent', 'week', 'soon'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today';
@@ -28,16 +29,20 @@ function render() {
   const showDays = filter !== 'urgent';
   $('#content').className = 'grid gap-6 lg:grid-cols-2 lg:items-start';
   $('#content').innerHTML = `
-    ${showDays ? `<section>${dayPicker()}<div id="classes" class="mt-4 space-y-3"></div>
+    ${showDays ? `<section>${dayPicker()}<div id="classes" class="mt-3 space-y-2"></div>
       <a href="week.html" class="btn btn-light mt-3 w-full shadow-card">${admin ? 'Edit whole week' : 'See whole week'}</a></section>` : ''}
     <section class="space-y-3 ${showDays ? '' : 'lg:col-span-2 lg:max-w-2xl'}">${workSwitch()}${tasksSection()}</section>`;
   if (showDays) renderClasses();
   $$('[data-work]').forEach((b) => b.onclick = () => { workFilter = b.dataset.work; render(); });
+  UI.bindDone($('#content'), (id, done) => {
+    [data.timeline, data.by_urgency].forEach((list) => list.forEach((t) => { if (t.id === id) t.done = done; }));
+    render();
+  });
 }
 
 /** All / Individual / Group — separates group work from individual tasks. */
 function workSwitch() {
-  const count = (m) => data.timeline.filter((t) => m === 'all' || t.work_mode === m).length;
+  const count = (m) => data.timeline.filter((t) => (m === 'all' || t.work_mode === m) && !t.done).length;
   return `<div class="grid grid-cols-3 rounded-full bg-white p-1 text-sm shadow-card" role="radiogroup" aria-label="Show tasks">
     ${[['all', 'All'], ['individual', 'Individual'], ['group', 'Group']].map(([k, l]) => `
       <button type="button" role="radio" data-work="${k}" aria-checked="${workFilter === k}" class="rounded-full py-2 ${workFilter === k ? 'bg-charcoal text-white' : 'text-muted'}">${l} <span class="text-xs opacity-70">${count(k)}</span></button>`).join('')}
@@ -73,50 +78,79 @@ function dayPicker() {
 function renderClasses() {
   $$('[data-dow]').forEach((b) => b.onclick = () => { selectedDow = Number(b.dataset.dow); render(); });
   const day = data.week.days.find((d) => d.dow === selectedDow);
+  const isToday = day && day.date === Fmt.iso(new Date());
   $('#classes').innerHTML = day && day.classes.length
-    ? day.classes.map((c) => UI.classRow(c)).join('')
-    : UI.empty('No classes', `Nothing scheduled on ${DAYS_LONG[selectedDow % 7]}.`, 'calendar');
+    ? `<div class="flex items-center justify-between px-1 text-xs text-muted"><span>${day.classes.length} class${day.classes.length === 1 ? '' : 'es'}</span>
+        <span>${Fmt.time(day.classes[0].start_time)} – ${Fmt.time(day.classes[day.classes.length - 1].end_time)}</span></div>
+       ${day.classes.map((c) => UI.classRowCompact({ ...c, today: isToday })).join('')}`
+    : `<div class="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm text-muted shadow-card">${icon('calendar', 18)}No classes on ${DAYS_LONG[selectedDow % 7]}</div>`;
+}
+
+/** Time boundaries used by every filter (all in the user's local time). */
+function bounds() {
+  const now = Date.now() / 1000;
+  const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
+  const endTomorrow = new Date(endToday); endTomorrow.setDate(endTomorrow.getDate() + 1);
+  const endWeek = new Date(endToday); endWeek.setDate(endWeek.getDate() + ((7 - endWeek.getDay()) % 7));   // this Sunday
+  const in7 = new Date(endToday); in7.setDate(in7.getDate() + 7);
+  const s = (d) => d.getTime() / 1000;
+  return { now, endToday: s(endToday), endTomorrow: s(endTomorrow), endWeek: s(endWeek), in7: s(in7) };
 }
 
 function tasksSection() {
-  const now = Date.now() / 1000;
-  const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
-  const endWeek = new Date(endToday); endWeek.setDate(endWeek.getDate() + ((7 - endWeek.getDay()) % 7));
-  const list = (items, emptyTitle) => (items.length ? items.map((t) => UI.taskCard(t)).join('') : UI.empty(emptyTitle));
-
+  const b = bounds();
+  const list = (items, emptyTitle, emptyText = '') => (items.length
+    ? `<div class="space-y-3">${items.map((t) => UI.taskCard(t, { toggle: true })).join('')}</div>`
+    : UI.empty(emptyTitle, emptyText));
   const timeline = byWork(data.timeline);
+  const dated = timeline.filter((t) => t.deadline_ts);
+  const count = (items) => {
+    const left = items.filter((t) => !t.done).length;
+    return `${left} to do${items.length > left ? ` · ${items.length - left} done` : ''}`;
+  };
 
   if (filter === 'urgent') {
-    return `${heading('Most urgent first', 'Bubble Sort · time left')}${list(byWork(data.by_urgency), 'Nothing urgent')}`;
+    const items = byWork(data.by_urgency).filter((t) => t.deadline_ts && t.deadline_ts <= b.endTomorrow);
+    return `${heading('Urgent · today & tomorrow', count(items))}
+      <p class="-mt-1 text-xs text-muted">Most urgent first (Bubble Sort by time left).</p>
+      ${list(items, 'Nothing urgent', 'Nothing is due today or tomorrow.')}`;
   }
   if (filter === 'week') {
-    const items = timeline.filter((t) => t.deadline_ts && t.deadline_ts * 1000 <= endWeek);
-    return `${heading('Due this week', `${items.length} task${items.length === 1 ? '' : 's'}`)}${list(items, 'Nothing due this week')}`;
+    const items = dated.filter((t) => t.deadline_ts <= b.endWeek);
+    const sunday = new Date(b.endWeek * 1000);
+    return `${heading(`Due this week`, count(items))}
+      <p class="-mt-1 text-xs text-muted">From today until Sunday, ${Fmt.monthDay(sunday)}.</p>
+      ${list(items, 'Nothing due this week')}`;
   }
   if (filter === 'soon') {
-    const items = timeline.filter((t) => t.deadline_ts && t.deadline_ts - now <= 3 * 86400);
-    return `${heading('Due in the next 3 days', 'Sorted by due date')}${list(items, 'Nothing due soon')}`;
+    const items = dated.filter((t) => t.deadline_ts > b.endTomorrow);
+    const next7 = items.filter((t) => t.deadline_ts <= b.in7);
+    const later = items.filter((t) => t.deadline_ts > b.in7);
+    const sub = (title, group) => `<div class="flex items-baseline justify-between px-1 pt-1"><h3 class="text-sm font-semibold">${title}</h3><span class="text-xs text-muted">${count(group)}</span></div>${list(group)}`;
+    return `${heading('Due soon', count(items))}
+      <p class="-mt-1 text-xs text-muted">Every upcoming deadline after tomorrow, nearest first. Today & tomorrow are under Urgent.</p>
+      ${items.length ? `${next7.length ? sub('Next 7 days', next7) : ''}${later.length ? sub('Later', later) : ''}` : UI.empty('Nothing due soon', 'No upcoming deadlines after tomorrow.')}`;
   }
 
-  const today = timeline.filter((t) => t.deadline_ts && t.deadline_ts * 1000 <= endToday);
-  const later = timeline.filter((t) => !today.includes(t));
-  // With "All", upcoming work is split: individual tasks first, then group work
-  const upcoming = workFilter === 'all'
-    ? `${heading('Individual tasks', `${later.filter((t) => t.work_mode !== 'group').length} upcoming`)}
-       ${list(later.filter((t) => t.work_mode !== 'group'), 'No individual tasks coming up')}
-       ${heading('Group work', `${later.filter((t) => t.work_mode === 'group').length} upcoming`)}
-       ${list(later.filter((t) => t.work_mode === 'group'), 'No group work coming up')}`
-    : `${heading(workFilter === 'group' ? 'Group work' : 'Individual tasks', 'Sorted by due date')}${list(later, 'Nothing coming up')}`;
+  // Today: everything, bucketed so you can see what's next at a glance
+  const today = dated.filter((t) => t.deadline_ts <= b.endToday);
+  const week = dated.filter((t) => t.deadline_ts > b.endToday && t.deadline_ts <= b.endWeek);
+  const later = dated.filter((t) => t.deadline_ts > b.endWeek);
+  const unset = timeline.filter((t) => !t.deadline_ts);
+  const group = (title, items, empty) => `${heading(title, count(items))}${list(items, empty)}`;
+
   return `
     ${today.length ? `
       <div class="rounded-[1.75rem] border-2 border-[#F5C2BC] bg-danger-tint p-4">
         <div class="mb-3 flex items-center justify-between">
-          <h2 class="flex items-center gap-2 text-xl font-bold"><span class="h-2.5 w-2.5 rounded-full bg-danger"></span>Urgent · due today</h2>
-          <span class="chip bg-white">${today.length} task${today.length === 1 ? '' : 's'}</span>
+          <h2 class="flex items-center gap-2 text-xl font-bold"><span class="h-2.5 w-2.5 rounded-full bg-danger"></span>Due today</h2>
+          <span class="chip bg-white">${count(today)}</span>
         </div>
-        <div class="space-y-3">${today.map((t) => UI.taskCard(t)).join('')}</div>
-      </div>` : ''}
-    ${upcoming}`;
+        <div class="space-y-3">${today.map((t) => UI.taskCard(t, { toggle: true })).join('')}</div>
+      </div>` : `<div class="flex items-center gap-3 rounded-2xl bg-mint-tint px-4 py-3 text-sm">${icon('check', 18, 'text-success')}Nothing due today</div>`}
+    ${group('Later this week', week, 'Nothing else due this week')}
+    ${later.length ? group('Coming up', later) : ''}
+    ${unset.length ? group('Date not set yet', unset) : ''}`;
 }
 
 function heading(title, sub) {
