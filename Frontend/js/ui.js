@@ -38,6 +38,8 @@ const ICON_PATHS = {
   notebook: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 3v18M12 8h4M12 12h4"/>',
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
   eyeOff: '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a17 17 0 0 1-2.16 3.19M6.6 6.6A17.5 17.5 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2M2 2l20 20"/>',
+  flag: '<path d="M5 21V4"/><path d="M5 4h11.5l-2.25 4.5L16.5 13H5"/>',
+  clipboard: '<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4V2.75h6V4M9 10h6M9 14h6M9 18h3"/>',
 };
 
 /**
@@ -424,31 +426,31 @@ const UI = {
   },
 };
 
-/** "Admin · BSINFO-2A" or "BSINFO-2A · 2nd Semester" */
-const sectionEyebrow = (me) => (me.user.role === 'admin' ? `Admin · ${me.section.name}` : [me.section.name, me.section.semester].filter(Boolean).join(' · '));
+/** "President · BSINFO-2A" for officers, or "BSINFO-2A · 2nd Semester" */
+const sectionEyebrow = (me) => (me.user.is_officer ? `${me.user.role_label} · ${me.section.name}` : [me.section.name, me.section.semester].filter(Boolean).join(' · '));
 
 /* ===================================================================== SHELL */
 const Shell = {
   me: null,
 
-  navItems(role) {
-    return role === 'admin'
-      ? [
-          { key: 'home', href: 'home.html', icon: 'home', label: 'Home' },
-          { key: 'schedule', href: 'schedule.html', icon: 'calendar', label: 'Schedule' },
-          { key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true },
-          { key: 'add', href: 'task-form.html', icon: 'plus', label: 'Add task', fab: true },
-          { key: 'classmates', href: 'classmates.html', icon: 'users', label: 'Members' },
-          { key: 'groups', href: 'classmates.html#groups', icon: 'groups', label: 'Groups' },
-          { key: 'account', href: 'account.html', icon: 'user', label: 'My account' },
-        ]
-      : [
-          { key: 'home', href: 'home.html', icon: 'home', label: 'Home' },
-          { key: 'schedule', href: 'schedule.html', icon: 'calendar', label: 'Schedule' },
-          { key: 'add', href: 'task-form.html', icon: 'plus', label: 'Request a task', fab: true },
-          { key: 'classmates', href: 'classmates.html', icon: 'users', label: 'Classmates' },
-          { key: 'account', href: 'account.html', icon: 'user', label: 'My account' },
-        ];
+  /** May the logged-in person do this? (The server sends the list; it still checks every action.) */
+  can(permission) {
+    return (Shell.me?.user.permissions || []).includes(permission);
+  },
+
+  /** Nav for this person: officers get the approval queue; the President also gets Groups (desktop). */
+  navItems() {
+    const president = Shell.can('manage_section');
+    return [
+      { key: 'home', href: 'home.html', icon: 'home', label: 'Home' },
+      { key: 'schedule', href: 'schedule.html', icon: 'calendar', label: 'Schedule' },
+      ...(Shell.can('review_requests') ? [{ key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true }] : []),
+      { key: 'add', href: 'task-form.html', icon: 'plus', label: president ? 'Add task' : 'Request a task', fab: true },
+      { key: 'classmates', href: 'classmates.html', icon: 'users', label: president ? 'Members' : 'Classmates' },
+      ...(president ? [{ key: 'groups', href: 'classmates.html#groups', icon: 'groups', label: 'Groups', desktopOnly: true }] : []),
+      { key: 'activities', href: 'activities.html', icon: 'flag', label: 'Activities' },
+      { key: 'account', href: 'account.html', icon: 'user', label: 'My account' },
+    ];
   },
 
   /**
@@ -464,11 +466,11 @@ const Shell = {
 
     const [notes, queue] = await Promise.all([
       API.get('notifications.php').catch(() => ({ unread: 0 })),
-      role === 'admin' ? API.get('schedule.php').then((s) => s.stats.queue_size).catch(() => 0) : Promise.resolve(0),
+      Shell.can('review_requests') ? API.get('schedule.php').then((s) => s.stats.queue_size).catch(() => 0) : Promise.resolve(0),
     ]);
     const resolve = (v) => (typeof v === 'function' ? v(me) : v);
     Shell.renderHeader({ ...opts, eyebrow: resolve(opts.eyebrow), title: resolve(opts.title), unread: notes.unread });
-    Shell.renderNav(opts.active, role, queue);
+    Shell.renderNav(opts.active, queue);
     $$('[data-role-only]').forEach((el) => { el.hidden = el.dataset.roleOnly !== role; });
     return me;
   },
@@ -504,8 +506,8 @@ const Shell = {
     $('[data-open-account]', header)?.addEventListener('click', () => Shell.openAccountDrawer());
   },
 
-  renderNav(active, role, queueCount) {
-    const items = Shell.navItems(role);
+  renderNav(active, queueCount) {
+    const items = Shell.navItems();
     // Classmates page opened on its Groups tab (e.g. coming back from My account): highlight Groups, not Members
     if (active === 'classmates' && location.hash.startsWith('#groups') && items.some((it) => it.key === 'groups')) active = 'groups';
     const badge = (it) => (it.badge && queueCount ? `<span class="nav-badge">${queueCount}</span>` : '');
@@ -513,14 +515,15 @@ const Shell = {
     const mobile = document.createElement('nav');
     mobile.setAttribute('aria-label', 'Main');
     // Left side | + | right side — both sides take equal width so the + stays centred
-    // no matter how many items each side has (students 2|2, admins 2|3).
+    // no matter how many items each side has (members 2|3, officers 3|3). Desktop-only items stay off the phone bar.
     mobile.className = 'nav-pill fixed inset-x-4 bottom-4 z-40 mx-auto flex h-16 max-w-[24rem] items-center rounded-full px-1.5 lg:hidden';
-    const fabAt = items.findIndex((it) => it.fab);
+    const phoneItems = items.filter((it) => !it.desktopOnly);
+    const fabAt = phoneItems.findIndex((it) => it.fab);
     const link = (it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${active === it.key ? 'active' : ''}" aria-label="${it.label}" ${active === it.key ? 'aria-current="page"' : ''}>${icon(it.icon, 20)}${badge(it)}</a>`;
     const side = (list) => `<div class="flex min-w-0 flex-1 items-center justify-evenly">${list.map(link).join('')}</div>`;
-    mobile.innerHTML = `${side(items.slice(0, fabAt))}
-      <a href="${items[fabAt].href}" class="nav-fab mx-1 shrink-0" aria-label="${items[fabAt].label}">${icon('plus', 22)}</a>
-      ${side(items.slice(fabAt + 1))}`;
+    mobile.innerHTML = `${side(phoneItems.slice(0, fabAt))}
+      <a href="${phoneItems[fabAt].href}" class="nav-fab mx-1 shrink-0" aria-label="${phoneItems[fabAt].label}">${icon('plus', 22)}</a>
+      ${side(phoneItems.slice(fabAt + 1))}`;
 
     const rail = document.createElement('nav');
     rail.setAttribute('aria-label', 'Main');
@@ -563,7 +566,11 @@ const Shell = {
         <h3 class="mt-5 font-semibold">My sections</h3>
         <div class="mt-2">${Shell.sectionList()}</div>
         <div class="mt-5 space-y-1">
-          ${[['user', 'Edit profile', 'account.html#profile'], ...(admin ? [] : [['inbox', 'My tasks · pending & history', 'my-tasks.html']]), ['bell', 'Notifications', 'notifications.html'], ['lock', 'Change password', 'account.html#password']]
+          ${[['user', 'Edit profile', 'account.html#profile'], ...(admin ? [] : [['inbox', 'My tasks · pending & history', 'my-tasks.html']]),
+            ['clipboard', 'My member record', `records.html?id=${user.id}`],
+            ...(Shell.can('view_member_records') ? [['users', 'Member records & officers', 'records.html']] : []),
+            ['flag', 'Activities', 'activities.html'],
+            ['bell', 'Notifications', 'notifications.html'], ['lock', 'Change password', 'account.html#password']]
             .map(([i, l, h]) => `<a href="${h}" class="flex items-center gap-3 rounded-2xl px-1 py-2 hover:bg-canvas"><span class="grid h-9 w-9 place-items-center rounded-full bg-canvas">${icon(i, 18)}</span><span class="flex-1 text-sm font-medium">${l}</span>${icon('chevronRight', 18, 'text-muted')}</a>`).join('')}
         </div>
         <div class="mt-auto pt-6"><button data-logout class="btn btn-danger w-full">Log out</button></div>
@@ -582,7 +589,7 @@ const Shell = {
         <button type="button" data-switch="${s.id}" class="flex w-full items-center gap-3 rounded-2xl bg-canvas p-3 text-left">
           <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-charcoal text-sm font-semibold text-white">${esc(s.name.slice(-2))}</span>
           <span class="min-w-0 flex-1"><span class="block font-semibold">${esc(s.name)}</span>
-            <span class="block truncate text-xs text-muted">${s.role === 'admin' ? `Admin · code ${esc(s.class_code)}` : 'Student'} · ${s.members} members · Joined ${esc(Shell.monthYear(s.joined_at))}</span></span>
+            <span class="block truncate text-xs text-muted">${s.role === 'admin' ? `President · code ${esc(s.class_code)}` : 'Member'} · ${s.members} members · Joined ${esc(Shell.monthYear(s.joined_at))}</span></span>
           ${s.id === section.id ? '<span class="chip bg-mint-tint text-success">Active</span>' : '<span class="chip bg-white">Open</span>'}
         </button>`).join('')}
       <a href="section.html" class="flex items-center gap-3 rounded-2xl p-3 hover:bg-canvas">
@@ -603,7 +610,7 @@ const Shell = {
 
   profileCard(admin, compact = false) {
     const { user, section } = Shell.me;
-    const roleLabel = `${admin ? 'Admin' : 'Student'} · ${section.name}`;
+    const roleLabel = `${user.role_label || (admin ? 'President' : 'Member')} · ${section.name}`;
     return `
       <div class="card-pastel ${admin ? 'yellow' : 'peach'} rounded-[1.75rem] p-5">
         <span class="sparkle">✦</span><span class="ring-deco"></span>

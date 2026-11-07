@@ -59,34 +59,12 @@ function me_payload(array $user): array
     }
     $ctx = load_context($user);
     $payload['section'] = present_section($ctx['section'], count($ctx['members']));
+    // What this person may do here, so the app shows the right buttons (the server still checks every action)
+    $payload['user']['permissions'] = Person::fromRow($user)->allPermissions();
 
-    $uid = (int) $user['id'];
-    if ($user['role'] === 'admin') {
-        $published = 0;
-        $reviewed = 0;
-        foreach ($ctx['tasks'] as $t) {
-            if ((int) $t['reviewed_by'] === $uid && (int) $t['requested_by'] !== $uid) {
-                $reviewed++;
-            }
-            if ((int) $t['requested_by'] === $uid && $t['status'] === 'approved') {
-                $published++;
-            }
-        }
-        $payload['stats'] = ['subjects' => $ctx['subjects']->size(), 'published' => $published, 'reviewed' => $reviewed];
-    } else {
-        $submitted = 0;
-        $approved = 0;
-        foreach ($ctx['tasks'] as $t) {
-            if ((int) $t['requested_by'] === $uid) {
-                $submitted++;
-                if ($t['status'] === 'approved') {
-                    $approved++;
-                }
-            }
-        }
-        $graph = build_graph((int) $ctx['section']['id'], $ctx['members']);
-        $payload['stats'] = ['submitted' => $submitted, 'approved' => $approved, 'groups' => count($graph->groupsOf($uid))];
-    }
+    // [OOP: POLYMORPHISM] — a Member counts requests and groups, an Officer counts subjects,
+    // published tasks and reviews; this code doesn't need to know which one it has.
+    $payload['stats'] = Person::fromRow($user)->accountStats($ctx);
     return $payload;
 }
 

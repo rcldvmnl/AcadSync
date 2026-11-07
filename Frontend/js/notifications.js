@@ -16,7 +16,7 @@ let items = [];
 (async () => {
   await Shell.init({
     active: 'home',
-    eyebrow: (m) => `${m.user.role === 'admin' ? 'Admin' : 'Client'} · ${m.section.name}`,
+    eyebrow: (m) => `${m.user.role_label} · ${m.section.name}`,
     title: 'Notifications',
     search: false,
   });

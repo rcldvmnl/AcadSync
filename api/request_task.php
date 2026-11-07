@@ -24,7 +24,9 @@ const MAX_PENDING = 3;
 require_method('POST');
 $user = current_member();
 $ctx = load_context($user);
-$isAdmin = $user['role'] === 'admin';
+$me = Person::fromRow($user);     // [OOP] Member or Officer
+// An officer's tasks are published straight away; a member's request waits in the queue
+$publishesDirectly = $me->can(Permission::PUBLISH_TASK);
 $sectionId = (int) $ctx['section']['id'];
 $uid = (int) $user['id'];
 $fullName = trim($user['first_name'] . ' ' . $user['last_name']);
@@ -102,14 +104,15 @@ function task_fields(array $ctx, ?array $base): array
     if ($mode === 'group') {
         $min = (int) param('group_min', $base['group_min'] ?? 0);
         $max = (int) param('group_max', $base['group_max'] ?? $min);
-        if ($min < 2 || $max < $min || $max > 20) {
-            fail('Group size: at least 2 per group, and the maximum can’t be below the minimum (up to 20).');
-        }
         // Optional exact number of groups (e.g. the prof says “make 5 groups”)
         $count = (int) (array_key_exists('group_count', input()) ? param('group_count') : ($base['group_count'] ?? 0)) ?: null;
-        if ($count !== null && ($count < 1 || $count > 50)) {
-            fail('Number of groups must be between 1 and 50.');
+        // [OOP: ENCAPSULATION] — GroupRule checks its own numbers; an invalid rule can't be built
+        try {
+            $rule = new GroupRule($min, $max, $count);
+        } catch (InvalidArgumentException $e) {
+            fail($e->getMessage());
         }
+        [$min, $max, $count] = [$rule->min(), $rule->max(), $rule->count()];
     } else {
         $mode = 'individual';
     }
@@ -159,7 +162,7 @@ switch (param('action')) {
         ), 'pending' => count(my_pending($sectionId, $ctx['taskIndex'], $uid)), 'limit' => MAX_PENDING]);
 
     case 'delete': {
-        if (!$isAdmin) {
+        if (!$me->can(Permission::REMOVE_TASK)) {
             fail('Only the class admin can remove tasks.', 403);
         }
         $taskId = (int) param('task_id', 0);
@@ -214,7 +217,10 @@ if ($targetId !== null) {
     $target = $t;
 }
 
-if (!$isAdmin) {
+if (!$publishesDirectly) {
+    if (!$me->can(Permission::REQUEST_TASK)) {   // MemberStatus: an Alumni member can't send new requests
+        fail('Alumni members can’t send task requests.', 403);
+    }
     // Anti-spam: at most MAX_PENDING requests waiting per student
     $pending = my_pending($sectionId, $ctx['taskIndex'], $uid);
     if (count($pending) >= MAX_PENDING) {
@@ -235,7 +241,7 @@ $subjectCode = $ctx['subjectIndex'][$row['subject_id']]['code'];
 // [ALGORITHM: LINEAR SEARCH] — warn about possible duplicates
 $similar = $target ? [] : find_similar($ctx['tasks'], $row['subject_id'], $row['title'] . ' ' . $row['description'], null, $ctx['subjectIndex'], $ctx['users']);
 
-if ($isAdmin) {
+if ($publishesDirectly) {
     if ($target) {
         // Admin "Edit Task" — everyone sees the change right away
         Store::update('tasks', (int) $target['id'], $row);

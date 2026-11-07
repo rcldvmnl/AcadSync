@@ -144,13 +144,8 @@ final class DsaUtil
      */
     public static function deadlineTs(array $task): ?int
     {
-        $date = !empty($task['deadline_end']) ? $task['deadline_end'] : ($task['deadline'] ?? null);
-        if (empty($date)) {
-            return null;
-        }
-        $time = !empty($task['deadline_time']) ? $task['deadline_time'] : '23:59';
-        $ts = strtotime($date . ' ' . $time);
-        return $ts === false ? null : $ts;
+        // [OOP] the Deadline object (ExactDeadline / RangeDeadline / NoDeadline) knows its own time
+        return Deadlines::fromRow($task)->timestamp();
     }
 }
 

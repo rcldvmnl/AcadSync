@@ -9,8 +9,6 @@
 
 declare(strict_types=1);
 
-const DB_PATH = __DIR__ . '/../data/acadsync.db';
-
 /** Bump when schema.sql changes; an older database file is backed up and rebuilt. */
 const SCHEMA_VERSION = 3;
 
@@ -18,24 +16,32 @@ final class Store
 {
     private static ?PDO $pdo = null;
 
+    /** Where the SQLite file lives: DB_PATH in .env (default data/acadsync.db). */
+    public static function path(): string
+    {
+        return Env::path('DB_PATH', 'data/acadsync.db');
+    }
+
     public static function pdo(): PDO
     {
         if (self::$pdo !== null) {
             return self::$pdo;
         }
 
-        if (!is_dir(dirname(DB_PATH))) {
-            mkdir(dirname(DB_PATH), 0777, true);
+        $path = self::path();
+        if (!is_dir(dirname($path))) {
+            mkdir(dirname($path), 0775, true);
         }
         self::backupIfOutdated();
-        $fresh = !file_exists(DB_PATH);
+        $fresh = !file_exists($path);
 
-        self::$pdo = self::open(DB_PATH);
+        self::$pdo = self::open($path);
         self::$pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
         self::$pdo->exec('PRAGMA user_version = ' . SCHEMA_VERSION);
         self::addMissingColumns();
 
-        if ($fresh) {
+        // A brand-new database gets the demo section and accounts unless .env turns that off
+        if ($fresh && Env::bool('SEED_DEMO_DATA', true)) {
             require_once __DIR__ . '/seed.php';
             seed_database();
         }
@@ -48,6 +54,8 @@ final class Store
         $added = [
             'tasks' => ['group_count' => 'INTEGER'],
             'password_resets' => ['attempts' => 'INTEGER NOT NULL DEFAULT 0'],
+            // officer positions (vice_president | secretary) and member status (active | inactive | alumni)
+            'memberships' => ['position' => 'TEXT', 'status' => "TEXT NOT NULL DEFAULT 'active'"],
         ];
         foreach ($added as $table => $cols) {
             $have = [];
@@ -74,14 +82,15 @@ final class Store
     /** Renames a database built from an older schema to data/acadsync.backup-<date>.db. */
     private static function backupIfOutdated(): void
     {
-        if (!file_exists(DB_PATH)) {
+        $path = self::path();
+        if (!file_exists($path)) {
             return;
         }
-        $old = self::open(DB_PATH);
+        $old = self::open($path);
         $version = (int) $old->query('PRAGMA user_version')->fetchColumn();
         $old = null;
         if ($version !== SCHEMA_VERSION) {
-            rename(DB_PATH, dirname(DB_PATH) . '/acadsync.backup-' . date('Ymd-His') . '.db');
+            rename($path, dirname($path) . '/acadsync.backup-' . date('Ymd-His') . '.db');
         }
     }
 
@@ -149,11 +158,20 @@ final class Store
         self::pdo()->commit();
     }
 
+    /** Undoes an unfinished transaction (used when a request crashes halfway). */
+    public static function rollbackIfOpen(): void
+    {
+        if (self::$pdo !== null && self::$pdo->inTransaction()) {
+            self::$pdo->rollBack();
+        }
+    }
+
     private static function table(string $name): string
     {
         static $allowed = [
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
             'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests', 'subtasks',
+            'activities', 'activity_rsvps', 'attendance', 'officer_terms',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

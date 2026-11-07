@@ -175,7 +175,7 @@ const People = {
         <th scope="row">
           <span class="cm-person">${avatar(p)}
             <span class="cm-person-text">
-              <span class="cm-name">${esc(p.last_name)}, ${esc(p.first_name)}${me ? ' <span class="cm-you">you</span>' : ''}${p.role === 'admin' ? ' <span class="cm-tag">Class officer</span>' : ''}</span>
+              <span class="cm-name">${esc(p.last_name)}, ${esc(p.first_name)}${me ? ' <span class="cm-you">you</span>' : ''}${p.is_officer ? ` <span class="cm-tag cm-tag-officer">${esc(p.role_label)}</span>` : ''}${p.status && p.status !== 'active' ? ` <span class="cm-tag">${p.status === 'alumni' ? 'Alumni' : 'Inactive'}</span>` : ''}</span>
               <span class="cm-sub cm-id-inline">${esc(p.student_id)}</span>
             </span>
           </span>
@@ -200,9 +200,10 @@ const People = {
       <div class="flex items-center gap-4">
         ${avatar(p, 'cm-avatar-lg')}
         <div class="min-w-0"><h2 class="truncate text-xl font-bold">${esc(p.first_name)} ${esc(p.last_name)}</h2>
-          <div class="truncate text-sm text-[#5C5C66]">${p.role === 'admin' ? 'Class officer' : 'Student'} · <span class="cm-num">${esc(p.student_id)}</span></div></div>
+          <div class="truncate text-sm text-[#5C5C66]">${esc(p.role_label || 'Member')} · <span class="cm-num">${esc(p.student_id)}</span></div></div>
       </div>
       <a href="mailto:${esc(p.email)}" class="cm-mail">${icon('mail', 16)}<span class="truncate">${esc(p.email)}</span></a>
+      ${id === Data.me || Shell.can('view_member_records') ? `<a href="records.html?id=${id}" class="cm-mail mt-2">${icon('clipboard', 16)}<span class="truncate">Open member record: attendance, offices, status</span></a>` : ''}
       <h3 class="mt-6 text-sm font-semibold">Group assignments</h3>
       <div class="mt-1">${Data.assignments.length
         ? Data.assignments.map((t) => line(t.title, `${t.subject_code} · ${Fmt.due(t)}`, Data.groupOf(id, t.id))).join('')
@@ -282,6 +283,11 @@ function renderCounts() {
   });
   Data.admin = me.user.role === 'admin';
   if (Data.admin) renderInvite(me.section);
+  if (Shell.can('view_member_records')) {            // every officer can open the member records
+    const link = $('#records-link');
+    link.innerHTML = `${icon('clipboard', 16)}Member records`;
+    link.hidden = false;
+  }
   await Data.load();
   renderCounts();
   await People.search();

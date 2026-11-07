@@ -296,6 +296,24 @@
         ],
         "createdAt": "2026-10-31T04:08:15.049Z",
         "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity)"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/activities.html"
+        ],
+        "createdAt": "2026-11-06T14:36:06.568Z",
+        "reason": "user instruction for these pages: 'base design on the current'; #F6F3EE is the app-wide ground in css/app.css shared by every page and predates this session"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/records.html"
+        ],
+        "createdAt": "2026-11-06T14:36:07.296Z",
+        "reason": "user instruction for these pages: 'base design on the current'; #F6F3EE is the app-wide ground in css/app.css shared by every page and predates this session"
       }
     ]
   }

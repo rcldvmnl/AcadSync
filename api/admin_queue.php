@@ -8,7 +8,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../backend/bootstrap.php';
 
-$admin = require_admin();
+$admin = require_permission(Permission::REVIEW_REQUESTS, 'Only officers (President, Vice President, Secretary) can review requests.');
 $ctx = load_context($admin);
 $sectionId = (int) $ctx['section']['id'];
 

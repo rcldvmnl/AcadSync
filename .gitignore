@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# Never commit these. Each teammate keeps their own copy on their computer.
+# ---------------------------------------------------------------------------
+
+# Settings and secrets: copy .env.example to .env
+.env
+.env.*
+!.env.example
+
+# The SQLite database: every account, record and password hash lives here
+data/*
+!data/.htaccess
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Logs and backups
+*.log
+*.bak
+
+# Local tool output (design screenshots, editor/AI caches)
+.taste-skill/
+.impeccable/hook.cache.json
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dependencies (if any are ever added)
+node_modules/
+vendor/

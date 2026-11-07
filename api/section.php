@@ -161,12 +161,13 @@ switch (param('action')) {
         if ($m === null) {
             fail('You are not a member of that section.', 404);
         }
-        if ($m['role'] === 'admin') {
-            fail('Class admins can’t leave their own section.', 409);
+        if (Person::fromRow(['role' => $m['role'], 'position' => $m['position'] ?? null] + $user)->can(Permission::MANAGE_SECTION)) {
+            fail('The President can’t leave their own section.', 409);   // the President runs the section
         }
         Store::begin();
         Store::delete('memberships', (int) $m['id']);
         leave_groups($sid, $uid);
+        end_officer_term($sid, $uid);       // a Vice President / Secretary who leaves gives up the office
         Store::commit();
         if ((int) $user['active_section_id'] === $sid) {
             $others = user_sections($uid);

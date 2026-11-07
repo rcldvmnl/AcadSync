@@ -46,6 +46,14 @@
 }
 [aria-selected=true] .cm-count { background: var(--cm-orange); color: var(--cm-ink); }
 
+.cm-tabbar-end { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cm-records-link {
+  display: inline-flex; align-items: center; gap: 8px; height: 54px; padding: 0 20px; border-radius: 999px;
+  background: var(--cm-paper); font-size: 14px; font-weight: 700; color: var(--cm-ink); transition: background .15s;
+}
+.cm-records-link:hover { background: var(--cm-sand-2); }
+.cm-records-link:focus-visible { outline: 3px solid var(--cm-ink); outline-offset: 2px; }
+.cm-tag-officer { background: var(--cm-lav-tint); color: var(--cm-lav-deep); }
 .cm-invite { display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 8px 0 20px; border-radius: 999px; background: var(--cm-paper); }
 .cm-code { font-size: 17px; font-weight: 800; letter-spacing: .06em; }
 
@@ -352,6 +360,8 @@
   .cm-tabbar { margin-bottom: 18px; }
   .cm-tabs { width: 100%; }
   .cm-tabs [role=tab] { flex: 1; justify-content: center; padding: 0 12px; }
+  .cm-tabbar-end { width: 100%; }
+  .cm-records-link { flex: 1; justify-content: center; height: 48px; }
   .cm-invite { width: 100%; justify-content: space-between; }
   .cm-invite .cm-sub { display: none; }
 

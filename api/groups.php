@@ -20,10 +20,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/../backend/bootstrap.php';
 
 $user = current_member();
+$me = Person::fromRow($user);               // [OOP] a Member or an Officer: permissions are asked, not role-checked
 $ctx = load_context($user);
 $sectionId = (int) $ctx['section']['id'];
-$uid = (int) $user['id'];
-$isAdmin = $user['role'] === 'admin';
+$uid = $me->id();
 $groups = load_groups($sectionId);
 
 $memberIds = new HashSet();                 // [DSA: HASHSET] — who belongs to this section
@@ -51,7 +51,8 @@ function group_task(array $ctx, ?int $taskId): ?array
         return null;
     }
     $t = $ctx['taskIndex'][$taskId] ?? null;
-    if (!$t || $t['status'] !== 'approved' || $t['work_mode'] !== 'group') {
+    // [OOP: POLYMORPHISM] — GroupTask says yes, IndividualTask says no
+    if (!$t || !Task::fromRow($t)->isOpen() || !Task::fromRow($t)->acceptsGroups()) {
         fail('That task is not open for group work.', 404);
     }
     return $t;
@@ -68,96 +69,53 @@ function next_group_name(array $groups, int $taskId): string
     return "Group $n";
 }
 
-/**
- * Group rules for one group task.
- *   can_create: false once the prof's exact number of groups exists
- *   overflow:   the classmates still without a group can't make another proper
- *               group (too few, or the group limit is reached) and the open
- *               spots can't hold them all -> every group may take ONE extra member
- */
-function task_rules(array $task, array $groups, int $memberCount): array
-{
-    $min = (int) $task['group_min'];
-    $max = (int) $task['group_max'];
-    $count = isset($task['group_count']) && $task['group_count'] !== null ? (int) $task['group_count'] : null;
-    $formed = 0;
-    $grouped = 0;
-    $open = 0;
-    $over = 0;                                   // groups already holding max + 1
+/** [OOP] The task as an object (GroupTask / IndividualTask), or null. */
+$taskOf = function (?int $taskId) use ($ctx): ?Task {
+    $row = $taskId ? ($ctx['taskIndex'][$taskId] ?? null) : null;
+    return $row ? Task::fromRow($row) : null;
+};
+
+/** [OOP] The task's groups as StudyGroup objects. */
+$studyGroupsOf = function (int $taskId) use ($groups): array {
+    $out = [];
     foreach ($groups as $g) {
-        if ((int) $g['task_id'] === (int) $task['id']) {
-            $formed++;
-            $grouped += count($g['members']);
-            $open += max(0, $max - count($g['members']));
-            $over += count($g['members']) > $max ? 1 : 0;
+        if ((int) $g['task_id'] === $taskId) {
+            $out[] = StudyGroup::fromRow($g);
         }
     }
-    $left = max(0, $memberCount - $grouped);
-    if ($count !== null) {
-        // STRICT: exactly $count groups. The seats are $count × $max; whoever doesn't fit is the
-        // excess, and that many groups (at most one extra each) may take ONE extra member —
-        // e.g. 10 students, 3 groups of 3 -> 9 seats, 1 excess -> exactly one group may have 4.
-        $groupsLeft = max(0, $count - $formed);
-        $excess = max(0, $memberCount - $count * $max);
-        $extraSlots = $left > 0 ? max(0, min($excess, $count) - $over) : 0;
-        // Students that still won't fit even with one extra in every group (the prof's numbers are too small)
-        $unplaceable = max(0, $excess - $count);
-    } else {
-        $groupsLeft = null;
-        // No fixed count: leftovers too few for another group may join a full group as its +1
-        $extraSlots = ($left > 0 && $left < $min && $left > $open) ? $left - $open : 0;
-        $unplaceable = 0;
-    }
-    return [
-        'min' => $min, 'max' => $max, 'count' => $count, 'formed' => $formed,
-        'groups_left' => $groupsLeft, 'ungrouped' => $left, 'open_spots' => $open,
-        'can_create' => $count === null || $formed < $count,
-        'overflow' => $extraSlots > 0,
-        'extra_slots' => $extraSlots,
-        'over' => $over,
-        'unplaceable' => $unplaceable,
-    ];
-}
-
-/** Rules per task id, worked out once per request. */
-$rulesFor = function (int $taskId) use ($ctx, $groups) {
-    static $cache = [];
-    $task = $ctx['taskIndex'][$taskId] ?? null;
-    if (!$task) {
-        return null;
-    }
-    return $cache[$taskId] ??= task_rules($task, $groups, count($ctx['members']));
+    return $out;
 };
 
 /**
- * A group's size limit. A group made for a task always follows the task's CURRENT group_max
+ * Group rules per task id, worked out once per request by the task's GroupRule object
+ * (exact number of groups, the +1 seat for the excess — see GroupRule::evaluate).
+ */
+$rulesFor = function (int $taskId) use ($ctx, $taskOf, $studyGroupsOf) {
+    static $cache = [];
+    $rule = $taskOf($taskId)?->rule();      // null for an individual task (polymorphism)
+    if ($rule === null) {
+        return null;
+    }
+    return $cache[$taskId] ??= $rule->evaluate($studyGroupsOf($taskId), count($ctx['members']));
+};
+
+/**
+ * A group's size limit. A group made for a task always follows its task's CURRENT GroupRule
  * (the stored max_members is only what it was when the group was made), so editing the task
  * from 3 to 4 per group updates every group of that task. Study groups keep their own limit.
  */
-$maxOf = function (array $g) use ($ctx): ?int {
-    $task = $g['task_id'] ? ($ctx['taskIndex'][(int) $g['task_id']] ?? null) : null;
-    if ($task && $task['group_max'] !== null) {
-        return (int) $task['group_max'];
-    }
-    return $g['max_members'] !== null ? (int) $g['max_members'] : null;
+$maxOf = function (array $g) use ($taskOf): ?int {
+    return $taskOf($g['task_id'] ? (int) $g['task_id'] : null)?->rule()?->max() ?? StudyGroup::fromRow($g)->ownLimit();
 };
 
-/**
- * How many members a group can hold right now. Normally its max. A group that is already FULL
- * may take one extra member only while the task still has an extra slot for the excess; a group
- * already at max + 1 keeps that size.
- */
-$capacity = function (array $g) use ($rulesFor, $maxOf): ?int {
-    $max = $maxOf($g);
-    if ($max === null) {
-        return null;
+/** How many members a group can hold right now (GroupRule::capacityOf: max, +1 for the excess). */
+$capacity = function (array $g) use ($taskOf, $rulesFor, $maxOf): ?int {
+    $group = StudyGroup::fromRow($g);
+    $rule = $taskOf($group->taskId())?->rule();
+    if ($rule === null) {
+        return $maxOf($g);                   // a study group: its own limit (or none)
     }
-    $n = count($g['members']);
-    $rules = $g['task_id'] ? $rulesFor((int) $g['task_id']) : null;
-    if ($n > $max) {
-        return $n;
-    }
-    return $max + ($rules && $n >= $max && $rules['extra_slots'] > 0 ? 1 : 0);
+    return $rule->capacityOf($group, $rulesFor($group->taskId())['extra_slots']);
 };
 $isFull = fn (array $g) => $capacity($g) !== null && count($g['members']) >= $capacity($g);
 
@@ -225,7 +183,7 @@ foreach (section_rows('group_requests', $sectionId) as $r) {
  * Group + join requests. Members (and the admin) see who is asking to join;
  * everyone sees whether THEY have a request waiting (my_request).
  */
-$present = function (array $g) use ($ctx, $uid, $isAdmin, $groups, $pendingByGroup, $capacity, $maxOf) {
+$present = function (array $g) use ($ctx, $uid, $me, $groups, $pendingByGroup, $capacity, $maxOf) {
     $p = present_group($g, $ctx['users'], $ctx['subjectIndex'], $ctx['taskIndex'], $uid);
     $p['max_members'] = $maxOf($g);   // the task's current limit, not the one saved at creation
     $grouped = $g['task_id'] ? grouped_for_task($groups, (int) $g['task_id']) : new HashSet();
@@ -244,7 +202,7 @@ $present = function (array $g) use ($ctx, $uid, $isAdmin, $groups, $pendingByGro
             $requests[] = ['id' => (int) $r['id'], 'user_id' => $who, 'name' => $u['first_name'] . ' ' . $u['last_name'], 'student_id' => $u['student_id'], 'created_at' => $r['created_at']];
         }
     }
-    return $p + ['requests' => ($p['is_member'] || $isAdmin) ? $requests : [], 'request_count' => count($requests), 'my_request' => $mine,
+    return $p + ['requests' => ($p['is_member'] || $me->can(Permission::ANSWER_ANY_REQUEST)) ? $requests : [], 'request_count' => count($requests), 'my_request' => $mine,
         'capacity' => $capacity($g)];
 };
 
@@ -335,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Upcoming group tasks, in timeline order ([DSA: LINKED LIST])
     $upcoming = [];
     foreach (build_timeline($ctx['tasks'], time())->toArray() as $t) {
-        if ($t['work_mode'] === 'group') {
+        if (Task::fromRow($t)->acceptsGroups()) {   // [OOP: POLYMORPHISM]
             $grouped = grouped_for_task($groups, (int) $t['id']);
             $count = 0;
             foreach ($groups as $g) {
@@ -369,7 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
     // [DSA: GRAPH] — classmates with no edge at all (degree 0) have never been in a group with anyone
     $isolated = [];
-    if ($isAdmin) {
+    if ($me->can(Permission::MANAGE_SECTION)) {
         $graph = build_graph($sectionId, $ctx['members'], $groups);
         foreach (Algorithms::selectionSortByLastName($ctx['members']) as $m) {
             if ($graph->degree((int) $m['id']) === 0) {
@@ -390,11 +348,14 @@ if (param('group_id')) {
         fail('Group not found.', 404);
     }
 }
-$canManage = fn (array $g) => $isAdmin || (int) $g['created_by'] === $uid;
+$canManage = fn (array $g) => $me->canManageGroup((int) $g['created_by']);   // own group, or any for an officer
 $fullName = trim($user['first_name'] . ' ' . $user['last_name']);
 
 switch (param('action')) {
     case 'create': {
+        if (!$me->can(Permission::JOIN_GROUP)) {   // e.g. an Alumni member (their status holds this back)
+            fail('Alumni members can’t make new groups.', 403);
+        }
         $taskId = param('task_id') ? (int) param('task_id') : null;
         $task = group_task($ctx, $taskId);
         if ($task && !$rulesFor($taskId)['can_create']) {
@@ -460,6 +421,9 @@ switch (param('action')) {
         if (!$group) {
             fail('Pick a group.');
         }
+        if (!$me->can(Permission::JOIN_GROUP)) {
+            fail('Alumni members can’t join groups.', 403);
+        }
         if (in_array($uid, $group['members'], true)) {
             fail('You’re already in this group.', 409);
         }
@@ -490,7 +454,7 @@ switch (param('action')) {
             if ((int) $r['user_id'] === $uid) {
                 Store::update('group_requests', (int) $r['id'], ['status' => 'cancelled']);
                 // [DSA: STACK] — PUSH the opposite: Undo sends the request again
-                undo_push($sectionId, ['type' => 'request', 'group_id' => $group['id'], 'label' => "Cancelled your request to “{$group['name']}”"]);
+                undo_push($sectionId, new RequestAgainAction("Cancelled your request to “{$group['name']}”", (int) $group['id']));
                 respond(['undo' => true]);
             }
         }
@@ -512,7 +476,7 @@ switch (param('action')) {
         if (!$g) {
             fail('Group not found.', 404);
         }
-        if (!$isAdmin && !in_array($uid, $g['members'], true)) {
+        if (!$me->can(Permission::ANSWER_ANY_REQUEST) && !in_array($uid, $g['members'], true)) {
             fail('Only members of this group can answer join requests.', 403);
         }
         $who = (int) $req['user_id'];
@@ -553,8 +517,8 @@ switch (param('action')) {
     }
 
     case 'join': {
-        // Direct join is for the class admin; students send a request_join instead
-        if (!$isAdmin) {
+        // Direct join is for the class officer; members send a request_join instead
+        if (!$me->can(Permission::JOIN_DIRECTLY)) {
             fail('Send a join request — the group’s members will accept you.', 403);
         }
         if (!$group) {
@@ -590,11 +554,11 @@ switch (param('action')) {
             fail('You’re not in this group.', 404);
         }
         // [DSA: STACK] — PUSH the opposite: Undo puts you back (or re-makes the group if it gets deleted)
-        undo_push($sectionId, ['type' => 'rejoin', 'label' => "Left “{$group['name']}”", 'group' => [
+        undo_push($sectionId, new RejoinGroupAction("Left “{$group['name']}”", [
             'id' => $group['id'], 'name' => $group['name'], 'task_id' => $group['task_id'] !== null ? (int) $group['task_id'] : null,
             'subject_id' => $group['subject_id'] !== null ? (int) $group['subject_id'] : null, 'purpose' => $group['purpose'],
             'max_members' => $group['max_members'] !== null ? (int) $group['max_members'] : null, 'created_by' => (int) $group['created_by'],
-        ]]);
+        ]));
         Store::begin();
         Store::delete('group_members', (int) $row['id']);
         if (count($group['members']) === 1) {
@@ -650,7 +614,7 @@ switch (param('action')) {
     }
 
     case 'auto_assign': {
-        if (!$isAdmin) {
+        if (!$me->can(Permission::AUTO_GROUP)) {
             fail('Only the class admin can auto-group.', 403);
         }
         $taskId = (int) param('task_id', 0);

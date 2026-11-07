@@ -9,7 +9,7 @@ const STATUS_CHIP = {
 (async () => {
   const me = await Shell.init({
     active: 'account',
-    eyebrow: (m) => `${m.user.role === 'admin' ? 'Admin' : 'Student'} · ${m.section.name}`,
+    eyebrow: (m) => `${m.user.role_label} · ${m.section.name}`,
     title: 'My Account',
   });
   render(me);
@@ -62,6 +62,9 @@ function render(me) {
     : [[s.submitted, 'Submitted'], [s.approved, 'Approved'], [s.groups, 'Groups']];
   const settings = [
     ...(admin ? [['users', 'Manage members', 'classmates.html'], ['bookOpen', 'Subjects & schedule', 'week.html']] : []),
+    ['clipboard', 'My member record', `records.html?id=${me.user.id}`],
+    ...(Shell.can('view_member_records') ? [['users', 'Member records & officers', 'records.html']] : []),
+    ['flag', 'Activities', 'activities.html'],
     ['user', 'Edit profile', '#profile'],
     ['bell', 'Notifications', 'notifications.html'],
     ['lock', 'Change password', '#password'],

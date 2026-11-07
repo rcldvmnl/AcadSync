@@ -77,6 +77,7 @@ function present_task(array $t, array $subjectIndex, array $users): array
         'deadline_end' => $t['deadline_end'],
         'deadline_type' => $t['deadline_type'],
         'deadline_ts' => DsaUtil::deadlineTs($t),
+        'deadline_label' => Deadlines::fromRow($t)->label(),   // [OOP] each Deadline class words itself
         'location' => $t['location'],
         'work_mode' => $t['work_mode'] ?? 'individual',
         'group_min' => isset($t['group_min']) ? (int) $t['group_min'] : null,
@@ -190,8 +191,11 @@ function section_members(int $sectionId): array
         $u = $users[(int) $m['user_id']] ?? null;
         if ($u) {
             $u['role'] = $m['role'];
+            $u['position'] = $m['position'] ?? null;
+            $u['status'] = $m['status'] ?? 'active';
             $u['joined_at'] = $m['joined_at'];
             $u['section_id'] = $sectionId;
+            $u['membership_id'] = (int) $m['id'];
             $out[] = $u;
         }
     }
@@ -245,11 +249,15 @@ function load_groups(int $sectionId): array
  */
 const UNDO_LIMIT = 10;
 
+/** [DSA: STACK of OOP objects] — the session's stored arrays rebuilt into UndoAction objects. */
 function undo_stack(int $sectionId): UndoStack
 {
     $stack = new UndoStack();
     foreach ($_SESSION['undo'][$sectionId] ?? [] as $entry) {   // bottom first, so the newest ends on top
-        $stack->push($entry);
+        $action = UndoAction::fromArray($entry);
+        if ($action !== null) {
+            $stack->push($action);
+        }
     }
     return $stack;
 }
@@ -259,16 +267,16 @@ function undo_save(int $sectionId, UndoStack $stack): void
     $topFirst = $stack->toArray();
     $bottomFirst = [];
     for ($i = count($topFirst) - 1; $i >= 0; $i--) {
-        $bottomFirst[] = $topFirst[$i];
+        $bottomFirst[] = $topFirst[$i]->toArray();
     }
     $_SESSION['undo'][$sectionId] = $bottomFirst;
 }
 
-/** PUSH an action's reverse, e.g. ['type' => 'rejoin', 'label' => 'Leave “Group 2”', ...]. */
-function undo_push(int $sectionId, array $entry): void
+/** PUSH an action (it knows how to reverse itself), e.g. new RejoinGroupAction('Left “Group 2”', ...). */
+function undo_push(int $sectionId, UndoAction $action): void
 {
     $stack = undo_stack($sectionId);
-    $stack->push($entry + ['at' => time()]);
+    $stack->push($action);
     if ($stack->size() > UNDO_LIMIT) {        // drop the oldest (bottom) item
         $keep = $stack->toArray();
         $stack = new UndoStack();
@@ -280,12 +288,90 @@ function undo_push(int $sectionId, array $entry): void
 }
 
 /** POP the most recent action (LIFO), or null when there is nothing to undo. */
-function undo_pop(int $sectionId): ?array
+function undo_pop(int $sectionId): ?UndoAction
 {
     $stack = undo_stack($sectionId);
     $top = $stack->pop();
     undo_save($sectionId, $stack);
     return $top;
+}
+
+/* ------------------------------------------------------------------ activities and member records */
+
+/** The section's activities as Activity objects (Meeting / Seminar / Outreach), by id. */
+function load_activities(int $sectionId): array
+{
+    $out = [];
+    foreach (section_rows('activities', $sectionId) as $r) {
+        $out[(int) $r['id']] = Activity::fromRow($r);
+    }
+    return $out;
+}
+
+/** One ActivityRoster (going HashSet, waitlist QUEUE, checked-in HashSet) per activity id. */
+function activity_rosters(int $sectionId): array
+{
+    $rsvps = [];
+    foreach (section_rows('activity_rsvps', $sectionId) as $r) {
+        $rsvps[(int) $r['activity_id']][] = $r;
+    }
+    $came = [];
+    foreach (section_rows('attendance', $sectionId) as $a) {
+        $came[(int) $a['activity_id']][] = $a;
+    }
+    $out = [];
+    foreach (section_rows('activities', $sectionId) as $r) {
+        $id = (int) $r['id'];
+        $out[$id] = new ActivityRoster($rsvps[$id] ?? [], $came[$id] ?? []);
+    }
+    return $out;
+}
+
+/** Vice President / Secretary terms per user id, oldest first. */
+function officer_terms(int $sectionId): array
+{
+    $out = [];
+    foreach (section_rows('officer_terms', $sectionId) as $t) {
+        $out[(int) $t['user_id']][] = ['position' => $t['position'], 'started_at' => $t['started_at'], 'ended_at' => $t['ended_at']];
+    }
+    return $out;
+}
+
+/** Closes whatever office this member holds (when they're replaced, made inactive or leave). */
+function end_officer_term(int $sectionId, int $userId): void
+{
+    foreach (section_rows('officer_terms', $sectionId) as $t) {
+        if ((int) $t['user_id'] === $userId && $t['ended_at'] === null) {
+            Store::update('officer_terms', (int) $t['id'], ['ended_at' => date('Y-m-d H:i:s')]);
+        }
+    }
+}
+
+/** A MemberRecord for every member of the section (attendance from finished activities). */
+function member_records(array $ctx): array
+{
+    $sectionId = (int) $ctx['section']['id'];
+    $now = time();
+    $finished = [];
+    foreach (load_activities($sectionId) as $a) {
+        if (!$a->isCancelled() && $a->isOver($now)) {
+            $finished[] = $a;
+        }
+    }
+    $rosters = activity_rosters($sectionId);
+    $terms = officer_terms($sectionId);
+    $groupCount = [];
+    foreach (load_groups($sectionId) as $g) {
+        foreach ($g['members'] as $id) {
+            $groupCount[$id] = ($groupCount[$id] ?? 0) + 1;
+        }
+    }
+    $out = [];
+    foreach ($ctx['members'] as $m) {
+        $id = (int) $m['id'];
+        $out[] = MemberRecord::fromActivities(Person::fromRow($m), (string) $m['joined_at'], $finished, $rosters, $groupCount[$id] ?? 0, $terms[$id] ?? []);
+    }
+    return $out;
 }
 
 /**

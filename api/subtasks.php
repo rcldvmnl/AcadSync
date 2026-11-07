@@ -34,7 +34,7 @@ $taskId = (int) $task['id'];
 
 // Whose list: your group's for this task, or your own
 $group = null;
-if ($task['work_mode'] === 'group') {
+if (Task::fromRow($task)->acceptsGroups()) {   // [OOP: POLYMORPHISM] GroupTask vs IndividualTask
     foreach (load_groups($sectionId) as $g) {
         if ((int) $g['task_id'] === $taskId && in_array($uid, $g['members'], true)) {
             $group = $g;

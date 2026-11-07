@@ -44,10 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($changed) {
         // [DSA: STACK] — PUSH the opposite so Undo can set it back
-        undo_push($sectionId, [
-            'type' => 'done', 'task_id' => $taskId, 'done' => !$want,
-            'label' => ($want ? 'Marked “' : 'Unmarked “') . $task['title'] . '”',
-        ]);
+        undo_push($sectionId, new ToggleDoneAction(($want ? 'Marked “' : 'Unmarked “') . $task['title'] . '”', $taskId, !$want));
     }
     respond(['task_id' => $taskId, 'done' => $want, 'undo' => $changed]);
 }

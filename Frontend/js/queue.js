@@ -1,13 +1,14 @@
-// Approval Queue (admin).
+// Approval Queue (officers: President, Vice President, Secretary).
 // FIFO: only the request at the front (#1) can be approved or rejected.
 // Reject pushes onto the Undo Stack; Undo pops the latest rejection back into the queue.
 
 let state = { queue: [], undo: { size: 0, top: null }, selected: null, busy: false };
 
 (async () => {
-  const me = await Shell.init({ active: 'queue', eyebrow: 'Admin dashboard', title: 'Approval Queue' });
-  if (me.user.role !== 'admin') {
-    $('#main').innerHTML = UI.errorBox('Only the class admin can review requests.');
+  await Shell.init({ active: 'queue', eyebrow: (m) => `${m.user.role_label} · officers review in order`, title: 'Approval Queue' });
+  // Every officer (President, Vice President, Secretary) reviews the queue
+  if (!Shell.can('review_requests')) {
+    $('#main').innerHTML = UI.errorBox('Only officers (President, Vice President, Secretary) can review requests.');
     return;
   }
   await load();

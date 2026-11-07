@@ -41,8 +41,10 @@ CREATE TABLE IF NOT EXISTS memberships (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
-    role TEXT NOT NULL DEFAULT 'student', -- 'admin' (class officer) | 'student'
+    role TEXT NOT NULL DEFAULT 'student', -- 'admin' (the President, who created the section) | 'student'
     joined_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    position TEXT,                        -- NULL | 'vice_president' | 'secretary' (chosen by the President)
+    status TEXT NOT NULL DEFAULT 'active',-- 'active' | 'inactive' (on leave) | 'alumni'
     UNIQUE (section_id, user_id),
     FOREIGN KEY(section_id) REFERENCES sections(id),
     FOREIGN KEY(user_id) REFERENCES users(id)
@@ -206,6 +208,63 @@ CREATE TABLE IF NOT EXISTS subtasks (
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY(section_id) REFERENCES sections(id),
     FOREIGN KEY(task_id) REFERENCES tasks(id)
+);
+
+-- 10d. ACTIVITIES — the organization's meetings, seminars and outreach events.
+CREATE TABLE IF NOT EXISTS activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,                 -- 'meeting' | 'seminar' | 'outreach'
+    title TEXT NOT NULL,
+    description TEXT,
+    venue TEXT,
+    starts_at TEXT NOT NULL,            -- 'YYYY-MM-DD HH:MM'
+    ends_at TEXT NOT NULL,
+    capacity INTEGER,                   -- NULL = no limit
+    status TEXT NOT NULL DEFAULT 'scheduled', -- 'scheduled' | 'cancelled'
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(created_by) REFERENCES users(id)
+);
+
+-- 10e. ACTIVITY_RSVPS — who is going; when an activity is full the rest wait in a QUEUE
+--      (row order = arrival order; the front of the waitlist gets the next free seat).
+CREATE TABLE IF NOT EXISTS activity_rsvps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'going',  -- 'going' | 'waitlist'
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (activity_id, user_id),
+    FOREIGN KEY(activity_id) REFERENCES activities(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- 10f. ATTENDANCE — who was checked in at an activity (once each: HashSet + UNIQUE).
+CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    checked_in_by INTEGER NOT NULL,
+    checked_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (activity_id, user_id),
+    FOREIGN KEY(activity_id) REFERENCES activities(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- 10g. OFFICER_TERMS — history of who held Vice President / Secretary, and when.
+CREATE TABLE IF NOT EXISTS officer_terms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    position TEXT NOT NULL,             -- 'vice_president' | 'secretary'
+    started_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    ended_at DATETIME,                  -- NULL = still in office
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
 -- 11. PASSWORD_RESETS -------------------------------------------------------

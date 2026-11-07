@@ -77,8 +77,8 @@ for ($d = 1; $d <= WeekGrid::DAYS; $d++) {
 
 // 4b. STACK — this user's own Undo history (top first)
 $mineUndo = [];
-foreach (undo_stack($sectionId)->toArray() as $e) {
-    $mineUndo[] = $e['label'];
+foreach (undo_stack($sectionId)->toArray() as $action) {   // UndoAction objects, top first
+    $mineUndo[] = $action->label();
 }
 
 // 6b. TREE — your biggest checklist, with progress rolled up post-order

@@ -1,0 +1,18 @@
+# Apache (e.g. XAMPP htdocs): keep private files private.
+# With PHP's built-in server, router.php does the same job.
+
+Options -Indexes
+
+# .env, .git, .gitignore and every other dotfile
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Database, SQL, notes and logs, wherever they are
+<FilesMatch "\.(db|sqlite|sqlite3|db-journal|sql|md|log|bak)$">
+    Require all denied
+</FilesMatch>
+
+<Files "router.php">
+    Require all denied
+</Files>

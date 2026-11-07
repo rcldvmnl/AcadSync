@@ -223,6 +223,45 @@ function seed_database(): void
         }
     }
 
+    // --- Officers: Juan (admin) is the President; he chose a Vice President and a Secretary ---
+    foreach ([['maria.santos', 'vice_president'], ['kyla.lim', 'secretary']] as [$who, $position]) {
+        foreach (Store::all('memberships') as $m) {
+            if ((int) $m['section_id'] === $A && (int) $m['user_id'] === $u[$who]) {
+                Store::update('memberships', (int) $m['id'], ['position' => $position]);
+            }
+        }
+        Store::insert('officer_terms', ['section_id' => $A, 'user_id' => $u[$who], 'position' => $position, 'started_at' => $stamp('-6 weeks')]);
+    }
+    // Carlo is on leave this semester (his absences don't count)
+    foreach (Store::all('memberships') as $m) {
+        if ((int) $m['section_id'] === $A && (int) $m['user_id'] === $u['carlo.domingo']) {
+            Store::update('memberships', (int) $m['id'], ['status' => 'inactive']);
+        }
+    }
+
+    // --- Activities: [kind, title, venue, day offset, start, end, capacity, description, going, came] ---
+    $activities = [
+        ['meeting', 'General Assembly', 'Room 204', -14, '15:00', '16:30', null, 'Opening assembly: officers, plans for the semester.', [], ['juan.delacruz', 'maria.santos', 'kyla.lim', 'ana.bautista', 'marco.cruz']],
+        ['seminar', 'Git & GitHub Workshop', 'Comp Lab 1', -7, '13:00', '15:00', 6, 'Hands-on: branches, pull requests, merge conflicts.', ['maria.santos', 'ana.bautista', 'paolo.reyes', 'kyla.lim'], ['maria.santos', 'ana.bautista', 'kyla.lim']],
+        ['outreach', 'Coding Lesson for Grade 10', 'San Pablo City NHS', -3, '08:00', '11:00', 5, 'Teach basic HTML to Grade 10 students.', ['juan.delacruz', 'marco.cruz'], ['juan.delacruz', 'marco.cruz', 'paolo.reyes']],
+        ['meeting', 'Midterm Planning Meeting', 'Room 204', 3, '15:00', '16:00', null, 'Plan review sessions before the midterms.', [], []],
+        ['seminar', 'Intro to Figma', 'AVR Hall', 6, '13:00', '15:00', 3, 'Design a mobile screen from scratch.', ['ana.bautista', 'kyla.lim', 'marco.cruz', 'paolo.reyes'], []],
+    ];
+    foreach ($activities as [$kind, $title, $venue, $offset, $start, $end, $cap, $desc, $going, $came]) {
+        $aid = Store::insert('activities', [
+            'section_id' => $A, 'kind' => $kind, 'title' => $title, 'description' => $desc, 'venue' => $venue,
+            'starts_at' => $day($offset) . " $start", 'ends_at' => $day($offset) . " $end", 'capacity' => $cap,
+            'created_by' => $u['juan.delacruz'], 'created_at' => $stamp('-3 weeks'),
+        ]);
+        foreach ($going as $i => $who) {   // past the capacity, people wait in line (the QUEUE)
+            Store::insert('activity_rsvps', ['section_id' => $A, 'activity_id' => $aid, 'user_id' => $u[$who],
+                'status' => $cap !== null && $i >= $cap ? 'waitlist' : 'going', 'created_at' => $stamp('-2 weeks')]);
+        }
+        foreach ($came as $who) {
+            Store::insert('attendance', ['section_id' => $A, 'activity_id' => $aid, 'user_id' => $u[$who], 'checked_in_by' => $u['kyla.lim']]);
+        }
+    }
+
     // --- A few notifications ---------------------------------------------------------
     $notes = [
         ['juan.delacruz', $A, 'request', 'Kyla Lim requested “Web Mockup”', 'queue.html', 0, '-2 hours'],
