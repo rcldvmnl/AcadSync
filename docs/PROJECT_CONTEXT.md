@@ -115,6 +115,9 @@ Merge Sort: notifications, activity lists, member attendance ranking. Binary sea
 
 ## Open items / ideas
 
+The current to-do list (fixes and features, checked against the README) is in
+[NEXT_STEPS.md](NEXT_STEPS.md). The items below are older notes.
+
 - Decide whether to purge the old DB from GitHub history.
 - The yellow glow on the active nav item (`app.css`) is flagged by the design checker; kept on purpose
   for now. Cream background on activities/records has a recorded exception in `.impeccable/config.json`.

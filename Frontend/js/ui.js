@@ -438,16 +438,23 @@ const Shell = {
     return (Shell.me?.user.permissions || []).includes(permission);
   },
 
-  /** Nav for this person: officers get the approval queue; the President also gets Groups (desktop). */
+  /**
+   * Nav for this person. The phone bar is always 3 | + | 3:
+   *   member:  Home, Schedule, Groups | + | Classmates, Activities, My account
+   *   officer: Home, Schedule, Queue  | + | Members/Classmates, Activities, My account
+   * Officers still get Groups on the desktop rail (a 4th phone icon would make one side longer).
+   */
   navItems() {
     const president = Shell.can('manage_section');
+    const officer = Shell.can('review_requests');
+    const groups = { key: 'groups', href: 'classmates.html#groups', icon: 'groups', label: 'Groups' };
     return [
       { key: 'home', href: 'home.html', icon: 'home', label: 'Home' },
       { key: 'schedule', href: 'schedule.html', icon: 'calendar', label: 'Schedule' },
-      ...(Shell.can('review_requests') ? [{ key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true }] : []),
+      officer ? { key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true } : groups,
       { key: 'add', href: 'task-form.html', icon: 'plus', label: president ? 'Add task' : 'Request a task', fab: true },
       { key: 'classmates', href: 'classmates.html', icon: 'users', label: president ? 'Members' : 'Classmates' },
-      ...(president ? [{ key: 'groups', href: 'classmates.html#groups', icon: 'groups', label: 'Groups', desktopOnly: true }] : []),
+      ...(officer ? [{ ...groups, desktopOnly: true }] : []),
       { key: 'activities', href: 'activities.html', icon: 'flag', label: 'Activities' },
       { key: 'account', href: 'account.html', icon: 'user', label: 'My account' },
     ];
@@ -514,12 +521,14 @@ const Shell = {
 
     const mobile = document.createElement('nav');
     mobile.setAttribute('aria-label', 'Main');
-    // Left side | + | right side — both sides take equal width so the + stays centred
-    // no matter how many items each side has (members 2|3, officers 3|3). Desktop-only items stay off the phone bar.
+    // Left side | + | right side — both sides take equal width so the + stays centred.
+    // navItems() keeps 3 | + | 3 for everyone; desktop-only items stay off the phone bar.
     mobile.className = 'nav-pill fixed inset-x-4 bottom-4 z-40 mx-auto flex h-16 max-w-[24rem] items-center rounded-full px-1.5 lg:hidden';
     const phoneItems = items.filter((it) => !it.desktopOnly);
     const fabAt = phoneItems.findIndex((it) => it.fab);
-    const link = (it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${active === it.key ? 'active' : ''}" aria-label="${it.label}" ${active === it.key ? 'aria-current="page"' : ''}>${icon(it.icon, 20)}${badge(it)}</a>`;
+    // No Groups button on this phone bar (officers): the Classmates button stands for both tabs
+    const phoneActive = active === 'groups' && !phoneItems.some((it) => it.key === 'groups') ? 'classmates' : active;
+    const link = (it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${phoneActive === it.key ? 'active' : ''}" aria-label="${it.label}" ${phoneActive === it.key ? 'aria-current="page"' : ''}>${icon(it.icon, 20)}${badge(it)}</a>`;
     const side = (list) => `<div class="flex min-w-0 flex-1 items-center justify-evenly">${list.map(link).join('')}</div>`;
     mobile.innerHTML = `${side(phoneItems.slice(0, fabAt))}
       <a href="${phoneItems[fabAt].href}" class="nav-fab mx-1 shrink-0" aria-label="${phoneItems[fabAt].label}">${icon('plus', 22)}</a>

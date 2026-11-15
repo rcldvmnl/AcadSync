@@ -58,13 +58,28 @@ function group_task(array $ctx, ?int $taskId): ?array
     return $t;
 }
 
-function next_group_name(array $groups, int $taskId): string
+/** [DSA: HASHSET] — the names already used by this task's groups. */
+function group_names_for_task(array $groups, int $taskId): HashSet
 {
-    $n = 1;
+    $names = new HashSet();
     foreach ($groups as $g) {
         if ((int) $g['task_id'] === $taskId) {
-            $n++;
+            $names->add((string) $g['name']);
         }
+    }
+    return $names;
+}
+
+/**
+ * The lowest free "Group N" for this task. Counting the groups instead would repeat a name
+ * once a group is deleted (Groups 2 and 3 left -> "Group 3" again).
+ */
+function next_group_name(array $groups, int $taskId): string
+{
+    $used = group_names_for_task($groups, $taskId);
+    $n = 1;
+    while ($used->contains("Group $n")) {
+        $n++;
     }
     return "Group $n";
 }
@@ -368,6 +383,9 @@ switch (param('action')) {
         }
         if ($name === '' || strlen($name) > 40) {
             fail('Give the group a name (up to 40 characters).');
+        }
+        if ($task && group_names_for_task($groups, $taskId)->contains($name)) {
+            fail("There’s already a group called “{$name}” for this task. Pick another name.", 409);
         }
         $subjectId = $task ? (int) $task['subject_id'] : (param('subject_id') ? (int) param('subject_id') : null);
         if ($subjectId !== null && !isset($ctx['subjectIndex'][$subjectId])) {

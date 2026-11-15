@@ -30,7 +30,8 @@ function render() {
   $('#content').className = 'grid gap-6 lg:grid-cols-2 lg:items-start';
   $('#content').innerHTML = `
     ${showDays ? `<section>${dayPicker()}<div id="classes" class="mt-3 space-y-2"></div>
-      <a href="week.html" class="btn btn-light mt-3 w-full shadow-card">${admin ? 'Edit whole week' : 'See whole week'}</a></section>` : ''}
+      <a href="week.html" class="btn btn-light mt-3 w-full shadow-card">${admin ? 'Edit whole week' : 'See whole week'}</a>
+      ${sidePanel(admin)}</section>` : ''}
     <section class="space-y-3 ${showDays ? '' : 'lg:col-span-2 lg:max-w-2xl'}">${workSwitch()}${groupWorkLink()}${tasksSection()}</section>`;
   if (showDays) renderClasses();
   $$('[data-work]').forEach((b) => b.onclick = () => { workFilter = b.dataset.work; render(); });
@@ -98,6 +99,114 @@ function renderClasses() {
         <span>${Fmt.time(day.classes[0].start_time)} – ${Fmt.time(day.classes[day.classes.length - 1].end_time)}</span></div>
        ${day.classes.map((c) => UI.classRowCompact({ ...c, today: isToday })).join('')}`
     : `<div class="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm text-muted shadow-card">${icon('calendar', 18)}No classes on ${DAYS_LONG[selectedDow % 7]}</div>`;
+}
+
+/*
+ * Desktop only: fills the space under the day view with Next class, Progress and Subjects.
+ * On phones the task list comes right after the day view, so this stays hidden there.
+ */
+function sidePanel(admin) {
+  return `<div class="mt-6 hidden space-y-6 lg:block">${nextClassCard()}${progressCard()}${subjectsCard(admin)}</div>`;
+}
+
+/** The next class that hasn't started yet, looking up to a week ahead (classes repeat weekly). */
+function nextClass() {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const toM = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+  for (let k = 0; k <= 7; k++) {
+    const date = new Date(now); date.setDate(now.getDate() + k);
+    const day = data.week.days.find((d) => d.dow === (date.getDay() || 7));
+    const c = (day ? day.classes : []).find((x) => k > 0 || toM(x.start_time) > mins);
+    if (c) {
+      const [h, m] = c.start_time.split(':').map(Number);
+      date.setHours(h, m, 0, 0);
+      return { c, date };
+    }
+  }
+  return null;
+}
+
+function nextClassCard() {
+  const next = nextClass();
+  if (!next) return '';
+  const { c, date } = next;
+  const when = Fmt.isToday(date) ? `Today · ${Fmt.relative(date.getTime() / 1000)}`
+    : Fmt.isTomorrow(date) ? 'Tomorrow' : DAYS_LONG[date.getDay()];
+  return `
+    <div>
+      ${heading('Next class', esc(when))}
+      <a href="subject.html?id=${c.subject_id}" class="mt-3 flex items-center gap-4 rounded-3xl bg-charcoal p-4 text-white shadow-card transition hover:-translate-y-0.5">
+        <span class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style="background:${tone(c.color).bar}">${icon('bookOpen', 20, 'text-charcoal')}</span>
+        <span class="min-w-0 flex-1 leading-tight">
+          <span class="block text-[11px] font-semibold tracking-wide text-white/60">${esc(c.code)}</span>
+          <span class="block truncate font-semibold">${esc(c.title)}</span>
+          <span class="mt-1 block truncate text-xs text-white/70">${Fmt.time(c.start_time)} – ${Fmt.time(c.end_time)}${c.room ? ` · ${esc(c.room)}` : ''}</span>
+        </span>
+        ${icon('chevronRight', 18, 'shrink-0 text-white/60')}
+      </a>
+    </div>`;
+}
+
+/** Done vs. to do for the tasks on the schedule (follows the All / Individual / Group switch). */
+function progressCard() {
+  const items = byWork(data.timeline);
+  if (!items.length) return '';
+  const done = items.filter((t) => t.done).length;
+  const pct = Math.round((done / items.length) * 100);
+  const b = bounds();
+  const open = items.filter((t) => !t.done);
+  const dueWeek = open.filter((t) => t.deadline_ts && t.deadline_ts <= b.endWeek).length;
+  const next = open.find((t) => t.deadline_ts);
+  const stat = (value, label) => `<div class="rounded-2xl bg-canvas px-3 py-2.5"><div class="text-lg font-bold leading-none">${value}</div><div class="mt-1 text-[11px] text-muted">${label}</div></div>`;
+  return `
+    <div>
+      ${heading('Your progress', `${done} of ${items.length} done`)}
+      <div class="mt-3 rounded-3xl bg-white p-4 shadow-card">
+        <div class="flex items-center justify-between text-sm"><span class="font-semibold">${pct}% complete</span><span class="text-xs text-muted">${open.length} to do</span></div>
+        <div class="mt-2 h-2.5 overflow-hidden rounded-full bg-canvas" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Tasks done">
+          <div class="h-full rounded-full bg-success transition-all" style="width:${pct}%"></div>
+        </div>
+        <div class="mt-4 grid grid-cols-3 gap-2">
+          ${stat(open.length, 'To do')}${stat(dueWeek, 'Due this week')}${stat(done, 'Done')}
+        </div>
+        ${next ? `
+        <a href="task.html?id=${next.id}" class="mt-3 flex items-center gap-3 rounded-2xl border border-line px-3 py-2.5 transition hover:bg-canvas">
+          ${icon('clock', 18, 'shrink-0 text-muted')}
+          <span class="min-w-0 flex-1 leading-tight">
+            <span class="block text-[11px] text-muted">Next deadline · ${esc(Fmt.relative(next.deadline_ts))}</span>
+            <span class="block truncate text-sm font-semibold">${esc(next.title)}</span>
+          </span>
+          ${icon('chevronRight', 16, 'shrink-0 text-muted')}
+        </a>` : ''}
+      </div>
+    </div>`;
+}
+
+/** Every subject with how many unfinished tasks are due in the next 7 days. */
+function subjectsCard(admin) {
+  const subjects = data.subjects || [];
+  if (!subjects.length) {
+    return admin ? `<div>${heading('Subjects', '')}<a href="add-subject.html" class="btn btn-yellow mt-3 h-12 w-full">+ Add your first subject</a></div>` : '';
+  }
+  return `
+    <div>
+      ${heading('Subjects', plural(subjects.length, 'subject'))}
+      <div class="mt-3 overflow-hidden rounded-3xl bg-white shadow-card">
+        ${subjects.map((s, i) => `
+          <a href="subject.html?id=${s.id}" class="flex items-center gap-3 px-4 py-3 transition hover:bg-canvas ${i ? 'border-t border-line' : ''}">
+            <span class="h-8 w-1 shrink-0 rounded-full" style="background:${tone(s.color_tag).bar}"></span>
+            <span class="min-w-0 flex-1 leading-tight">
+              <span class="block text-[11px] font-semibold tracking-wide text-muted">${esc(s.code)}</span>
+              <span class="block truncate text-sm font-semibold">${esc(s.title)}</span>
+            </span>
+            ${s.due
+              ? `<span class="chip shrink-0 ${tone(s.color_tag).chip} text-xs">${s.due} due</span>`
+              : `<span class="flex shrink-0 items-center gap-1 text-xs text-success">${icon('check', 14)}Clear</span>`}
+          </a>`).join('')}
+      </div>
+      <p class="mt-2 px-1 text-[11px] text-muted">"Due" counts unfinished tasks in the next 7 days.</p>
+    </div>`;
 }
 
 /** Time boundaries used by every filter (all in the user's local time). */

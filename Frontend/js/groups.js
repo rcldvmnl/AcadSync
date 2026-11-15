@@ -40,12 +40,16 @@ const GroupsTab = {
       b.tabIndex = on ? 0 : -1;
     });
     if (!keepHash) history.replaceState(null, '', groups ? '#groups' : location.pathname + location.search);
-    // Admin nav has separate Members / Groups buttons: light up the one for this tab
-    $$('[data-nav="classmates"], [data-nav="groups"]').forEach((a) => {
-      if (!$('[data-nav="groups"]')) return;
-      const on = a.dataset.nav === (groups ? 'groups' : 'classmates');
-      a.classList.toggle('active', on);
-      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    // A nav with separate Classmates / Groups buttons lights up the one for this tab.
+    // Each nav is checked on its own: officers have Groups on the desktop rail only,
+    // so their phone bar keeps Classmates lit on both tabs.
+    $$('nav[aria-label="Main"]').forEach((nav) => {
+      if (!$('[data-nav="groups"]', nav)) return;
+      $$('[data-nav="classmates"], [data-nav="groups"]', nav).forEach((a) => {
+        const on = a.dataset.nav === (groups ? 'groups' : 'classmates');
+        a.classList.toggle('active', on);
+        if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      });
     });
     if (groups) GroupsTab.render();
   },
