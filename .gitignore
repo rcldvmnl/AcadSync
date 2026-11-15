@@ -33,3 +33,6 @@ desktop.ini
 # Dependencies (if any are ever added)
 node_modules/
 vendor/
+
+.vscode/
+.impeccable/
