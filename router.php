@@ -15,8 +15,8 @@ declare(strict_types=1);
 $path = rawurldecode((string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH));
 $lower = strtolower(str_replace('\\', '/', $path));   // Windows paths are case-insensitive
 
-// Private: the database, settings, server code, git data, docs and this file itself
-$blockedPrefixes = ['/data/', '/backend/', '/docs/', '/router.php'];
+// Private: the database, settings, server code, tests, git data, docs and this file itself
+$blockedPrefixes = ['/data/', '/backend/', '/docs/', '/tests/', '/router.php'];
 $blocked = str_contains($lower, '/.')                 // any dotfile or dot-folder: /.env, /.git/, /.gitignore …
     || str_contains($lower, '..')                     // no climbing out of the project
     || preg_match('/\.(db|sqlite|sqlite3|db-journal|env|sql|md|log|bak)$/', $lower);
@@ -27,7 +27,7 @@ foreach ($blockedPrefixes as $prefix) {
 // Also compare the real file path, so a trick like /Frontend/../data/x.db can't get through
 $real = realpath(__DIR__ . $path);
 if ($real !== false) {
-    foreach (['data', 'backend', 'docs', '.git'] as $dir) {
+    foreach (['data', 'backend', 'docs', 'tests', '.git'] as $dir) {
         $private = realpath(__DIR__ . '/' . $dir);
         if ($private !== false && str_starts_with(strtolower($real), strtolower($private))) {
             $blocked = true;

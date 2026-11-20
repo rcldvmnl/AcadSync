@@ -84,7 +84,7 @@ foreach (undo_stack($sectionId)->toArray() as $action) {   // UndoAction objects
 // 6b. TREE — your biggest checklist, with progress rolled up post-order
 $myGroupIds = [];
 foreach (load_groups($sectionId) as $g) {
-    if (in_array((int) $user['id'], $g['members'], true)) {
+    if (Algorithms::linearContains($g['members'], (int) $user['id'])) {   // [ALGORITHM: LINEAR SEARCH]
         $myGroupIds[$g['id']] = true;
     }
 }

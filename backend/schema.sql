@@ -267,6 +267,62 @@ CREATE TABLE IF NOT EXISTS officer_terms (
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
+-- 10h. JOIN_REQUESTS — someone entered the class code and waits for an officer to let them in.
+--      Reviewed first-come, first-served: row order = arrival order (the QUEUE's front is the oldest).
+CREATE TABLE IF NOT EXISTS join_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'approved' | 'declined' | 'cancelled'
+    reviewed_by INTEGER,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- 10i. ANNOUNCEMENTS — posted by officers; members see them on Home and get a notification.
+CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,  -- pinned ones are listed first
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(created_by) REFERENCES users(id)
+);
+
+-- 10j. DUES — fees the Treasurer collects (amounts in centavos: ₱150.00 = 15000).
+CREATE TABLE IF NOT EXISTS dues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    title TEXT NOT NULL,                -- "Membership fee"
+    amount INTEGER NOT NULL,            -- centavos each active member owes
+    due_date DATE,                      -- NULL = no deadline
+    status TEXT NOT NULL DEFAULT 'open',-- 'open' | 'cancelled'
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(created_by) REFERENCES users(id)
+);
+
+-- 10k. PAYMENTS — money handed in for a due (several part-payments are allowed).
+CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    due_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,           -- who paid
+    amount INTEGER NOT NULL,            -- centavos
+    method TEXT NOT NULL,               -- 'cash' | 'gcash' (CashPayment / GcashPayment)
+    reference TEXT,                     -- receipt no. (cash, optional) or 13-digit GCash ref (unique: HashSet)
+    received_by INTEGER NOT NULL,       -- the Treasurer / President who recorded it
+    paid_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(due_id) REFERENCES dues(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
 -- 11. PASSWORD_RESETS -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS password_resets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

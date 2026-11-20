@@ -31,7 +31,7 @@ final class UndoContext
             return false;
         }
         foreach ($this->groups as $g) {
-            if ((int) $g['task_id'] === $taskId && in_array($this->userId, $g['members'], true)) {
+            if ((int) $g['task_id'] === $taskId && Algorithms::linearContains($g['members'], $this->userId)) {   // [ALGORITHM: LINEAR SEARCH]
                 return true;
             }
         }
@@ -215,7 +215,7 @@ final class RequestAgainAction extends UndoAction
         if (!$g) {
             throw new UndoNotPossible('That group no longer exists.');
         }
-        if (in_array($c->userId, $g['members'], true) || $c->groupedFor($g['task_id'] ? (int) $g['task_id'] : null)) {
+        if (Algorithms::linearContains($g['members'], $c->userId) || $c->groupedFor($g['task_id'] ? (int) $g['task_id'] : null)) {   // [ALGORITHM: LINEAR SEARCH]
             throw new UndoNotPossible('You already have a group for that task.');
         }
         foreach (section_rows('group_requests', $c->sectionId) as $r) {

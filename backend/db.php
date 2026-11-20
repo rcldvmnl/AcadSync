@@ -54,7 +54,7 @@ final class Store
         $added = [
             'tasks' => ['group_count' => 'INTEGER'],
             'password_resets' => ['attempts' => 'INTEGER NOT NULL DEFAULT 0'],
-            // officer positions (vice_president | secretary) and member status (active | inactive | alumni)
+            // officer positions (vice_president | secretary | treasurer) and member status (active | inactive | alumni)
             'memberships' => ['position' => 'TEXT', 'status' => "TEXT NOT NULL DEFAULT 'active'"],
         ];
         foreach ($added as $table => $cols) {
@@ -171,7 +171,7 @@ final class Store
         static $allowed = [
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
             'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests', 'subtasks',
-            'activities', 'activity_rsvps', 'attendance', 'officer_terms',
+            'activities', 'activity_rsvps', 'attendance', 'officer_terms', 'join_requests', 'announcements', 'dues', 'payments',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

@@ -9,6 +9,8 @@ const KIND = {
   group: ['users', 'bg-mint-tint'],
   members: ['users', 'bg-mint-tint'],
   request: ['inbox', 'bg-sun-tint'],
+  announcement: ['bell', 'bg-peach-tint'],
+  dues: ['clipboard', 'bg-sun-tint'],
 };
 let tab = 'all';
 let items = [];

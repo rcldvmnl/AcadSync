@@ -1,7 +1,8 @@
 # AcadSync class diagram
 
-The classes below are the ones in `backend/domain/` and `backend/Env.php` (the OOP model) and
-`backend/custom_dsa.php` (the data structures), with their real names, fields, methods and visibility.
+The classes below are every class in `backend/domain/` and `backend/Env.php` (the OOP model) and
+`backend/custom_dsa.php` (the data structures and algorithms), with their real names, fields, methods
+and visibility. Long method lists are shortened to the methods the app relies on.
 GitHub draws these diagrams automatically; they can also be pasted into <https://mermaid.live> to
 export a PNG for the documentation.
 
@@ -57,6 +58,11 @@ classDiagram
         +roleLabel() string
         #permissions() array
     }
+    class Treasurer {
+        +position() string
+        +roleLabel() string
+        #permissions() array
+    }
     class President {
         +role() string
         +position() string
@@ -66,10 +72,15 @@ classDiagram
     }
     class Permission {
         <<final>>
+        +REQUEST_TASK$
+        +JOIN_GROUP$
         +REVIEW_REQUESTS$
+        +REVIEW_MEMBERS$
+        +POST_ANNOUNCEMENTS$
         +MANAGE_ACTIVITIES$
         +RECORD_ATTENDANCE$
         +UPDATE_MEMBER_RECORDS$
+        +MANAGE_DUES$
         +ASSIGN_OFFICERS$
         +MANAGE_SECTION$
     }
@@ -77,6 +88,7 @@ classDiagram
     Member <|-- Officer
     Officer <|-- VicePresident
     Officer <|-- Secretary
+    Officer <|-- Treasurer
     Officer <|-- President
     Person ..> Permission : checks
 
@@ -88,6 +100,7 @@ classDiagram
         +canRsvp()* bool
         +countsInAttendance()* bool
         +canHoldOffice()* bool
+        +owesDues()* bool
         +allows(permission) bool
         +fromString(key)$ MemberStatus
         +all()$ array
@@ -255,7 +268,66 @@ classDiagram
     GroupRule ..> "*" StudyGroup : evaluates
 ```
 
-## 4. Undo (OOP objects kept in a DSA stack) and settings
+## 4. Dues and payments (`backend/domain/Payment.php`)
+
+```mermaid
+classDiagram
+    direction TB
+    class Payment {
+        <<abstract>>
+        -int id
+        -int dueId
+        -int userId
+        -int amount
+        -string reference
+        -int receivedBy
+        -string paidAt
+        +__construct(id, dueId, userId, amount, reference, receivedBy, paidAt)
+        +create(method, dueId, userId, amount, reference, receivedBy)$ Payment
+        +fromRow(row)$ Payment
+        +methods()$ array
+        +method()* string
+        +methodLabel()* string
+        #cleanReference(reference)* string
+        +receiptLine()* string
+        +referenceIsUnique()* bool
+        +amount() int
+        +toRow(sectionId) array
+    }
+    class CashPayment {
+        #cleanReference(reference) string
+        +receiptLine() string
+        +referenceIsUnique() bool
+    }
+    class GcashPayment {
+        #cleanReference(reference) string
+        +receiptLine() string
+        +referenceIsUnique() bool
+    }
+    class Due {
+        <<final>>
+        -int id
+        -string title
+        -int amount
+        -string dueDate
+        -string status
+        -int createdBy
+        +__construct(id, title, amount, dueDate, status, createdBy)
+        +fromRow(row)$ Due
+        +centavos(pesos)$ int
+        +peso(centavos)$ string
+        +isOpen() bool
+        +balance(paid) int
+        +standing(paid, now) string
+    }
+    Payment <|-- CashPayment
+    Payment <|-- GcashPayment
+    Payment "*" --> "1" Due : pays
+    Payment ..> Person : paid by
+    Due ..> MemberStatus : owesDues()
+```
+
+## 5. Undo (OOP objects kept in a DSA stack) and settings
 
 ```mermaid
 classDiagram
@@ -284,6 +356,11 @@ classDiagram
     UndoAction <|-- RequestAgainAction
     UndoAction ..> UndoContext : uses
     UndoStack o-- "*" UndoAction : holds
+    class UndoNotPossible {
+        <<exception>>
+    }
+    RuntimeException <|-- UndoNotPossible
+    UndoAction ..> UndoNotPossible : throws
 
     class Env {
         <<final>>
@@ -295,7 +372,9 @@ classDiagram
     }
 ```
 
-## 5. Data structures (`backend/custom_dsa.php`)
+## 6. Data structures and algorithms (`backend/custom_dsa.php`)
+
+Every node class is drawn next to the structure that links its nodes.
 
 ```mermaid
 classDiagram
@@ -334,37 +413,90 @@ classDiagram
     class StudentHashSet
     HashSet <|-- StudentHashSet
     class UndoStack {
+        -StackNode top
+        -int size
         +push(value) void
         +pop() mixed
         +peek() mixed
     }
+    class StackNode {
+        +mixed value
+        +StackNode below
+    }
+    UndoStack o-- "*" StackNode
     class ApprovalQueue {
+        -QueueNode front
+        -QueueNode rear
+        -int size
         +enqueue(value) void
         +dequeue() mixed
         +peek() mixed
     }
+    class QueueNode {
+        +mixed value
+        +QueueNode next
+    }
+    ApprovalQueue o-- "*" QueueNode
+    class TreeNode {
+        +string label
+        +array data
+        +TreeNode[] children
+        +addChild(child) TreeNode
+    }
     class SubjectTree {
+        +TreeNode root
         +search(query) array
     }
     class ChecklistTree {
+        +TreeNode root
         +rollup() array
         +subtreeIds(node) array
     }
+    SubjectTree *-- "1" TreeNode : root
+    ChecklistTree *-- "1" TreeNode : root
+    TreeNode o-- "*" TreeNode : children
     class DependencyGraph {
+        -array adjacency
         +addEdge(a, b, context, groupId) void
         +teamMembers(start, context, groupId) array
         +shortestPath(a, b) array
     }
+    DependencyGraph ..> ApprovalQueue : BFS uses
+    class Algorithms {
+        <<final>>
+        +bubbleSortByUrgency(tasks, now)$ array
+        +selectionSortByLastName(students)$ array
+        +selectionSortByStudentId(students)$ array
+        +mergeSortBy(items, key, desc)$ array
+        +binarySearchByStudentId(sorted, id)$ array
+        +countDueBy(sorted, limitTs)$ int
+        +linearSearch(items, target)$ int
+        +linearContains(items, target)$ bool
+        +linearSearchTasks(tasks, text)$ array
+        +linearSearchByName(students, query)$ array
+        +planGroupSizes(n, min, max, count)$ array
+        +shuffle(items)$ array
+    }
+    class DsaUtil {
+        <<final>>
+        +lower(s)$ string
+        +compareText(a, b)$ int
+        +contains(haystack, needle)$ bool
+        +digitsToInt(s)$ int
+        +words(text, min)$ array
+        +deadlineTs(task)$ int
+    }
+    Algorithms ..> DsaUtil : uses
 ```
 
 ## Where each pillar is used
 
 | Pillar | Where in the code | What it does in AcadSync |
 | --- | --- | --- |
-| **Encapsulation** | Private fields + getters in every domain class; `Activity` and `GroupRule` check their values in the constructor and have no setters; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity or group rule can't exist; nothing outside a class can change its data |
-| **Inheritance** | `President`/`VicePresident`/`Secretary` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary` and `President` add to `Officer`'s; officers inherit a member's account stats |
-| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()`; `$task->acceptsGroups()` / `rule()`; `$deadline->timestamp()`; `$action->undo()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode` or `deadline_type`: each object answers for itself |
-| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `DatedDeadline`, `UndoAction` | Callers use what an object can do, not how it does it |
+| **Encapsulation** | Private fields + getters in every domain class; `Activity`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
+| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `CashPayment`/`GcashPayment` → `Payment`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
+| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$deadline->timestamp()`; `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type` or the payment method: each object answers for itself |
+| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `DatedDeadline`, `UndoAction`, `Payment` | Callers use what an object can do, not how it does it |
 
 ## Relationships
 
@@ -376,3 +508,6 @@ classDiagram
 | `MemberRecord` ◇— `Person`, uses `Activity` | aggregation / dependency | a record is built from a person and asks each activity who was expected |
 | `UndoStack` ◇— `UndoAction` | aggregation | the DSA stack holds OOP objects that know how to reverse themselves |
 | `GroupRule` → `StudyGroup` | association | the rule evaluates a task's groups |
+| `Payment` → `Due` | association | many payments (part-payments too) settle one due |
+| `ApprovalQueue` ◆— `QueueNode`, `UndoStack` ◆— `StackNode`, `TreeNode` ◇— `TreeNode` | composition / aggregation | each structure links its own node objects |
+| `Algorithms` → `DsaUtil` | dependency | the sorts and searches use the hand-written text helpers |

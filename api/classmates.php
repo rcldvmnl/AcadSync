@@ -43,7 +43,7 @@ if (param('mates')) {
     $mates = [];          // id => true
     $walks = [];          // per group: name + who the BFS reached, so the result can be explained
     foreach ($groupRows as $g) {
-        if (!in_array($me, $g['members'], true)) {
+        if (!Algorithms::linearContains($g['members'], $me)) {   // [ALGORITHM: LINEAR SEARCH]
             continue;
         }
         $reached = $graph->teamMembers($me, $g['name'], (int) $g['id']);

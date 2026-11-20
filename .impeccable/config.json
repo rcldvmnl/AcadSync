@@ -314,6 +314,24 @@
         ],
         "createdAt": "2026-11-06T14:36:07.296Z",
         "reason": "user instruction for these pages: 'base design on the current'; #F6F3EE is the app-wide ground in css/app.css shared by every page and predates this session"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/dues.html"
+        ],
+        "createdAt": "2026-11-20T02:50:25.708Z",
+        "reason": "Same shared nav glow as every other page (app.css .nav-item.active / .nav-fab); project records this exception for each page per Figma AcadSync v2"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/dues.html"
+        ],
+        "createdAt": "2026-11-20T03:04:46.702Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity); same exception as every other page"
       }
     ]
   }

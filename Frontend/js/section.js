@@ -68,6 +68,29 @@ function renderMySections() {
       ${icon('chevronRight', 18, 'text-muted')}
     </button>`).join('');
   $$('[data-open]').forEach((b) => b.onclick = () => openSection(Number(b.dataset.open)));
+  renderPending();
+}
+
+/** Sections you asked to join that haven't decided yet. An officer lets you in (or declines). */
+function renderPending() {
+  const list = me.pending_joins || [];
+  $('#pending-joins').hidden = !list.length;
+  $('#pending-joins-list').innerHTML = list.map((s) => `
+    <div class="flex items-center gap-3 rounded-[1.5rem] bg-sun-tint p-4">
+      <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white">${icon('clock', 20)}</span>
+      <span class="min-w-0 flex-1"><span class="block font-semibold">${esc(s.name)}</span>
+        <span class="block text-xs text-muted">Waiting for an officer to let you in · asked ${esc(Fmt.monthDay(s.requested_at.slice(0, 10)))}</span></span>
+      <button type="button" data-cancel-join="${s.id}" class="rounded-full bg-white px-4 py-2 text-xs font-semibold">Cancel</button>
+    </div>`).join('');
+  $$('[data-cancel-join]').forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await API.post('section.php', { action: 'cancel_join', section_id: Number(b.dataset.cancelJoin) });
+      me = await API.get('auth.php');
+      renderMySections();
+      UI.toast('Request cancelled');
+    } catch (e) { b.disabled = false; UI.toast(e.message, { iconName: 'alert' }); }
+  });
 }
 
 // Must be logged in to be here.
@@ -106,12 +129,12 @@ boxes.forEach((box, i) => {
 function lookup() {
   clearTimeout(lookupTimer);
   joinBtn.disabled = true;
-  joinBtn.textContent = 'Join section';
+  joinBtn.textContent = 'Ask to join';
   $('#found').innerHTML = '';
   if (code().length !== 6) return;
   lookupTimer = setTimeout(async () => {
     try {
-      const { section, already_member: already, role } = await API.get('section.php', { code: code() });
+      const { section, already_member: already, role, pending } = await API.get('section.php', { code: code() });
       const meta = [section.program, section.year_level, section.semester].filter(Boolean).join(' · ');
       $('#found').innerHTML = `
         <div class="card-pastel mint-soft rounded-[1.75rem] p-5">
@@ -119,10 +142,10 @@ function lookup() {
           <div class="flex items-center gap-2 text-sm font-medium"><span class="grid h-6 w-6 place-items-center rounded-full bg-success text-white">${icon('check', 14)}</span>Section found</div>
           <div class="mt-2 text-3xl font-extrabold tracking-tight">${esc(section.name)}</div>
           <div class="mt-1 text-sm text-muted">${esc(meta)} · ${section.members} members</div>
-          <span class="chip mt-3 bg-white">${already ? `You’re already in it · ${role === 'admin' ? 'Admin' : 'Student'}` : 'Joining as Client'}</span>
+          <span class="chip mt-3 bg-white">${already ? `You’re already in it · ${role === 'admin' ? 'President' : 'Member'}` : pending ? 'Request sent · waiting for an officer' : 'An officer lets you in'}</span>
         </div>`;
-      joinBtn.disabled = false;
-      joinBtn.textContent = already ? 'Open section' : 'Join section';
+      joinBtn.disabled = !!pending;
+      joinBtn.textContent = already ? 'Open section' : pending ? 'Request sent' : 'Ask to join';
     } catch (e) {
       $('#found').innerHTML = `<div class="rounded-2xl bg-danger-tint px-4 py-3 text-sm">${esc(e.message)}</div>`;
     }
@@ -130,8 +153,20 @@ function lookup() {
 }
 
 UI.bindForm($('#join-form'), async () => {
-  await API.post('section.php', { action: 'join', code: code() });
-  location.href = 'home.html';
+  const res = await API.post('section.php', { action: 'join', code: code() });
+  if (!res.pending) { location.href = 'home.html'; return; }   // already a member: open it
+  // [Queue] the request waits for an officer; you're told when they decide
+  $('#found').innerHTML = `
+    <div class="card-pastel yellow rounded-[1.75rem] p-5">
+      <span class="sparkle">✦</span><span class="ring-deco"></span>
+      <div class="flex items-center gap-2 text-sm font-medium"><span class="grid h-6 w-6 place-items-center rounded-full bg-white">${icon('clock', 14)}</span>Request sent</div>
+      <div class="mt-2 text-3xl font-extrabold tracking-tight">${esc(res.section.name)}</div>
+      <p class="mt-1 text-sm">An officer checks your name and student ID, then lets you in. You’ll get a notification.</p>
+    </div>`;
+  joinBtn.disabled = true;
+  joinBtn.textContent = 'Request sent';
+  me = await API.get('auth.php');
+  renderMySections();
 });
 
 /* ---------------------------------------------------------------- create */

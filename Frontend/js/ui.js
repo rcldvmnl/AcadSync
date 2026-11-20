@@ -473,7 +473,8 @@ const Shell = {
 
     const [notes, queue] = await Promise.all([
       API.get('notifications.php').catch(() => ({ unread: 0 })),
-      Shell.can('review_requests') ? API.get('schedule.php').then((s) => s.stats.queue_size).catch(() => 0) : Promise.resolve(0),
+      // The queue badge counts task requests and people waiting to join
+      Shell.can('review_requests') ? API.get('schedule.php').then((s) => s.stats.queue_size + (s.stats.join_requests || 0)).catch(() => 0) : Promise.resolve(0),
     ]);
     const resolve = (v) => (typeof v === 'function' ? v(me) : v);
     Shell.renderHeader({ ...opts, eyebrow: resolve(opts.eyebrow), title: resolve(opts.title), unread: notes.unread });
@@ -579,6 +580,7 @@ const Shell = {
             ['clipboard', 'My member record', `records.html?id=${user.id}`],
             ...(Shell.can('view_member_records') ? [['users', 'Member records & officers', 'records.html']] : []),
             ['flag', 'Activities', 'activities.html'],
+            ['clipboard', Shell.can('manage_dues') ? 'Dues & payments' : 'My dues', 'dues.html'],
             ['bell', 'Notifications', 'notifications.html'], ['lock', 'Change password', 'account.html#password']]
             .map(([i, l, h]) => `<a href="${h}" class="flex items-center gap-3 rounded-2xl px-1 py-2 hover:bg-canvas"><span class="grid h-9 w-9 place-items-center rounded-full bg-canvas">${icon(i, 18)}</span><span class="flex-1 text-sm font-medium">${l}</span>${icon('chevronRight', 18, 'text-muted')}</a>`).join('')}
         </div>

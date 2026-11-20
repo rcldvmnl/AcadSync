@@ -7,6 +7,7 @@
  *   action=join         {group_id}
  *   action=leave        {group_id}
  *   action=add_members  {group_id, member_ids[]}   creator or admin
+ *   action=rename       {group_id, name}           creator or admin
  *   action=delete       {group_id}                 creator or admin
  * POST (admin)
  *   action=auto_assign  {task_id}   put everyone without a group into groups within the size range
@@ -254,7 +255,7 @@ function suggestions(array $ctx, array $groups, int $uid, array $people): array
 function my_group_for_task(array $groups, int $taskId, int $uid): ?array
 {
     foreach ($groups as $g) {
-        if ((int) $g['task_id'] === $taskId && in_array($uid, $g['members'], true)) {
+        if ((int) $g['task_id'] === $taskId && Algorithms::linearContains($g['members'], $uid)) {   // [ALGORITHM: LINEAR SEARCH]
             return $g;
         }
     }
@@ -268,9 +269,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if ($taskId) {
         $task = group_task($ctx, $taskId);
         $out = [];
+        $sizes = [];          // member count of each of this task's groups, for auto_plan()
         foreach ($groups as $g) {
             if ((int) $g['task_id'] === $taskId) {
                 $out[] = $present($g);
+                $sizes[] = count($g['members']);
             }
         }
         $grouped = grouped_for_task($groups, $taskId);
@@ -288,7 +291,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'in_group' => $grouped->contains((string) $uid),
             'members' => count($ctx['members']),
             'rules' => $rulesFor($taskId),
-            'plan' => auto_plan(array_map(fn ($g) => count($g['members']), array_values(array_filter($groups, fn ($g) => (int) $g['task_id'] === $taskId))), count($ungrouped), (int) $task['group_min'], (int) $task['group_max'], isset($task['group_count']) ? ((int) $task['group_count'] ?: null) : null),
+            'plan' => auto_plan($sizes, count($ungrouped), (int) $task['group_min'], (int) $task['group_max'], isset($task['group_count']) ? ((int) $task['group_count'] ?: null) : null),
             'role' => $user['role'],
         ]);
     }
@@ -442,7 +445,7 @@ switch (param('action')) {
         if (!$me->can(Permission::JOIN_GROUP)) {
             fail('Alumni members can’t join groups.', 403);
         }
-        if (in_array($uid, $group['members'], true)) {
+        if (Algorithms::linearContains($group['members'], $uid)) {   // [ALGORITHM: LINEAR SEARCH]
             fail('You’re already in this group.', 409);
         }
         if ($group['task_id'] && grouped_for_task($groups, (int) $group['task_id'])->contains((string) $uid)) {
@@ -494,7 +497,7 @@ switch (param('action')) {
         if (!$g) {
             fail('Group not found.', 404);
         }
-        if (!$me->can(Permission::ANSWER_ANY_REQUEST) && !in_array($uid, $g['members'], true)) {
+        if (!$me->can(Permission::ANSWER_ANY_REQUEST) && !Algorithms::linearContains($g['members'], $uid)) {   // [ALGORITHM: LINEAR SEARCH]
             fail('Only members of this group can answer join requests.', 403);
         }
         $who = (int) $req['user_id'];
@@ -619,6 +622,39 @@ switch (param('action')) {
             notify($id, $sectionId, 'group', "$fullName added you to “{$group['name']}”", 'classmates.html#groups');
         }
         respond(['added' => count($added)]);
+    }
+
+    case 'rename': {
+        if (!$group || !$canManage($group)) {
+            fail('Only the group’s creator or the President can rename it.', 403);
+        }
+        $name = preg_replace('/\s+/', ' ', (string) param('name', ''));
+        if ($name === '' || strlen($name) > 40) {
+            fail('Give the group a name (up to 40 characters).');
+        }
+        if ($name === $group['name']) {
+            respond(['name' => $name]);
+        }
+        // [DSA: HASHSET] — names used by the OTHER groups of this task ("group 3" -> "Group 3" is allowed)
+        if ($group['task_id']) {
+            $others = [];
+            foreach ($groups as $g) {
+                if ($g['id'] !== $group['id']) {
+                    $others[] = $g;
+                }
+            }
+            if (group_names_for_task($others, (int) $group['task_id'])->contains($name)) {
+                fail("There’s already a group called “{$name}” for this task. Pick another name.", 409);
+            }
+        }
+        Store::update('study_groups', $group['id'], ['name' => $name]);
+        $link = $group['task_id'] ? "task.html?id={$group['task_id']}" : 'classmates.html#groups';
+        foreach ($group['members'] as $id) {
+            if ($id !== $uid) {
+                notify($id, $sectionId, 'group', "$fullName renamed “{$group['name']}” to “{$name}”", $link);
+            }
+        }
+        respond(['name' => $name]);
     }
 
     case 'delete': {

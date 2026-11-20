@@ -18,22 +18,35 @@ Membership · Officers · Activities & attendance · Member records · Tasks, sc
 ## Table of contents
 
 1. [Overview](#overview)
-2. [Quick start](#quick-start)
-3. [Configuration](#configuration)
-4. [Demo accounts](#demo-accounts)
-5. [Features](#features)
-6. [Object-oriented design](#object-oriented-design)
-7. [Data structures and algorithms](#data-structures-and-algorithms)
-8. [Reading the database](#reading-the-database)
-9. [Project layout](#project-layout)
+2. [Project objectives](#project-objectives)
+3. [Team and submission links](#team-and-submission-links)
+4. [Screenshots](#screenshots)
+5. [Quick start](#quick-start)
+6. [Configuration](#configuration)
+7. [Demo accounts](#demo-accounts)
+8. [Features](#features)
+9. [Object-oriented design](#object-oriented-design)
+10. [Data structures and algorithms](#data-structures-and-algorithms)
+11. [Tests](#tests)
+12. [Reading the database](#reading-the-database)
+13. [Project layout](#project-layout)
 
 ---
 
 ## Overview
 
-AcadSync treats each class section as an organization. Anyone can create a section and lead it as
-**President**; classmates join with a class code, take part in activities, and share the class's
-tasks, schedule and group work.
+AcadSync treats each class section as a student organization. Anyone can create a section and lead
+it as **President**; classmates ask to join with a class code and an officer lets them in. Members
+take part in activities, pay dues, read announcements, and share the class's tasks, schedule and
+group work.
+
+It was built for two final requirements at LSPU (BSINFO-2A):
+
+- **Object-Oriented Programming, Scenario 1: Student Organization Management System**: the four
+  pillars, real classes with constructors and access modifiers, meaningful relationships, and a UML
+  class diagram that matches the code.
+- **Data Structures and Algorithms**: seven hand-written data structures and six sorting and
+  searching algorithms, each used for a real feature.
 
 | Layer | Built with |
 | --- | --- |
@@ -44,6 +57,60 @@ tasks, schedule and group work.
 
 📐 **Class diagram and OOP pillars:** [docs/CLASS_DIAGRAM.md](docs/CLASS_DIAGRAM.md)
 🧮 **Data structures and algorithms:** [see below](#data-structures-and-algorithms)
+
+---
+
+## Project objectives
+
+1. **Run a section like an organization.** Give each class section a President, officers they
+   appoint (Vice President, Secretary, Treasurer) and members, each with clear permissions.
+2. **Keep membership controlled.** Classmates ask to join with the class code; officers let them in
+   first-come, first-served, and every member has a status (Active, Inactive, Alumni).
+3. **Track participation.** Schedule meetings, seminars and outreach, take attendance with a rule per
+   kind of activity, and rank members by attendance in their records.
+4. **Handle the organization's money.** Let the Treasurer set dues and record cash and GCash payments,
+   so every member can see what they owe.
+5. **Keep everyone informed.** Officers post announcements; members are notified of everything that
+   concerns them.
+6. **Support the class's academic work.** Share tasks, deadlines, the class schedule, group work and
+   checklists, with requests reviewed in an approval queue.
+7. **Show the course concepts in working code.** Apply the four OOP pillars in `backend/domain/`, and
+   use every hand-written data structure and algorithm for a real feature, with no SQL sorting or
+   filtering.
+
+---
+
+## Team and submission links
+
+> [!IMPORTANT]
+> Fill in this section before submitting. Groups are exactly 3 members.
+
+| Member | Student ID | Role in the project | What they did |
+| --- | --- | --- | --- |
+| _Name_ | _0000-0000_ | _e.g. Backend and OOP model_ | _…_ |
+| _Name_ | _0000-0000_ | _e.g. Frontend and design_ | _…_ |
+| _Name_ | _0000-0000_ | _e.g. Data structures, testing and docs_ | _…_ |
+
+| Deliverable | Link |
+| --- | --- |
+| 🎬 YouTube demo | _add link_ |
+| 🖼️ Canva slides | _add link_ |
+| 💻 GitHub repository | <https://github.com/rcldvmnl/AcadSync> |
+| 📐 UML class diagram | [docs/CLASS_DIAGRAM.md](docs/CLASS_DIAGRAM.md) |
+
+---
+
+## Screenshots
+
+Taken from the demo data (`SEED_DEMO_DATA=true`).
+
+| Home (member) | Schedule |
+| --- | --- |
+| ![Home dashboard with announcements](docs/screenshots/home.png) | ![Class schedule with the side panel](docs/screenshots/schedule.png) |
+| **Groups** | **Member records (President)** |
+| ![Groups for an assignment](docs/screenshots/groups.png) | ![Officers and attendance ranking](docs/screenshots/member-records.png) |
+| **Dues (Treasurer)** | **Approval queue (officer)** |
+| ![Dues with each member's payments](docs/screenshots/dues.png) | ![Join requests and task requests](docs/screenshots/approval-queue.png) |
 
 ---
 
@@ -112,9 +179,11 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 | Juan Dela Cruz | **President** (created the section) | `2023-1045@lspu.edu.ph` | `juan.delacruz` |
 | Maria Santos | **Vice President** (also a member of 2B) | `2023-1071@lspu.edu.ph` | `maria.santos` |
 | Kyla Lim | **Secretary** | `2023-1064@lspu.edu.ph` | `kyla.lim` |
+| Marco Cruz | **Treasurer** | `2023-1033@lspu.edu.ph` | `marco.cruz` |
 | Ana Bautista | Member | `2023-1012@lspu.edu.ph` | `ana.bautista` |
 | Carlo Domingo | Member, **Inactive** (on leave) | `2023-1051@lspu.edu.ph` | `carlo.domingo` |
 | Bea Garcia | President of BSINFO-2B | `2023-2010@lspu.edu.ph` | `bea.garcia` |
+| Leo Navarro | Member of 2B, **waiting to join 2A** | `2023-2022@lspu.edu.ph` | `leo.navarro` |
 
 | Section | Class code |
 | --- | --- |
@@ -122,8 +191,9 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 | BSINFO-2B | **`K7Q4PM`** |
 
 > [!NOTE]
-> The officers and activities above come from the seed, so they only appear in a **new** database.
-> In an older database, the President picks the officers on the **Member Records** page.
+> The officers, activities, dues, announcements and Leo's join request come from the seed, so they
+> only appear in a **new** database. In an older database, the President picks the officers on the
+> **Member Records** page.
 
 ---
 
@@ -131,31 +201,50 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 
 ### 👥 Membership and officers
 
-- **Sections are organizations.** Whoever creates a section becomes its **President**; classmates join
-  with the 6-letter class code and become **Members**. One account can belong to several sections,
+- **Sections are organizations.** Whoever creates a section becomes its **President**. Classmates
+  enter the 6-letter class code to **ask to join**; an officer checks their name and student ID and
+  lets them in (or declines), oldest request first. One account can belong to several sections,
   with a different role in each (`memberships`).
-- **The President appoints the Vice President and the Secretary** (Member Records → Officers).
-  One office per person, and inactive or alumni members can't hold one. Every change is saved as a
-  term (`officer_terms`), so a record shows which offices someone held and when.
-- **Every officer reviews the approval queue** (approve / reject / undo).
+- **The President appoints the Vice President, the Secretary and the Treasurer** (Member Records →
+  Officers). One office per person, and inactive or alumni members can't hold one. Every change is
+  saved as a term (`officer_terms`), so a record shows which offices someone held and when.
+- **Every officer reviews the approval queue** (join requests, and task requests with approve /
+  reject / undo).
 
 #### Permissions
 
-| Can… | Member | Vice President | Secretary | President |
-| --- | :-: | :-: | :-: | :-: |
-| Request tasks, join groups, RSVP | ✓ | ✓ | ✓ | ✓ |
-| Review the approval queue | | ✓ | ✓ | ✓ |
-| Add / cancel activities, see all member records | | ✓ | ✓ | ✓ |
-| Take attendance, change a member's status | | | ✓ | ✓ |
-| Choose officers, manage subjects, publish tasks directly, auto-group | | | | ✓ |
+| Can… | Member | Vice President | Secretary | Treasurer | President |
+| --- | :-: | :-: | :-: | :-: | :-: |
+| Request tasks, join groups, RSVP, see their own dues | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Review the approval queue, let new members in | | ✓ | ✓ | ✓ | ✓ |
+| Add / cancel activities, post announcements, see all member records | | ✓ | ✓ | ✓ | ✓ |
+| Take attendance, change a member's status | | | ✓ | | ✓ |
+| Set dues, record cash and GCash payments | | | | ✓ | ✓ |
+| Choose officers, manage subjects, publish tasks directly, auto-group | | | | | ✓ |
 
 #### Member status
 
 | Status | Meaning |
 | --- | --- |
-| **Active** | Everything counts |
-| **Inactive** | On leave: may still join events, but absences don't count |
-| **Alumni** | Kept in the records; can't RSVP, request tasks or join groups |
+| **Active** | Everything counts; charged dues |
+| **Inactive** | On leave: may still join events, but absences don't count and no dues are charged |
+| **Alumni** | Kept in the records; can't RSVP, request tasks or join groups; no dues |
+
+### 📣 Announcements
+
+- Officers post announcements (title and message) and can pin them; pinned ones stay on top.
+- Members see them on **Home**, and everyone in the section gets a notification.
+- Whoever posted an announcement, or the President, can remove it.
+
+### 💰 Dues and payments
+
+- The **Treasurer** (or the President) adds a due, e.g. "Membership fee, ₱150, due Nov 30". Every
+  active member is charged and notified.
+- Payments are recorded as **Cash** (receipt number optional) or **GCash** (13-digit reference
+  number, which can only be used once). Part-payments are allowed; overpaying is not.
+- Each member sees what they owe and their payment history; Home reminds them of unpaid dues.
+- The Treasurer sees, per due, who has paid, how much was collected, and every payment, and can
+  remove a payment entered by mistake.
 
 ### 📅 Activities (meetings, seminars, outreach)
 
@@ -182,7 +271,8 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
   Members' requests wait in the **approval queue** (at most 3 per person at a time).
 - **Group work:** a size range (e.g. 3–4), an optional exact number of groups, and a strict "+1" seat
   only when classmates can't fit otherwise. Groups are shown as seats, and suggested groupmates are
-  people you've never worked with.
+  people you've never worked with. A group's creator (or the President) can rename it; two groups
+  of the same task can't share a name.
 - **Checklists** on a task, with sub-steps, shared by the whole group.
 - **Undo** for leaving a group, cancelling a join request and ticking off a task.
 - **Schedule:** a class grid per day, plus Today / Urgent / This week / Due by Fri / Due soon views.
@@ -197,10 +287,10 @@ The domain model lives in [`backend/domain/`](backend/domain/). Full UML diagram
 
 | Pillar | Where | In practice |
 | --- | --- | --- |
-| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `Activity`, `MemberStatus`, `UndoAction`, `DatedDeadline`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`), never how it does it |
-| **Inheritance** | `President` / `VicePresident` / `Secretary` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
-| **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$status->canRsvp()`, `$task->acceptsGroups()`, `$action->undo()` | No `role === 'admin'` checks in the endpoints; each object answers for itself |
-| **Encapsulation** | Private fields + getters everywhere; `Activity` and `GroupRule` validate in their constructors; `Env` keeps settings private; `readonly` context objects | An invalid activity or group rule can't be built; settings can only be read |
+| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `Activity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
+| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
+| **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()` | No `role === 'admin'` or payment-method checks in the endpoints; each object answers for itself |
+| **Encapsulation** | Private fields + getters everywhere; `Activity`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
 
 ---
 
@@ -218,9 +308,9 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 | --- | --- | --- |
 | **Array** — storing and accessing records | `FixedArray`, `SubjectArray`; 2D `WeekGrid` | A section's subjects (`load_subjects`); the week as 6 days × 288 five-minute cells to catch clashing class times (`subjects.php`) |
 | **Linked List** — insertion and deletion | `TaskLinkedList` (doubly linked) | The task timeline in date order, with expired tasks dropped from the head; previous / next task (`tasks.php`) |
-| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; **who is going and who checked in** at an activity; **one office per person** (`records.php`) |
+| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; unique group names per task; **who is going and who checked in** at an activity; **one office per person** (`records.php`); **a GCash reference used once** and who has paid a due in full (`dues.php`) |
 | **Stack** — undo, history | `UndoStack` | The queue's "undo reject"; students' Undo (`undo.php`), holding `UndoAction` objects |
-| **Queue** — waiting lists | `ApprovalQueue` | Task requests reviewed first-come, first-served; **activity waitlists** (the front gets the next seat); auto-grouping |
+| **Queue** — waiting lists | `ApprovalQueue` | Task requests and **join requests** reviewed first-come, first-served (only the front can be decided); **activity waitlists** (the front gets the next seat); auto-grouping |
 | **Tree** — hierarchy, tree search | `SubjectTree`, `ChecklistTree` | Section › Subjects › Tasks searched depth-first; checklists rolled up post-order |
 | **Graph** — relationships | `DependencyGraph` | Study-group links: My groupmates (BFS), shortest path between classmates, suggested groupmates |
 
@@ -230,16 +320,36 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 | --- | --- | --- |
 | Insertion Sort | `TaskLinkedList::insertChronologically` | Timeline order |
 | Bubble Sort | `Algorithms::bubbleSortByUrgency` | "Urgent" view |
-| Selection Sort | `Algorithms::selectionSortByLastName` / `ByStudentId` | Classmate directory, attendance sheet |
-| Linear Search | `Algorithms::linearSearchTasks` / `linearSearchByName` | Duplicate-task warning, name search; `Person::can()` |
+| Selection Sort | `Algorithms::selectionSortByLastName` / `ByStudentId` | Classmate directory, attendance sheet, dues member list |
+| Linear Search | `Algorithms::linearSearchTasks` / `linearSearchByName` / `linearSearch` | Duplicate-task warning, name search; "is this person in the group"; `Person::can()` |
 | Binary Search | `Algorithms::binarySearchByStudentId` / `countDueBy` | Student ID search; Schedule › Due by Fri |
-| Merge Sort | `Algorithms::mergeSortBy` | Notifications, activity lists, **member ranking by attendance** |
+| Merge Sort | `Algorithms::mergeSortBy` | Notifications, activity lists, **member ranking by attendance**, announcements (newest, then a stable sort puts pinned first), dues by date |
 
 ### SQL is storage only
 
 Every read is `SELECT * FROM <table>`; writes are `INSERT`, plus `UPDATE` / `DELETE` by primary key.
 There is **no `ORDER BY`, `WHERE` filtering or `JOIN`** in the application code: sorting, searching
-and relating records is done by the structures above.
+and relating records is done by the structures above. No built-in PHP sorting or searching
+(`sort`, `usort`, `in_array`, `array_search`, `array_filter`) is used either; check with:
+
+```bash
+grep -rnE "\b(in_array|array_search|array_filter|usort|sort)\(" api backend
+```
+
+---
+
+## Tests
+
+[`tests/dsa_test.php`](tests/dsa_test.php) checks every data structure and algorithm on known input
+(sorts, searches, HashSet, Stack, Queue, linked-list insert and delete, tree DFS and roll-up, graph
+BFS and shortest path, group planning). It never touches the database.
+
+```bash
+C:\xampp\php\php.exe tests/dsa_test.php
+```
+
+It prints `PASS` / `FAIL` per check and exits with 1 if anything failed. `tests/` is blocked from the
+browser like `backend/`.
 
 ---
 
@@ -259,13 +369,16 @@ Open your local `data/acadsync.db` in **DB Browser for SQLite** or the VS Code *
 
 ```
 .env.example              settings template (copy to .env, which stays private)
-router.php                router for `php -S` (keeps data/, backend/, docs/ and dotfiles private)
+router.php                router for `php -S` (keeps data/, backend/, docs/, tests/ and dotfiles private)
 .htaccess                 the same protection on Apache
 index.php                 redirects to Frontend/index.html
 api/                      JSON endpoints
   auth.php                login, register, password reset, account stats
-  section.php             join / create / switch / leave sections
-  records.php             member records, officers (assign VP / Secretary), member status
+  section.php             ask to join / create / switch / leave sections
+  join_requests.php       officers let people in (FIFO queue)
+  records.php             member records, officers (assign VP / Secretary / Treasurer), member status
+  announcements.php       post, pin and remove announcements
+  dues.php                dues, cash and GCash payments
   activities.php          activities, RSVP + waitlist, attendance
   schedule.php            timeline, urgency, week grid, due by Friday
   subjects.php            subjects and class times, clash check
@@ -274,10 +387,12 @@ api/                      JSON endpoints
   groups.php, classmates.php, undo.php, search.php, notifications.php, dsa.php
 backend/
   Env.php                 reads .env
-  domain/                 OOP model: Person, MemberStatus, Task, Deadline, Activity, MemberRecord, UndoAction
+  domain/                 OOP model: Person, MemberStatus, Task, Deadline, Activity, MemberRecord, UndoAction, Payment
   custom_dsa.php          all data structures and algorithms
   services.php            loads one section's rows into the structures and objects
   db.php, schema.sql, seed.php, bootstrap.php
+tests/dsa_test.php        tests for every data structure and algorithm (command line only)
 docs/CLASS_DIAGRAM.md     UML class diagram (Mermaid)
-Frontend/                 *.html pages, js/, css/, assets/
+docs/screenshots/         screenshots used in this README
+Frontend/                 *.html pages (incl. dues.html), js/, css/, assets/
 ```

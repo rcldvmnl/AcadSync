@@ -71,7 +71,10 @@ final class Env
         if ($v === null || $v === '') {
             return $default;
         }
-        return in_array(strtolower($v), ['1', 'true', 'yes', 'on'], true);
+        return match (strtolower($v)) {
+            '1', 'true', 'yes', 'on' => true,
+            default => false,
+        };
     }
 
     /** A file path; a relative one is taken from the project root (e.g. data/acadsync.db). */

@@ -223,8 +223,8 @@ function seed_database(): void
         }
     }
 
-    // --- Officers: Juan (admin) is the President; he chose a Vice President and a Secretary ---
-    foreach ([['maria.santos', 'vice_president'], ['kyla.lim', 'secretary']] as [$who, $position]) {
+    // --- Officers: Juan (admin) is the President; he chose a Vice President, a Secretary and a Treasurer ---
+    foreach ([['maria.santos', 'vice_president'], ['kyla.lim', 'secretary'], ['marco.cruz', 'treasurer']] as [$who, $position]) {
         foreach (Store::all('memberships') as $m) {
             if ((int) $m['section_id'] === $A && (int) $m['user_id'] === $u[$who]) {
                 Store::update('memberships', (int) $m['id'], ['position' => $position]);
@@ -261,6 +261,32 @@ function seed_database(): void
             Store::insert('attendance', ['section_id' => $A, 'activity_id' => $aid, 'user_id' => $u[$who], 'checked_in_by' => $u['kyla.lim']]);
         }
     }
+
+    // --- Dues: Marco (Treasurer) collects the membership fee; amounts are centavos ----------------
+    $fee = Store::insert('dues', ['section_id' => $A, 'title' => 'Membership fee', 'amount' => 15000, 'due_date' => $day(10),
+        'created_by' => $u['marco.cruz'], 'created_at' => $stamp('-10 days')]);
+    $shirt = Store::insert('dues', ['section_id' => $A, 'title' => 'Org shirt', 'amount' => 35000, 'due_date' => $day(21),
+        'created_by' => $u['marco.cruz'], 'created_at' => $stamp('-2 days')]);
+    foreach ([
+        [$fee, 'juan.delacruz', 15000, 'cash', 'OR-0001', '-9 days'],
+        [$fee, 'kyla.lim', 15000, 'gcash', '1009876543210', '-8 days'],
+        [$fee, 'maria.santos', 10000, 'cash', null, '-5 days'],          // part-payment: ₱50 left
+        [$shirt, 'ana.bautista', 35000, 'gcash', '1012345678901', '-1 day'],
+    ] as [$dueId, $who, $amount, $method, $ref, $ago]) {
+        Store::insert('payments', ['section_id' => $A, 'due_id' => $dueId, 'user_id' => $u[$who], 'amount' => $amount,
+            'method' => $method, 'reference' => $ref, 'received_by' => $u['marco.cruz'], 'paid_at' => $stamp($ago)]);
+    }
+
+    // --- Announcements --------------------------------------------------------------
+    Store::insert('announcements', ['section_id' => $A, 'title' => 'Membership fee is due next week', 'pinned' => 1,
+        'body' => "₱150 per member. Pay Marco (Treasurer) in cash or by GCash, and send him the reference number.",
+        'created_by' => $u['juan.delacruz'], 'created_at' => $stamp('-3 days')]);
+    Store::insert('announcements', ['section_id' => $A, 'title' => 'Room change for the planning meeting',
+        'body' => 'The Midterm Planning Meeting stays in Room 204. Bring your class schedule.',
+        'created_by' => $u['kyla.lim'], 'created_at' => $stamp('-1 day')]);
+
+    // --- Leo (BSINFO-2B) entered 2A's class code and waits for an officer --------------
+    Store::insert('join_requests', ['section_id' => $A, 'user_id' => $u['leo.navarro'], 'created_at' => $stamp('-5 hours')]);
 
     // --- A few notifications ---------------------------------------------------------
     $notes = [

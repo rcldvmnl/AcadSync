@@ -1,26 +1,75 @@
-// Approval Queue (officers: President, Vice President, Secretary).
+// Approval Queue (officers: President, Vice President, Secretary, Treasurer).
 // FIFO: only the request at the front (#1) can be approved or rejected.
 // Reject pushes onto the Undo Stack; Undo pops the latest rejection back into the queue.
 
-let state = { queue: [], undo: { size: 0, top: null }, selected: null, busy: false };
+// People who entered the class code wait in a second FIFO queue ("Waiting to join") above the task requests.
+
+let state = { queue: [], undo: { size: 0, top: null }, joins: [], selected: null, busy: false };
 
 (async () => {
   await Shell.init({ active: 'queue', eyebrow: (m) => `${m.user.role_label} · officers review in order`, title: 'Approval Queue' });
-  // Every officer (President, Vice President, Secretary) reviews the queue
+  // Every officer (President, Vice President, Secretary, Treasurer) reviews the queue
   if (!Shell.can('review_requests')) {
-    $('#main').innerHTML = UI.errorBox('Only officers (President, Vice President, Secretary) can review requests.');
+    $('#main').innerHTML = UI.errorBox('Only officers (President, Vice President, Secretary, Treasurer) can review requests.');
     return;
   }
   await load();
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
 async function load() {
-  const d = await API.get('admin_queue.php');
+  const [d, j] = await Promise.all([
+    API.get('admin_queue.php'),
+    Shell.can('review_members') ? API.get('join_requests.php') : Promise.resolve({ requests: [] }),
+  ]);
   state.queue = d.queue;
   state.undo = d.undo;
+  state.joins = j.requests;
   if (!state.queue.some((q) => q.id === state.selected)) state.selected = state.queue[0]?.id ?? null;
   render();
-  updateBadges(d.size);
+  updateBadges(d.size + state.joins.length);
+  if (location.hash === '#members') $('#members')?.scrollIntoView({ block: 'start' });
+}
+
+/** "Waiting to join": people who entered the class code. Only #1 can be decided, like task requests. */
+function joinsCard() {
+  if (!state.joins.length) return '';
+  const row = (r) => {
+    const front = r.position === 1;
+    return `
+      <li class="flex flex-wrap items-center gap-3 rounded-2xl ${front ? 'bg-white' : 'bg-white/60'} p-3">
+        <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold ${front ? 'bg-charcoal text-white' : 'bg-canvas text-muted'}">#${r.position}</span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate font-semibold">${esc(r.name)}</span>
+          <span class="block truncate text-xs text-muted">${esc(r.student_id)} · asked ${esc(Fmt.monthDay(r.created_at.slice(0, 10)))}${r.other_sections ? ` · in ${plural(r.other_sections, 'other section')}` : ''}</span>
+        </span>
+        ${front ? `<span class="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+          <button type="button" data-join-decline="${r.id}" class="btn btn-canvas h-10 px-4 text-sm">Decline</button>
+          <button type="button" data-join-approve="${r.id}" class="btn btn-dark h-10 px-4 text-sm">Let in</button></span>` : ''}
+      </li>`;
+  };
+  return `
+    <section id="members" class="scroll-mt-6 rounded-[1.75rem] bg-mint-tint p-4" aria-labelledby="members-h">
+      <div class="flex items-baseline justify-between gap-2 px-1">
+        <h2 id="members-h" class="text-lg font-bold">Waiting to join <span class="font-normal text-muted">(${state.joins.length})</span></h2>
+        <span class="text-xs text-muted">Oldest first</span>
+      </div>
+      <p class="mt-0.5 px-1 text-xs text-muted">They entered the class code. Check the name and student ID before letting someone in.</p>
+      <ol class="mt-3 space-y-2">${state.joins.map(row).join('')}</ol>
+    </section>`;
+}
+
+async function decideJoin(id, action) {
+  if (state.busy) return;
+  state.busy = true;
+  try {
+    const res = await API.post('join_requests.php', { request_id: id, action });
+    UI.toast(action === 'approve' ? `${res.approved} is now a member` : `Declined ${res.declined}`);
+    await load();
+  } catch (e) {
+    UI.toast(e.message, { iconName: 'alert' });
+  } finally {
+    state.busy = false;
+  }
 }
 
 function updateBadges(n) {
@@ -37,6 +86,7 @@ function render() {
   const n = state.queue.length;
   const selected = state.queue.find((q) => q.id === state.selected);
   $('#main').innerHTML = `
+    ${state.joins.length ? `<div class="mb-5">${joinsCard()}</div>` : ''}
     <div class="grid gap-5 lg:grid-cols-[23rem_1fr] lg:items-start lg:gap-6">
       <div class="space-y-4">
         <div class="card-pastel dark flex items-center justify-between rounded-[1.75rem] p-5">
@@ -72,6 +122,8 @@ function render() {
   $$('[data-select]').forEach((b) => b.onclick = () => { state.selected = Number(b.dataset.select); render(); });
   $$('[data-approve]').forEach((b) => b.onclick = () => decide(Number(b.dataset.approve), 'approve'));
   $$('[data-reject]').forEach((b) => b.onclick = () => decide(Number(b.dataset.reject), 'reject'));
+  $$('[data-join-approve]').forEach((b) => b.onclick = () => decideJoin(Number(b.dataset.joinApprove), 'approve'));
+  $$('[data-join-decline]').forEach((b) => b.onclick = () => decideJoin(Number(b.dataset.joinDecline), 'decline'));
   renderUndo();
 }
 

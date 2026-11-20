@@ -36,7 +36,7 @@ $taskId = (int) $task['id'];
 $group = null;
 if (Task::fromRow($task)->acceptsGroups()) {   // [OOP: POLYMORPHISM] GroupTask vs IndividualTask
     foreach (load_groups($sectionId) as $g) {
-        if ((int) $g['task_id'] === $taskId && in_array($uid, $g['members'], true)) {
+        if ((int) $g['task_id'] === $taskId && Algorithms::linearContains($g['members'], $uid)) {   // [ALGORITHM: LINEAR SEARCH]
             $group = $g;
         }
     }
@@ -138,7 +138,7 @@ switch (param('action')) {
             fail('Only a group checklist can assign items.');
         }
         $who = param('assignee_id') ? (int) param('assignee_id') : null;
-        if ($who !== null && !in_array($who, $group['members'], true)) {
+        if ($who !== null && !Algorithms::linearContains($group['members'], $who)) {   // [ALGORITHM: LINEAR SEARCH]
             fail('Pick someone in your group.');
         }
         Store::update('subtasks', (int) $item->data['id'], ['assignee_id' => $who]);

@@ -1,0 +1,2 @@
+# Tests run from the command line only (php tests/dsa_test.php), never from the browser.
+Require all denied

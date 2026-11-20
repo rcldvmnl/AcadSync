@@ -6,7 +6,8 @@
  *                 do they count in attendance, may they hold office) without the details.
  *   INHERITANCE   ActiveStatus, InactiveStatus and AlumniStatus extend it.
  *   POLYMORPHISM  Person::can() asks $status->allows($permission), Activities ask canRsvp(),
- *                 member records ask countsInAttendance(): each status answers in its own way.
+ *                 member records ask countsInAttendance(), dues ask owesDues():
+ *                 each status answers in its own way.
  */
 
 declare(strict_types=1);
@@ -27,8 +28,11 @@ abstract class MemberStatus
     /** Are they expected at activities (do absences lower their attendance rate)? */
     abstract public function countsInAttendance(): bool;
 
-    /** May they be Vice President or Secretary? */
+    /** May they hold an office (Vice President, Secretary, Treasurer)? */
     abstract public function canHoldOffice(): bool;
+
+    /** Are they charged the organization's dues? */
+    abstract public function owesDues(): bool;
 
     /** Does this status allow a member permission? Active allows all; subclasses may hold some back. */
     public function allows(string $permission): bool
@@ -88,6 +92,11 @@ final class ActiveStatus extends MemberStatus
     {
         return true;
     }
+
+    public function owesDues(): bool
+    {
+        return true;
+    }
 }
 
 /** On leave (e.g. a semester off): may still join events, but absences don't count against them. */
@@ -122,6 +131,12 @@ final class InactiveStatus extends MemberStatus
     {
         return false;
     }
+
+    /** Dues are not charged while on leave. */
+    public function owesDues(): bool
+    {
+        return false;
+    }
 }
 
 /** Former member: kept in the records, read-only. */
@@ -153,6 +168,11 @@ final class AlumniStatus extends MemberStatus
     }
 
     public function canHoldOffice(): bool
+    {
+        return false;
+    }
+
+    public function owesDues(): bool
     {
         return false;
     }

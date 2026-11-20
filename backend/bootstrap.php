@@ -20,6 +20,7 @@ require_once __DIR__ . '/domain/Task.php';
 require_once __DIR__ . '/domain/Activity.php';
 require_once __DIR__ . '/domain/MemberRecord.php';
 require_once __DIR__ . '/domain/UndoAction.php';
+require_once __DIR__ . '/domain/Payment.php';
 require_once __DIR__ . '/services.php';
 
 session_name('acadsync');
@@ -109,7 +110,7 @@ function current_user(): array
     $m = membership((int) $user['id'], $active);
     $user['section_id'] = $m ? $active : null;
     $user['role'] = $m['role'] ?? 'student';
-    $user['position'] = $m['position'] ?? null;      // vice_president | secretary | null
+    $user['position'] = $m['position'] ?? null;      // vice_president | secretary | treasurer | null
     $user['status'] = $m['status'] ?? 'active';      // active | inactive | alumni
     return $user;
 }
@@ -158,6 +159,16 @@ function notify_admins(int $sectionId, string $type, string $message, ?string $l
 {
     foreach (section_members($sectionId) as $u) {
         if (Person::fromRow($u)->can(Permission::REVIEW_REQUESTS)) {   // officers review requests
+            notify((int) $u['id'], $sectionId, $type, $message, $link);
+        }
+    }
+}
+
+/** Sends a notification to everyone in a section who has $permission (e.g. every officer who reviews new members). */
+function notify_permitted(int $sectionId, string $permission, string $type, string $message, ?string $link = null): void
+{
+    foreach (section_members($sectionId) as $u) {
+        if (Person::fromRow($u)->can($permission)) {
             notify((int) $u['id'], $sectionId, $type, $message, $link);
         }
     }

@@ -162,6 +162,9 @@ const GroupWork = {
     if (canManage && !full && d.ungrouped.length) {
       buttons.push(`<button type="button" data-gw-add="${g.id}" class="${btn} bg-white hover:bg-line">${icon('plus', 14)}Add classmates</button>`);
     }
+    if (canManage) {
+      buttons.push(`<button type="button" data-gw-rename="${g.id}" class="${btn} bg-white hover:bg-line">${icon('edit', 14)}Rename</button>`);
+    }
     if (g.is_member) {
       buttons.push(`<button type="button" data-gw-leave="${g.id}" class="${btn} ml-auto border border-danger/30 bg-white text-danger hover:bg-danger-tint">${icon('logout', 14)}Leave group</button>`);
     }
@@ -185,8 +188,34 @@ const GroupWork = {
     on('data-gw-accept', (id) => act({ action: 'respond_request', request_id: id, accept: true }, 'Added to your group'));
     on('data-gw-decline', (id) => act({ action: 'respond_request', request_id: id, accept: false }, 'Request declined'));
     on('data-gw-add', (id) => GroupWork.pickMembers(d, id, reload));
+    on('data-gw-rename', (id) => GroupWork.rename(d.groups.find((g) => g.id === id), reload));
     $('[data-gw-create]', box)?.addEventListener('click', () => GroupWork.pickMembers(d, null, reload));
     $('[data-gw-auto]', box)?.addEventListener('click', () => act({ action: 'auto_assign', task_id: d.task.id }, 'Remaining classmates were grouped'));
+  },
+
+  /** Rename a group (its creator or the President). The server rejects a name another group of the task uses. */
+  rename(group, reload) {
+    UI.sheet(`
+      <form>
+        <h2 class="text-2xl font-bold">Rename group</h2>
+        <p class="mt-1 text-sm text-muted">Everyone in ${esc(group.name)} gets a notification with the new name.</p>
+        <div class="mt-4">${UI.field({ name: 'name', label: 'Group name', value: group.name, required: true })}</div>
+        <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+        <button type="submit" class="btn btn-dark mt-5 w-full">Save name</button>
+      </form>`, {
+      label: 'Rename group',
+      onMount(el, close) {
+        const input = $('input[name=name]', el);
+        input.maxLength = 40;
+        input.select();
+        UI.bindForm($('form', el), async (f) => {
+          await API.post('groups.php', { action: 'rename', group_id: group.id, name: f.name });
+          close();
+          UI.toast('Group renamed');
+          reload();
+        });
+      },
+    });
   },
 
   /** Create a group for this task (groupId = null) or add classmates to one — people you grouped with in person. */

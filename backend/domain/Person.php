@@ -7,7 +7,8 @@
  *        └─ Officer (abstract)    any officer: reviews the approval queue, runs activities, sees records
  *            ├─ VicePresident     chosen by the President
  *            ├─ Secretary         chosen by the President; also takes attendance and keeps records
- *            └─ President         created the section; chooses the VP and Secretary; runs everything
+ *            ├─ Treasurer         chosen by the President; sets dues and records payments
+ *            └─ President         created the section; chooses the other officers; runs everything
  *
  *   ABSTRACTION   Person and Officer are abstract: they declare what every person / officer can be
  *                 asked (role, position, permissions, account stats) and leave the answers to subclasses.
@@ -40,6 +41,9 @@ final class Permission
     public const ANSWER_ANY_REQUEST = 'answer_any_request'; // accept or decline join requests for any group
     public const JOIN_DIRECTLY = 'join_directly';           // join a group without a request
     public const AUTO_GROUP = 'auto_group';                 // put everyone left into groups
+    public const REVIEW_MEMBERS = 'review_members';         // approve / decline people who entered the class code
+    public const POST_ANNOUNCEMENTS = 'post_announcements'; // post, pin and remove announcements
+    public const MANAGE_DUES = 'manage_dues';               // set dues and record payments
 
     private function __construct()
     {
@@ -50,6 +54,10 @@ abstract class Person
 {
     public const VICE_PRESIDENT = 'vice_president';
     public const SECRETARY = 'secretary';
+    public const TREASURER = 'treasurer';
+
+    /** The offices the President fills (position => label), in the order the app lists them. */
+    public const OFFICES = [self::VICE_PRESIDENT => 'Vice President', self::SECRETARY => 'Secretary', self::TREASURER => 'Treasurer'];
 
     private MemberStatus $status;
 
@@ -75,6 +83,7 @@ abstract class Person
         return match ($row['position'] ?? null) {
             self::VICE_PRESIDENT => new VicePresident(...$args),
             self::SECRETARY => new Secretary(...$args),
+            self::TREASURER => new Treasurer(...$args),
             default => new Member(...$args),
         };
     }
@@ -205,7 +214,7 @@ class Member extends Person
         // and a group they're alone in still counts)
         $groups = 0;
         foreach (load_groups((int) $ctx['section']['id']) as $g) {
-            $groups += in_array($this->id(), $g['members'], true) ? 1 : 0;
+            $groups += Algorithms::linearContains($g['members'], $this->id()) ? 1 : 0;   // [ALGORITHM: LINEAR SEARCH]
         }
         return ['submitted' => $submitted, 'approved' => $approved, 'groups' => $groups];
     }
@@ -219,11 +228,15 @@ abstract class Officer extends Member
         return true;
     }
 
-    /** What every officer may do on top of a member: review the queue, run activities, read records. */
+    /**
+     * What every officer may do on top of a member: review the queue and new members, run activities,
+     * post announcements, read records.
+     */
     protected function permissions(): array
     {
         return [...parent::permissions(),
             Permission::REVIEW_REQUESTS, Permission::MANAGE_ACTIVITIES, Permission::VIEW_MEMBER_RECORDS,
+            Permission::REVIEW_MEMBERS, Permission::POST_ANNOUNCEMENTS,
         ];
     }
 }
@@ -260,7 +273,26 @@ final class Secretary extends Officer
     }
 }
 
-/** Created the section (its admin). Chooses the Vice President and Secretary and runs everything. */
+/** Keeps the organization's money: sets dues and records who paid (cash or GCash). */
+final class Treasurer extends Officer
+{
+    public function position(): ?string
+    {
+        return self::TREASURER;
+    }
+
+    public function roleLabel(): string
+    {
+        return 'Treasurer';
+    }
+
+    protected function permissions(): array
+    {
+        return [...parent::permissions(), Permission::MANAGE_DUES];
+    }
+}
+
+/** Created the section (its admin). Chooses the Vice President, Secretary and Treasurer and runs everything. */
 final class President extends Officer
 {
     public function role(): string
@@ -284,6 +316,7 @@ final class President extends Officer
             Permission::RECORD_ATTENDANCE, Permission::UPDATE_MEMBER_RECORDS, Permission::ASSIGN_OFFICERS,
             Permission::PUBLISH_TASK, Permission::REMOVE_TASK, Permission::MANAGE_SECTION,
             Permission::MANAGE_ANY_GROUP, Permission::ANSWER_ANY_REQUEST, Permission::JOIN_DIRECTLY, Permission::AUTO_GROUP,
+            Permission::MANAGE_DUES,
         ];
     }
 

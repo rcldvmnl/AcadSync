@@ -18,11 +18,12 @@
  *                 insertion and deletion.                           timeline, previous / next task
  *  3. HashSet     Preventing duplicate entries or maintaining       HashSet / StudentHashSet: unique e-mails,
  *                 unique records.                                   student IDs, section names, class codes,
- *                                                                   subject codes
+ *                                                                   subject codes, GCash reference numbers
  *  4. Stack       Implementing undo operations, history, or         UndoStack: admin "Undo reject" and the
  *                 backtracking.                                     students' Undo (leave, cancel, mark done)
- *  5. Queue       Managing waiting lists, service requests, or      ApprovalQueue: student task requests
- *                 tasks in order.                                   reviewed first-come, first-served
+ *  5. Queue       Managing waiting lists, service requests, or      ApprovalQueue: student task requests and
+ *                 tasks in order.                                   join requests reviewed first-come,
+ *                                                                   first-served; activity waitlists
  *  6. Tree        Organizing hierarchical data or implementing      SubjectTree: Section -> Subjects -> Tasks,
  *                 tree-based searching.                             searched depth-first; ChecklistTree:
  *                                                                   sub-items, progress rolled up post-order
@@ -34,9 +35,11 @@
  *  1. Insertion Sort — TaskLinkedList::insertChronologically()
  *  2. Bubble Sort    — Algorithms::bubbleSortByUrgency()
  *  3. Selection Sort — Algorithms::selectionSortByLastName() / ByStudentId()
- *  4. Linear Search  — Algorithms::linearSearchTasks() / linearSearchByName()
+ *  4. Linear Search  — Algorithms::linearSearchTasks() / linearSearchByName() / linearSearch()
  *  5. Binary Search  — Algorithms::binarySearchByStudentId() / countDueBy() (deadlines)
- *  6. Merge Sort     — Algorithms::mergeSortBy() (notification history)
+ *  6. Merge Sort     — Algorithms::mergeSortBy() (notifications, announcements, dues, rankings)
+ *
+ *  Tests: php tests/dsa_test.php
  * ============================================================================
  */
 
@@ -1428,6 +1431,29 @@ final class Algorithms
             }
         }
         return $items;
+    }
+
+    /**
+     * LINEAR SEARCH on a plain list: checks each item in turn with ===.
+     * Returns the index of the first match, or -1 when it isn't there.
+     * Used for "is this person in the group's member list" (a group holds a few ids).
+     */
+    public static function linearSearch(array $items, mixed $target): int
+    {
+        $i = 0;
+        foreach ($items as $item) {
+            if ($item === $target) {
+                return $i;
+            }
+            $i++;
+        }
+        return -1;
+    }
+
+    /** True when linearSearch() finds $target in $items. */
+    public static function linearContains(array $items, mixed $target): bool
+    {
+        return self::linearSearch($items, $target) !== -1;
     }
 
     /** LINEAR SEARCH over the directory by (partial) name. */

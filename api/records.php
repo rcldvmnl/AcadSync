@@ -5,11 +5,11 @@
  * GET  /api/records.php            -> every member's record, ranked by attendance (officers);
  *                                     a member gets only their own
  * GET  /api/records.php?id=7       -> one member's full record (officers, or the member themself)
- * POST action=assign_officer {position: vice_president|secretary, user_id|null}   the President
+ * POST action=assign_officer {position: vice_president|secretary|treasurer, user_id|null}   the President
  *      action=set_status     {user_id, status: active|inactive|alumni}           Secretary / President
  *
- * [OOP] Person::fromRow() gives a Member, VicePresident, Secretary or President; each status is a
- *       MemberStatus subclass; MemberRecord works out attendance by asking each Activity.
+ * [OOP] Person::fromRow() gives a Member, VicePresident, Secretary, Treasurer or President; each status
+ *       is a MemberStatus subclass; MemberRecord works out attendance by asking each Activity.
  * [DSA] MERGE SORT ranks members by attendance; a HASHSET keeps one office per person.
  */
 
@@ -28,9 +28,12 @@ foreach ($ctx['members'] as $m) {
     $members[(int) $m['id']] = $m;
 }
 
-/** The President, Vice President and Secretary right now. */
+/** The President and the officers they chose, right now. */
 $officers = function () use (&$members): array {   // by reference: $members is reloaded after a change
-    $out = ['president' => null, Person::VICE_PRESIDENT => null, Person::SECRETARY => null];
+    $out = ['president' => null];
+    foreach (Person::OFFICES as $position => $_) {
+        $out[$position] = null;
+    }
     foreach ($members as $m) {
         $p = Person::fromRow($m);
         if ($p->isOfficer()) {
@@ -61,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
         $groups = [];
         foreach (load_groups($sectionId) as $g) {
-            if (in_array($id, $g['members'], true)) {
+            if (Algorithms::linearContains($g['members'], $id)) {   // [ALGORITHM: LINEAR SEARCH]
                 $task = $g['task_id'] ? ($ctx['taskIndex'][(int) $g['task_id']] ?? null) : null;
                 $groups[] = ['id' => $g['id'], 'name' => $g['name'], 'task' => $task['title'] ?? null, 'size' => count($g['members'])];
             }
@@ -104,13 +107,13 @@ require_method('POST');
 switch (param('action')) {
     case 'assign_officer': {
         if (!$me->can(Permission::ASSIGN_OFFICERS)) {
-            fail('Only the President chooses the Vice President and Secretary.', 403);
+            fail('Only the President chooses the officers.', 403);
         }
         $position = (string) param('position', '');
-        if ($position !== Person::VICE_PRESIDENT && $position !== Person::SECRETARY) {
-            fail('Pick Vice President or Secretary.');
+        if (!isset(Person::OFFICES[$position])) {
+            fail('Pick Vice President, Secretary or Treasurer.');
         }
-        $title = $position === Person::VICE_PRESIDENT ? 'Vice President' : 'Secretary';
+        $title = Person::OFFICES[$position];
         $newId = param('user_id') ? (int) param('user_id') : null;
 
         // [DSA: HASHSET] — who already holds an office (one office per person)
@@ -154,7 +157,9 @@ switch (param('action')) {
         }
         Store::commit();
         if ($candidate !== null) {
-            notify($newId, $sectionId, 'members', "You’re now the $title of {$ctx['section']['name']}. You can review the approval queue.", 'queue.html');
+            $duty = $position === Person::TREASURER ? 'You can set dues and record payments.' : 'You can review the approval queue.';
+            notify($newId, $sectionId, 'members', "You’re now the $title of {$ctx['section']['name']}. $duty",
+                $position === Person::TREASURER ? 'dues.html' : 'queue.html');
         }
         if ($current !== null && (int) $current['id'] !== $newId) {
             notify((int) $current['id'], $sectionId, 'members', "You’re no longer the $title of {$ctx['section']['name']}.", 'records.html?id=' . (int) $current['id']);

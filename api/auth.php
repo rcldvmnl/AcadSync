@@ -52,6 +52,7 @@ function me_payload(array $user): array
         'user' => public_user($user),
         'section' => null,
         'sections' => user_sections((int) $user['id']),
+        'pending_joins' => pending_joins((int) $user['id']),   // sections still deciding on this person's request
         'stats' => null,
     ];
     if ($user['section_id'] === null) {

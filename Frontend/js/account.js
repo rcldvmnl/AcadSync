@@ -65,6 +65,7 @@ function render(me) {
     ['clipboard', 'My member record', `records.html?id=${me.user.id}`],
     ...(Shell.can('view_member_records') ? [['users', 'Member records & officers', 'records.html']] : []),
     ['flag', 'Activities', 'activities.html'],
+    ['clipboard', Shell.can('manage_dues') ? 'Dues & payments' : 'My dues', 'dues.html'],
     ['user', 'Edit profile', '#profile'],
     ['bell', 'Notifications', 'notifications.html'],
     ['lock', 'Change password', '#password'],

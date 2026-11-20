@@ -25,7 +25,7 @@ $done = done_map((int) $user['id'], (int) $ctx['section']['id']);
 // Group tasks: which group (if any) this user is in, so cards can say "Your group" / "Needs a group"
 $myGroupForTask = [];
 foreach (load_groups((int) $ctx['section']['id']) as $g) {
-    if ($g['task_id'] !== null && in_array((int) $user['id'], $g['members'], true)) {
+    if ($g['task_id'] !== null && Algorithms::linearContains($g['members'], (int) $user['id'])) {   // [ALGORITHM: LINEAR SEARCH]
         $myGroupForTask[(int) $g['task_id']] = $g['name'];
     }
 }
@@ -120,6 +120,8 @@ respond([
         'due_week' => $dueWeek,
         'subjects_due_today' => count($subjectsDueToday),
         'queue_size' => $queue->size(),
+        // [DSA: QUEUE] — people waiting to be let in (only officers see the number)
+        'join_requests' => Person::fromRow($user)->can(Permission::REVIEW_MEMBERS) ? build_join_queue($sectionId)->size() : 0,
         'my_pending' => $mine,
         'oldest_request' => $oldest,
         'next_due_ts' => $nextDue,

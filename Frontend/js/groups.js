@@ -286,6 +286,7 @@ const GroupsTab = {
       !g.is_member && g.my_request ? `<span class="cm-tag cm-tag-warn">${icon('clock', 12)}Request sent</span><button type="button" data-cancel="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">Cancel</button>` : '',
       !g.is_member && !g.my_request && !full && !inOther && !Data.admin ? `<button type="button" data-join="${g.id}" class="cm-cta cm-cta-sm">Ask to join<span class="cm-arrow">${icon('arrowRight', 16)}</span></button>` : '',
       canManage && !full && others ? `<button type="button" data-add="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">${icon('plus', 14)}Add</button>` : '',
+      canManage ? `<button type="button" data-rename="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">Rename</button>` : '',
       canManage ? `<button type="button" data-delete="${g.id}" class="cm-btn cm-btn-text cm-btn-sm">Delete</button>` : '',
     ].join('');
 
@@ -357,6 +358,7 @@ const GroupsTab = {
       GroupsTab.confirm(`Auto-group the ${n} left?`, `They’re shuffled into groups of ${UI.groupSize(t)} for “${t.title}”, filling open seats first.`, 'Auto-group',
         () => act(b, { action: 'auto_assign', task_id: id }, 'Remaining classmates were grouped'));
     });
+    on('data-rename', (id) => GroupWork.rename(find(id), () => GroupsTab.reload()));
     on('data-create', (id) => GroupsTab.pick(id, null));
     on('data-add', (id) => { const g = find(id); GroupsTab.pick(g.task?.id ?? null, g); });
   },

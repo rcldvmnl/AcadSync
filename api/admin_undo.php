@@ -9,7 +9,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../backend/bootstrap.php';
 
 require_method('POST');
-$admin = require_permission(Permission::REVIEW_REQUESTS, 'Only officers (President, Vice President, Secretary) can review requests.');
+$admin = require_permission(Permission::REVIEW_REQUESTS, 'Only officers (President, Vice President, Secretary, Treasurer) can review requests.');
 $ctx = load_context($admin);
 $sectionId = (int) $ctx['section']['id'];
 

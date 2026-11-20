@@ -2,7 +2,8 @@
 /**
  * GET  /api/section.php?code=B2826K   -> preview a section before joining
  * POST /api/section.php
- *   action=join    {code}                    join as a student and open it
+ *   action=join    {code}                    ask to join; an officer approves it (api/join_requests.php)
+ *   action=cancel_join {section_id}          take back a join request that is still waiting
  *   action=create  {name, program, year_level, semester, school_year, preset}
  *                                            creator becomes the section admin
  *   action=switch  {section_id}              open another section you belong to
@@ -58,7 +59,7 @@ function leave_groups(int $sectionId, int $userId): void
         }
     }
     foreach ($groups as $g) {
-        if (!in_array($userId, $g['members'], true) && (int) $g['created_by'] !== $userId) {
+        if (!Algorithms::linearContains($g['members'], $userId) && (int) $g['created_by'] !== $userId) {   // [ALGORITHM: LINEAR SEARCH]
             continue;
         }
         $rest = [];
@@ -93,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'section' => present_section($section, count(section_members((int) $section['id']))),
         'already_member' => $already !== null,
         'role' => $already['role'] ?? null,
+        'pending' => $already === null && pending_join_request((int) $section['id'], $uid) !== null,
     ]);
 }
 
@@ -105,12 +107,28 @@ switch (param('action')) {
             fail('No section uses that code.', 404);
         }
         $sid = (int) $section['id'];
-        if (membership($uid, $sid) === null) {
-            Store::insert('memberships', ['section_id' => $sid, 'user_id' => $uid, 'role' => 'student']);
-            notify_admins($sid, 'members', "{$user['first_name']} {$user['last_name']} joined {$section['name']}", 'classmates.html');
+        $preview = present_section($section, count(section_members($sid)));
+        if (membership($uid, $sid) !== null) {          // already in it: just open it
+            open_section($uid, $sid);
+            respond(['section' => $preview, 'pending' => false]);
         }
-        open_section($uid, $sid);
-        respond(['section' => present_section($section, count(section_members($sid)))]);
+        // [DSA: QUEUE] — the request joins the back of the section's join queue; officers let people
+        // in first-come, first-served (api/join_requests.php)
+        if (pending_join_request($sid, $uid) === null) {
+            Store::insert('join_requests', ['section_id' => $sid, 'user_id' => $uid]);
+            notify_permitted($sid, Permission::REVIEW_MEMBERS, 'members',
+                "{$user['first_name']} {$user['last_name']} asked to join {$section['name']}", 'queue.html#members');
+        }
+        respond(['section' => $preview, 'pending' => true]);
+    }
+
+    case 'cancel_join': {
+        $request = pending_join_request((int) param('section_id', 0), $uid);
+        if ($request === null) {
+            fail('You have no request waiting for that section.', 404);
+        }
+        Store::update('join_requests', (int) $request['id'], ['status' => 'cancelled']);
+        respond();
     }
 
     case 'create': {

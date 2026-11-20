@@ -327,7 +327,52 @@ function activity_rosters(int $sectionId): array
     return $out;
 }
 
-/** Vice President / Secretary terms per user id, oldest first. */
+/**
+ * [DSA: QUEUE] — people waiting to be let into the section, oldest first (front = next to review).
+ * Each item is the join_requests row with the person's user row under 'user'.
+ */
+function build_join_queue(int $sectionId): ApprovalQueue
+{
+    $users = user_index();
+    $queue = new ApprovalQueue();
+    foreach (section_rows('join_requests', $sectionId) as $r) {
+        $u = $users[(int) $r['user_id']] ?? null;
+        if ($r['status'] === 'pending' && $u) {
+            $queue->enqueue($r + ['user' => $u]);
+        }
+    }
+    return $queue;
+}
+
+/** This user's pending join request for a section, or null. */
+function pending_join_request(int $sectionId, int $userId): ?array
+{
+    foreach (section_rows('join_requests', $sectionId) as $r) {
+        if ((int) $r['user_id'] === $userId && $r['status'] === 'pending') {
+            return $r;
+        }
+    }
+    return null;
+}
+
+/** Sections this user asked to join and is still waiting for. */
+function pending_joins(int $userId): array
+{
+    $sections = [];
+    foreach (Store::all('sections') as $s) {
+        $sections[(int) $s['id']] = $s;
+    }
+    $out = [];
+    foreach (Store::all('join_requests') as $r) {
+        $s = $sections[(int) $r['section_id']] ?? null;
+        if ($s && (int) $r['user_id'] === $userId && $r['status'] === 'pending') {
+            $out[] = present_section($s, count(section_members((int) $s['id']))) + ['requested_at' => $r['created_at']];
+        }
+    }
+    return $out;
+}
+
+/** Vice President / Secretary / Treasurer terms per user id, oldest first. */
 function officer_terms(int $sectionId): array
 {
     $out = [];

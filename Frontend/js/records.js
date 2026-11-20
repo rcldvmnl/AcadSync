@@ -1,6 +1,6 @@
 // Member records: the officers, every member's standing and attendance (officers),
 // or one member's full record (officers, or the member themself).
-//   The President chooses the Vice President and Secretary here.
+//   The President chooses the Vice President, Secretary and Treasurer here.
 //   The Secretary and the President change a member's status (Active / Inactive / Alumni).
 //   The list is ranked by attendance with Merge Sort on the server.
 
@@ -10,6 +10,7 @@ const OFFICE = {
   president: { label: 'President', tint: 'bg-sun-tint', duty: 'Created the section. Chooses the officers and runs everything.' },
   vice_president: { label: 'Vice President', tint: 'bg-lavender-tint', duty: 'Reviews the approval queue and runs activities.' },
   secretary: { label: 'Secretary', tint: 'bg-peach-tint', duty: 'Reviews the queue, takes attendance and keeps these records.' },
+  treasurer: { label: 'Treasurer', tint: 'bg-mint-tint', duty: 'Reviews the queue, sets dues and records cash and GCash payments.' },
 };
 let state = { filter: 'all', data: null };
 
@@ -58,12 +59,12 @@ function renderAll() {
 
 function officersCard(d) {
   const o = d.officers;
-  const holderIds = [o.president?.id, o.vice_president?.id, o.secretary?.id].filter(Boolean);
+  const holderIds = Object.keys(OFFICE).map((k) => o[k]?.id).filter(Boolean);
   const tile = (key) => {
     const info = OFFICE[key];
     const who = o[key];
     const pickable = d.can_assign && key !== 'president';
-    // Choices: active members who aren't the President and don't already hold the other office
+    // Choices: active members who aren't the President and don't already hold another office
     const options = d.records.filter((r) => r.status.key === 'active' && r.position !== 'president' && (!holderIds.includes(r.id) || r.id === who?.id));
     return `
       <div class="rounded-[1.5rem] ${info.tint} p-4">
@@ -84,7 +85,7 @@ function officersCard(d) {
         <h2 id="off-h" class="text-xl font-bold">Officers</h2>
         <p class="text-xs text-muted">${d.can_assign ? 'Choose who serves. They’re notified, and can review the approval queue right away.' : 'Chosen by the President.'}</p>
       </div>
-      <div class="mt-4 grid gap-3 sm:grid-cols-3">${tile('president')}${tile('vice_president')}${tile('secretary')}</div>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">${Object.keys(OFFICE).map(tile).join('')}</div>
     </section>`;
 }
 
@@ -113,7 +114,7 @@ async function assign(select) {
   try {
     await API.post('records.php', { action: 'assign_officer', position, user_id: select.value ? Number(select.value) : null });
     UI.toast(select.value ? `${OFFICE[position].label} updated` : `${OFFICE[position].label} is now vacant`,
-      { sub: select.value ? 'They were notified and can now review the approval queue' : '' });
+      { sub: select.value ? (position === 'treasurer' ? 'They were notified and can now handle dues' : 'They were notified and can now review the approval queue') : '' });
     await loadAll();
   } catch (e) {
     UI.toast(e.message, { iconName: 'alert' });
