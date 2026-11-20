@@ -1,16 +1,22 @@
 <?php
 /**
- * [OOP + DSA] Organization activities: meetings, seminars and outreach.
+ * [OOP + DSA] Organization activities: meetings, seminars, outreach, competitions and section projects.
  *
- *   ABSTRACTION   Activity is abstract: every activity has a title, a time, a venue and maybe a
- *                 capacity; WHO is expected and WHO may be checked in is left to each kind.
- *   INHERITANCE   Meeting, Seminar and Outreach extend Activity.
+ *   ABSTRACTION   Activity is abstract: every activity has a title, a time (maybe over several days),
+ *                 a venue, maybe a capacity, a link to the original post and a sign-up deadline;
+ *                 WHO is expected, WHO may be checked in and HOW people join is left to each kind.
+ *   INHERITANCE   Meeting, Seminar and Outreach extend RsvpActivity; Competition and SectionProject
+ *                 extend PartsActivity; both extend Activity.
  *   POLYMORPHISM  expectsAttendanceFrom() and canCheckIn() differ per kind:
- *                   Meeting   every member is expected; anyone can be checked in
- *                   Seminar   only people with a seat (RSVP'd) are expected and may check in
- *                   Outreach  volunteers who RSVP'd are expected; walk-in helpers may still check in
+ *                   Meeting      every member is expected; anyone can be checked in
+ *                   Seminar      only people with a seat (RSVP'd) are expected and may check in
+ *                   Outreach     volunteers who RSVP'd are expected; walk-in helpers may still check in
+ *                   Competition  no attendance: volunteer for a part, officers pick
+ *                   SectionProject no attendance: parts with people and due dates
+ *                 joinsBy(), usesSeats(), canAssignDirectly(), partsNeedDueDates() too.
  *   ENCAPSULATION the constructor rejects a bad activity (no title, ends before it starts,
- *                 capacity 0…), so an invalid Activity object can't exist. No setters.
+ *                 capacity 0, a link that isn't http(s), a sign-up deadline after the first day…),
+ *                 so an invalid Activity object can't exist. No setters.
  *   RELATIONSHIP  ActivityRoster (composition with the DSA): a HashSet of who is going, a QUEUE of
  *                 who is waiting for a seat (first come, first served) and a HashSet of check-ins.
  */
@@ -31,6 +37,9 @@ abstract class Activity
         private ?int $capacity,
         private string $status,
         private int $createdBy,
+        private ?string $link = null,            // the original post (http/https only)
+        private ?string $signupDeadline = null,  // 'YYYY-MM-DD': volunteering closes at the end of that day
+        private ?string $result = null,          // e.g. "2nd place in Cosplay", entered after it ends
     ) {
         $title = trim($title);
         if ($title === '' || strlen($title) > 120) {
@@ -51,6 +60,39 @@ abstract class Activity
             throw new InvalidArgumentException('The venue or description is too long.');
         }
         $this->title = $title;
+        $this->link = self::cleanLink($link);
+        $deadline = trim((string) $signupDeadline);
+        if ($deadline !== '') {
+            if (!is_real_date($deadline)) {
+                throw new InvalidArgumentException('Pick a real date for the sign-up deadline.');
+            }
+            if ($deadline > substr($startsAt, 0, 10)) {
+                throw new InvalidArgumentException('The sign-up deadline must be on or before the first day.');
+            }
+        }
+        $this->signupDeadline = $deadline === '' ? null : $deadline;
+        $result = trim((string) $result);
+        if (strlen($result) > 300) {
+            throw new InvalidArgumentException('Keep the result under 300 characters.');
+        }
+        $this->result = $result === '' ? null : $result;
+    }
+
+    /**
+     * [OOP: ENCAPSULATION] Only a plain web link is kept: http(s), at most 500 characters.
+     * "javascript:", "data:", "ftp:" and links without a scheme are refused, so a stored link can't run script.
+     */
+    private static function cleanLink(?string $link): ?string
+    {
+        $link = trim((string) $link);
+        if ($link === '') {
+            return null;
+        }
+        $scheme = strtolower((string) parse_url($link, PHP_URL_SCHEME));
+        if (strlen($link) > 500 || filter_var($link, FILTER_VALIDATE_URL) === false || ($scheme !== 'http' && $scheme !== 'https')) {
+            throw new InvalidArgumentException('Paste a link that starts with http:// or https://.');
+        }
+        return $link;
     }
 
     /** Factory: builds the right kind from a row (or from new input, with id 0). */
@@ -59,22 +101,27 @@ abstract class Activity
         $args = [(int) ($r['id'] ?? 0), (string) ($r['title'] ?? ''), (string) ($r['description'] ?? ''), (string) ($r['venue'] ?? ''),
             (string) ($r['starts_at'] ?? ''), (string) ($r['ends_at'] ?? ''),
             isset($r['capacity']) && $r['capacity'] !== null && $r['capacity'] !== '' ? (int) $r['capacity'] : null,
-            (string) ($r['status'] ?? 'scheduled'), (int) ($r['created_by'] ?? 0)];
+            (string) ($r['status'] ?? 'scheduled'), (int) ($r['created_by'] ?? 0),
+            isset($r['link']) ? (string) $r['link'] : null,
+            isset($r['signup_deadline']) ? (string) $r['signup_deadline'] : null,
+            isset($r['result']) ? (string) $r['result'] : null];
         return match ($r['kind'] ?? '') {
             'meeting' => new Meeting(...$args),
             'seminar' => new Seminar(...$args),
             'outreach' => new Outreach(...$args),
-            default => throw new InvalidArgumentException('Pick Meeting, Seminar or Outreach.'),
+            'competition' => new Competition(...$args),
+            'project' => new SectionProject(...$args),
+            default => throw new InvalidArgumentException('Pick a kind of activity.'),
         };
     }
 
-    /** Every kind with its label and attendance rule, for the "New activity" form. */
+    /** Every kind with its label, attendance rule and how people join, for the "New activity" form. */
     public static function kinds(): array
     {
         $out = [];
-        foreach (['meeting', 'seminar', 'outreach'] as $kind) {
+        foreach (['meeting', 'seminar', 'outreach', 'competition', 'project'] as $kind) {
             $a = self::fromRow(['kind' => $kind, 'title' => $kind, 'starts_at' => '2000-01-01 08:00', 'ends_at' => '2000-01-01 09:00']);
-            $out[] = ['kind' => $a->kind(), 'label' => $a->kindLabel(), 'rule' => $a->attendanceRule()];
+            $out[] = ['kind' => $a->kind(), 'label' => $a->kindLabel(), 'rule' => $a->attendanceRule(), 'joins_by' => $a->joinsBy()];
         }
         return $out;
     }
@@ -102,6 +149,59 @@ abstract class Activity
     public function capacity(): ?int
     {
         return $this->capacity;
+    }
+
+    public function createdBy(): int
+    {
+        return $this->createdBy;
+    }
+
+    /** 'YYYY-MM-DD' of the first day. */
+    public function startDate(): string
+    {
+        return substr($this->startsAt, 0, 10);
+    }
+
+    public function link(): ?string
+    {
+        return $this->link;
+    }
+
+    /** The site the link points to, without "www." (shown instead of the whole link). */
+    public function linkHost(): ?string
+    {
+        if ($this->link === null) {
+            return null;
+        }
+        $host = strtolower((string) parse_url($this->link, PHP_URL_HOST));
+        return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
+    }
+
+    public function signupDeadline(): ?string
+    {
+        return $this->signupDeadline;
+    }
+
+    public function result(): ?string
+    {
+        return $this->result;
+    }
+
+    /** When volunteering closes: the end of the sign-up deadline day, or the kind's own default when there is none. */
+    public function signupClosesAt(): int
+    {
+        return $this->signupDeadline !== null ? (int) strtotime($this->signupDeadline . ' 23:59:59') : $this->defaultSignupClose();
+    }
+
+    /** [OOP: POLYMORPHISM] Without a deadline, sign-ups close when it starts (a SectionProject: on its last day). */
+    protected function defaultSignupClose(): int
+    {
+        return $this->startTs();
+    }
+
+    public function signupOpen(int $now): bool
+    {
+        return !$this->isCancelled() && $now <= $this->signupClosesAt();
     }
 
     public function isCancelled(): bool
@@ -134,12 +234,25 @@ abstract class Activity
     /** The rule above in words, for the screen. */
     abstract public function attendanceRule(): string;
 
+    /** How people take part: 'rsvp' (a seat, check-in) or 'parts' (volunteer for a part, officers pick). */
+    abstract public function joinsBy(): string;
+
+    /** Only the RSVP kinds use seats, the waitlist and check-in. */
+    abstract public function usesSeats(): bool;
+
+    /** May officers put someone on a part without them volunteering first? */
+    abstract public function canAssignDirectly(): bool;
+
+    /** Does every part need its own due date? */
+    abstract public function partsNeedDueDates(): bool;
+
     /** The columns to store for a new activity. */
     public function toRow(): array
     {
         return [
             'kind' => $this->kind(), 'title' => $this->title, 'description' => $this->description, 'venue' => $this->venue,
             'starts_at' => $this->startsAt, 'ends_at' => $this->endsAt, 'capacity' => $this->capacity, 'created_by' => $this->createdBy,
+            'link' => $this->link, 'signup_deadline' => $this->signupDeadline, 'result' => $this->result,
         ];
     }
 
@@ -148,11 +261,129 @@ abstract class Activity
         return $this->toRow() + [
             'id' => $this->id, 'status' => $this->status, 'kind_label' => $this->kindLabel(), 'rule' => $this->attendanceRule(),
             'start_ts' => $this->startTs(), 'end_ts' => $this->endTs(), 'is_over' => $this->isOver($now), 'cancelled' => $this->isCancelled(),
+            'link_host' => $this->linkHost(), 'signup_open' => $this->signupOpen($now), 'signup_closes_at' => $this->signupClosesAt(),
+            'joins_by' => $this->joinsBy(), 'uses_seats' => $this->usesSeats(),
+            'multi_day' => $this->startDate() !== substr($this->endsAt, 0, 10),
         ];
     }
 }
 
-final class Meeting extends Activity
+/** Meeting, Seminar and Outreach: people RSVP for a seat and are checked in. */
+abstract class RsvpActivity extends Activity
+{
+    public function joinsBy(): string
+    {
+        return 'rsvp';
+    }
+
+    public function usesSeats(): bool
+    {
+        return true;
+    }
+
+    public function canAssignDirectly(): bool
+    {
+        return false;
+    }
+
+    public function partsNeedDueDates(): bool
+    {
+        return false;
+    }
+}
+
+/**
+ * Competition and SectionProject: made of parts (ActivityPart). People volunteer for a part and
+ * officers pick. Neither touches attendance, so they never lower anyone's attendance rate.
+ */
+abstract class PartsActivity extends Activity
+{
+    public function joinsBy(): string
+    {
+        return 'parts';
+    }
+
+    public function usesSeats(): bool
+    {
+        return false;
+    }
+
+    public function expectsAttendanceFrom(bool $hasSeat): bool
+    {
+        return false;
+    }
+
+    public function canCheckIn(bool $hasSeat): bool
+    {
+        return false;
+    }
+}
+
+/** Volunteer for a part; officers pick who represents the section (no direct assignment). */
+final class Competition extends PartsActivity
+{
+    public function kind(): string
+    {
+        return 'competition';
+    }
+
+    public function kindLabel(): string
+    {
+        return 'Competition';
+    }
+
+    public function attendanceRule(): string
+    {
+        return 'Volunteer for a part. Officers pick who represents the section.';
+    }
+
+    public function canAssignDirectly(): bool
+    {
+        return false;
+    }
+
+    public function partsNeedDueDates(): bool
+    {
+        return false;
+    }
+}
+
+/** Work split into parts, each with its people and a due date; officers may assign people directly. */
+final class SectionProject extends PartsActivity
+{
+    public function kind(): string
+    {
+        return 'project';
+    }
+
+    public function kindLabel(): string
+    {
+        return 'Section project';
+    }
+
+    public function attendanceRule(): string
+    {
+        return 'Everyone helps. Each part has its people and a due date.';
+    }
+
+    /** Work goes on while the project runs, so people can still join a part until its last day. */
+    protected function defaultSignupClose(): int
+    {
+        return $this->endTs();
+    }
+
+    public function canAssignDirectly(): bool
+    {
+        return true;
+    }
+
+    public function partsNeedDueDates(): bool
+    {
+        return true;
+    }
+}
+
+final class Meeting extends RsvpActivity
 {
     public function kind(): string
     {
@@ -180,7 +411,7 @@ final class Meeting extends Activity
     }
 }
 
-final class Seminar extends Activity
+final class Seminar extends RsvpActivity
 {
     public function kind(): string
     {
@@ -208,7 +439,7 @@ final class Seminar extends Activity
     }
 }
 
-final class Outreach extends Activity
+final class Outreach extends RsvpActivity
 {
     public function kind(): string
     {

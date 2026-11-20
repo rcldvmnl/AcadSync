@@ -22,6 +22,7 @@ require_once __DIR__ . '/../backend/domain/Deadline.php';
 require_once __DIR__ . '/../backend/custom_dsa.php';
 require_once __DIR__ . '/../backend/domain/Task.php';
 require_once __DIR__ . '/../backend/domain/Activity.php';
+require_once __DIR__ . '/../backend/domain/ActivityPart.php';
 require_once __DIR__ . '/../backend/domain/MemberStatus.php';
 require_once __DIR__ . '/../backend/domain/Person.php';
 require_once __DIR__ . '/../backend/domain/Payment.php';
@@ -370,6 +371,98 @@ check('minor: payment notices skip people who aren\'t charged', Announcement::fr
 check('minor: other notices reach everyone', Announcement::fromInput('general', ['title' => 'Hi'], $pc)->notifies($alum), true);
 check('minor: permission is checked before the details', $refused(fn () => Announcement::fromInput('deadline_change', ['task_id' => 3, 'deadline_type' => 'exact', 'deadline' => '2026-11-19'], $annCtx($secr))), 'Only the President can move a deadline.');
 check('minor: a new due without permission is refused first', $refused(fn () => Announcement::fromInput('payment', ['new_due' => ['title' => '', 'amount' => 'x']], $annCtx($secr))), 'Only the Treasurer or the President can add a due.');
+
+// ---------------------------------------------------------------------------
+section('Competitions and projects: Activity');
+$base = ['title' => 'Founding Anniversary', 'starts_at' => '2026-11-25 08:00', 'ends_at' => '2026-11-26 17:00'];
+$c = Activity::fromRow($base + ['kind' => 'competition', 'link' => 'https://www.facebook.com/ssc/posts/1', 'signup_deadline' => '2026-11-20']);
+check('competition kind', [$c->kind(), $c->kindLabel(), $c->joinsBy(), $c->usesSeats(), $c->canAssignDirectly(), $c->partsNeedDueDates()],
+      ['competition', 'Competition', 'parts', false, false, false]);
+$p = Activity::fromRow($base + ['kind' => 'project']);
+check('project kind', [$p->kind(), $p->kindLabel(), $p->joinsBy(), $p->canAssignDirectly(), $p->partsNeedDueDates()],
+      ['project', 'Section project', 'parts', true, true]);
+check('seminar still rsvp', [Activity::fromRow($base + ['kind' => 'seminar'])->joinsBy(), Activity::fromRow($base + ['kind' => 'seminar'])->usesSeats()], ['rsvp', true]);
+check('no attendance for competitions/projects', [$c->expectsAttendanceFrom(true), $c->canCheckIn(true), $p->expectsAttendanceFrom(true), $p->canCheckIn(true)], [false, false, false, false]);
+check('link host', $c->linkHost(), 'facebook.com');
+foreach (['javascript:alert(1)', 'data:text/html,hi', 'ftp://x.org', 'www.facebook.com', 'https://' . str_repeat('a', 600) . '.com'] as $bad) {
+    check("bad link refused: " . substr($bad, 0, 20), $refused(fn () => Activity::fromRow($base + ['kind' => 'competition', 'link' => $bad])), 'Paste a link that starts with http:// or https://.');
+}
+check('empty link is no link', Activity::fromRow($base + ['kind' => 'competition', 'link' => ''])->link(), null);
+check('deadline after start refused', $refused(fn () => Activity::fromRow($base + ['kind' => 'competition', 'signup_deadline' => '2026-11-27'])), 'The sign-up deadline must be on or before the first day.');
+check('impossible deadline refused', $refused(fn () => Activity::fromRow($base + ['kind' => 'competition', 'signup_deadline' => '2026-02-30'])), 'Pick a real date for the sign-up deadline.');
+check('open on the deadline day', $c->signupOpen(strtotime('2026-11-20 23:59:00')), true);
+check('closed the day after', $c->signupOpen(strtotime('2026-11-21 00:00:01')), false);
+check('no deadline closes at the start', Activity::fromRow($base + ['kind' => 'competition'])->signupClosesAt(), strtotime('2026-11-25 08:00'));
+check('kinds lists five', count(Activity::kinds()), 5);
+$multi = validate_new_activity(['kind' => 'competition', 'title' => 'FA', 'date' => '2030-11-25', 'end_date' => '2030-11-26', 'start' => '08:00', 'end' => '17:00'], 1, time());
+check('several days', [$multi->toArray(time())['multi_day'], $multi->endTs()], [true, strtotime('2030-11-26 17:00')]);
+check('end date before start refused', $refused(fn () => validate_new_activity(['kind' => 'competition', 'title' => 'FA', 'date' => '2030-11-25', 'end_date' => '2030-11-24', 'start' => '08:00', 'end' => '17:00'], 1, time())), 'The end time must be after the start time.');
+check('result too long refused', $refused(fn () => Activity::fromRow($base + ['kind' => 'competition', 'result' => str_repeat('x', 301)])), 'Keep the result under 300 characters.');
+check('an Event announcement can\'t create a competition', $refused(fn () => Announcement::fromInput('event', ['new_activity' => ['kind' => 'competition', 'title' => 'FA', 'date' => '2030-11-25', 'start' => '08:00', 'end' => '17:00']], $pc)), 'Post a competition or project from Activities: it needs its parts.');
+
+check('impossible activity date refused', $refused(fn () => validate_new_activity(['kind' => 'meeting', 'title' => 'X', 'date' => '2030-02-30', 'start' => '08:00', 'end' => '09:00'], 1, time())), 'Pick a real date.');
+
+// ---------------------------------------------------------------------------
+section('Competitions and projects: parts');
+$comp = Activity::fromRow(['kind' => 'competition', 'title' => 'Founding Anniversary', 'starts_at' => '2026-11-25 08:00', 'ends_at' => '2026-11-26 17:00', 'signup_deadline' => '2026-11-20']);
+$proj = Activity::fromRow(['kind' => 'project', 'title' => 'Booth design', 'starts_at' => '2026-11-21 08:00', 'ends_at' => '2026-12-04 17:00']);
+$cos = ActivityPart::fromRow(['id' => 1, 'activity_id' => 1, 'name' => 'Cosplay Competition', 'spots' => 2, 'roles' => '[]'], $comp);
+$cul = ActivityPart::fromRow(['id' => 2, 'activity_id' => 1, 'name' => 'College Culinary Showdown', 'spots' => 4, 'together' => 1], $comp);
+$any = ActivityPart::fromRow(['id' => 3, 'activity_id' => 1, 'name' => 'Dating game', 'spots' => null], $comp);
+check('spots labels', [$cos->spotsLabel(), $cul->spotsLabel(), $any->spotsLabel()], ['2 spots', 'team of 4', 'Any number']);
+check('any number never full', [$any->isFull(500), $any->openSpots(3)], [false, null]);
+check('part name required', $refused(fn () => ActivityPart::fromRow(['id' => 0, 'activity_id' => 1, 'name' => ' '], $comp)), 'Give the part a name (up to 80 characters).');
+check('spots 0 refused', $refused(fn () => ActivityPart::fromRow(['id' => 0, 'activity_id' => 1, 'name' => 'X', 'spots' => 0], $comp)), 'Spots must be between 1 and 100, or leave it empty for any number.');
+check('competition part has no due date', $refused(fn () => ActivityPart::fromRow(['id' => 0, 'activity_id' => 1, 'name' => 'X', 'due_date' => '2026-11-24'], $comp)), 'Competition parts don’t have due dates.');
+check('project part needs a due date', $refused(fn () => ActivityPart::fromRow(['id' => 0, 'activity_id' => 2, 'name' => 'Poster'], $proj)), 'Give each part a due date.');
+check('project due after last day refused', $refused(fn () => ActivityPart::fromRow(['id' => 0, 'activity_id' => 2, 'name' => 'Poster', 'due_date' => '2026-12-05'], $proj)), 'Pick a due date on or before the project’s last day (Fri, Dec 4).');
+check('too many roles', $refused(fn () => ActivityPart::fromRow(['id' => 0, 'activity_id' => 1, 'name' => 'Video', 'roles' => json_encode(array_fill(0, 11, 'Editor'))], $comp)), 'Up to 10 roles, each up to 40 characters.');
+check('details too long', $refused(fn () => ActivityPart::fromRow(['id' => 0, 'activity_id' => 1, 'name' => 'Video', 'details' => str_repeat('x', 1001)], $comp)), 'Keep the details under 1,000 characters.');
+check('shrink below picked', $cul->whyCantResize(2, 3), 'That part already has 3 picked. Un-pick people first.');
+check('grow is fine', $cul->whyCantResize(6, 3), null);
+
+$rows = [['id' => 10, 'user_id' => 5, 'status' => 'volunteer', 'volunteered' => 1, 'role' => null],
+         ['id' => 11, 'user_id' => 3, 'status' => 'volunteer', 'volunteered' => 1, 'role' => 'Director'],
+         ['id' => 12, 'user_id' => 4, 'status' => 'picked', 'volunteered' => 1, 'role' => null]];
+$r = new PartRoster($rows);
+check('arrival order', array_column($r->volunteers(), 'user_id'), [5, 3]);
+check('counts', [$r->pickedCount(), $r->volunteerCount(), $r->statusOf(4), $r->statusOf(5), $r->statusOf(99), $r->roleOf(3)], [1, 2, 'picked', 'volunteer', 'none', 'Director']);
+$before = strtotime('2026-11-20 12:00'); $after = strtotime('2026-11-21 08:00');
+check('volunteer ok', $r->whyCantVolunteer($comp, 99, true, $before), null);
+check('volunteer twice', $r->whyCantVolunteer($comp, 5, true, $before), 'You already volunteered for this part.');
+check('volunteer when picked', $r->whyCantVolunteer($comp, 4, true, $before), 'You’re already picked for this part.');
+check('alumni', $r->whyCantVolunteer($comp, 99, false, $before), 'Alumni members can’t volunteer.');
+check('after deadline', $r->whyCantVolunteer($comp, 99, true, $after), 'Sign-ups for “Founding Anniversary” closed on Fri, Nov 20.');
+check('pick a volunteer', $r->whyCantPick($cos, $comp, 5, false), null);
+check('pick a stranger in a competition', $r->whyCantPick($cos, $comp, 99, false), 'Pick someone who volunteered.');
+check('pick twice', $r->whyCantPick($cos, $comp, 4, false), 'Already picked.');
+$full = new PartRoster([['id' => 1, 'user_id' => 1, 'status' => 'picked', 'volunteered' => 1], ['id' => 2, 'user_id' => 2, 'status' => 'picked', 'volunteered' => 1], ['id' => 3, 'user_id' => 3, 'status' => 'volunteer', 'volunteered' => 1]]);
+check('last spot taken', $full->whyCantPick($cos, $comp, 3, false), 'This part is full. Un-pick someone first.');
+$poster = ActivityPart::fromRow(['id' => 4, 'activity_id' => 2, 'name' => 'Poster', 'spots' => 1, 'due_date' => '2026-11-28'], $proj);
+check('project assigns directly', (new PartRoster([]))->whyCantPick($poster, $proj, 7, true), null);
+check('overdue flag', [$poster->toArray('2026-11-29')['overdue'], $poster->toArray('2026-11-28')['overdue']], [true, false]);
+
+// Final review fixes
+$running = Activity::fromRow(['kind' => 'project', 'title' => 'Booth design', 'starts_at' => '2026-11-20 08:00', 'ends_at' => '2026-12-04 17:00']);
+check('fix I3: a project without a deadline takes sign-ups until its last day', [$running->signupClosesAt(), $running->signupOpen(strtotime('2026-11-25 10:00'))],
+    [strtotime('2026-12-04 17:00'), true]);
+check('fix I3: a competition without a deadline still closes at its start', Activity::fromRow(['kind' => 'competition', 'title' => 'X', 'starts_at' => '2026-11-25 08:00', 'ends_at' => '2026-11-25 17:00'])->signupOpen(strtotime('2026-11-25 09:00')), false);
+
+// ---------------------------------------------------------------------------
+section('Competitions and projects: announcement');
+$faAct = Activity::fromRow(['id' => 1, 'kind' => 'competition', 'title' => 'Founding Anniversary', 'venue' => 'Gym', 'starts_at' => '2026-11-25 08:00',
+    'ends_at' => '2026-11-26 17:00', 'signup_deadline' => '2026-11-20', 'created_by' => 1]);
+$faCtx = fn (int $now) => new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [], subjects: [], slots: [], dues: [],
+    activities: [1 => $faAct], cancelled: new HashSet(), now: $now, openSpots: [1 => ['open' => 7, 'parts' => 5]]);
+$n = Announcement::fromRow(['id' => 4, 'kind' => 'event', 'title' => 'Competition: Founding Anniversary', 'body' => '', 'pinned' => 0, 'created_by' => 1,
+    'created_at' => '2026-11-19 08:00', 'ref_id' => 1, 'event_at' => '2026-11-25 08:00',
+    'details' => json_encode(['title' => 'Founding Anniversary', 'kind_label' => 'Competition', 'venue' => 'Gym', 'starts_at' => '2026-11-25 08:00', 'ends_at' => '2026-11-26 17:00', 'capacity' => null])]);
+$ctxOpen = $faCtx(strtotime('2026-11-20 10:00'));
+check('event facts for a competition', $n->facts($ctxOpen)['lines'][1] ?? null, '7 spots open across 5 parts');
+check('event facts: sign-up deadline', $n->facts($ctxOpen)['lines'][2] ?? null, 'Sign up by Fri, Nov 20');
+check('volunteer action', [$n->facts($ctxOpen)['action']['label'] ?? null, $n->facts($ctxOpen)['action']['href'] ?? null], ['Volunteer', 'activities.html#a1']);
+$ctxClosed = $faCtx(strtotime('2026-11-22 10:00'));
+check('event facts: sign-ups closed', [$n->facts($ctxClosed)['lines'][1] ?? null, $n->facts($ctxClosed)['action']['label'] ?? null], ['Sign-ups closed', 'Open']);
 
 // ---------------------------------------------------------------------------
 section('Group planning');

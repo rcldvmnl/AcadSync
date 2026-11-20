@@ -18,6 +18,7 @@ require_once __DIR__ . '/domain/MemberStatus.php';
 require_once __DIR__ . '/domain/Person.php';
 require_once __DIR__ . '/domain/Task.php';
 require_once __DIR__ . '/domain/Activity.php';
+require_once __DIR__ . '/domain/ActivityPart.php';
 require_once __DIR__ . '/domain/MemberRecord.php';
 require_once __DIR__ . '/domain/UndoAction.php';
 require_once __DIR__ . '/domain/Payment.php';

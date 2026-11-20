@@ -40,21 +40,12 @@ and a pending join request from Leo.
 | Task Details: Instructions and "Finished this task?" moved to the left column | `task.js` |
 | **Typed announcements** (spec + plan in `docs/superpowers/`): Notice, Payment, No class, Deadline change, Task, Event, each doing its real change; Home lists Coming up / Notices / Earlier; No class crosses the class out on Schedule, Home and Whole Week. After review: permission checked before details, payment notices only to members charged dues, finished events leave Coming up, impossible dates refused, unique index on cancellations | `Announcement.php`, `announcements.php`, `services.php`, `schedule.php`, `request_task.php`, `activities.php`, `schema.sql`, `db.php`, `seed.php`, `home.js`, `ui.js`, `schedule.js`, `week.js` |
 | Home Announcements: one short row (pinned first) + **See all** popup with every announcement, Pin/Remove and Earlier | `home.js` |
+| **Competitions and section projects** (spec + plan in `docs/superpowers/`, built with executing-plans, not committed yet): `Competition` / `SectionProject` → `PartsActivity` → `Activity` (and `RsvpActivity` for the old three); `ActivityPart` + `PartRoster` (volunteer Queue, picked HashSet); link to the post (http/https only, new tab), sign-up deadline, several days, results; volunteer → pick / assign / step down / mark done; Your sign-ups, Needs people, This month, Results and officer starters on Activities; Home "Your sign-ups"; Event announcements point at competitions ("N spots open across M parts"); search finds activities and part names; seed has the Founding Anniversary and Booth design | `Activity.php`, `ActivityPart.php`, `activities.php`, `announcements.php`, `Announcement.php`, `search.php`, `services.php`, `schema.sql`, `db.php`, `seed.php`, `activities.js`, `home.js`, `search.js`, `ui.js`, `org.css`, `tests/dsa_test.php` |
+| **Tailwind CLI build** (was "Still to do" 6): every page links the built `css/tailwind.css` instead of `cdn.tailwindcss.com` + `js/tailwind-config.js` (removed; the theme moved to `tailwind.config.js`). Checked in headless Chrome: all 20 pages × Juan/Ana × 390/1280 px have identical computed styles to the CDN version. Rebuild with `npm run build:css` after adding classes | `tailwind.config.js`, `package.json`, `package-lock.json`, `Frontend/css/tailwind.src.css`, `Frontend/css/tailwind.css`, all `Frontend/*.html` |
 
 ---
 
 ## Still to do
-
-### 0. Next feature: Competitions and section projects on Activities (design approved, plan ready)
-Design (approved 2026-11-20): [docs/superpowers/specs/2026-11-20-competitions-and-projects-design.md](superpowers/specs/2026-11-20-competitions-and-projects-design.md).
-Plan (5 tasks, approved, not started): [docs/superpowers/plans/2026-11-20-competitions-and-projects.md](superpowers/plans/2026-11-20-competitions-and-projects.md).
-Execution method chosen by the owner: **Native** (`superpowers:executing-plans`: build each task in the
-session, then one fresh whole-branch review on the most capable model). Two new Activity kinds, **Competition** (volunteer → officers
-pick) and **Section project** (parts assigned to people, with due dates and progress); a clickable link to
-the original post; a sign-up deadline; events over several days; and new Activities cards: Your sign-ups,
-Needs people, This month and Results. Start the new conversation with:
-> Read docs/PROJECT_CONTEXT.md and docs/NEXT_STEPS.md, then use superpowers:executing-plans (native) on
-> docs/superpowers/plans/2026-11-20-competitions-and-projects.md.
 
 ### 1. Fill in the README submission section (needs the team)
 Team member names, student IDs and who did what; YouTube demo and Canva slides links.
@@ -78,18 +69,16 @@ also holds join requests, so it was left on the bar.
 `SHOW_RESET_CODE=true` shows the code on screen. Sending it by e-mail needs SMTP settings (e.g. a
 Gmail app password) and a mail library; then `SHOW_RESET_CODE` can be turned off.
 
-### 6 (low). Tailwind from the CDN
-All pages load `cdn.tailwindcss.com` (needs internet, logs a warning). For a real deployment, build
-one CSS file with the Tailwind CLI.
 
 ### Ideas
-- Show the join queue and dues in **How AcadSync works** (`dsa.html`) as live examples.
+- Show the join queue, dues and a part's volunteer queue in **How AcadSync works** (`dsa.html`) as live examples.
 - Export a due's payment list to CSV for the Treasurer's report.
 
 ---
 
 ## After any change
 - `php tests/dsa_test.php`, `php -l` each edited PHP file, `node --check` each edited JS file.
+- New Tailwind classes in a page or script: `npm run build:css` (the built `Frontend/css/tailwind.css` is committed).
 - Keep the README tables (features, permissions, DSA map, project layout) and `docs/CLASS_DIAGRAM.md`
   in sync with the code.
 - Commit only when asked; never commit `.env` or anything in `data/`.

@@ -1,0 +1,12 @@
+{
+  "name": "acadsync",
+  "private": true,
+  "description": "Build tools only: the app itself is PHP + plain JS and needs no Node to run.",
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i Frontend/css/tailwind.src.css -o Frontend/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -c tailwind.config.js -i Frontend/css/tailwind.src.css -o Frontend/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

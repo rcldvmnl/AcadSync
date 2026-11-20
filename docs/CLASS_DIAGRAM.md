@@ -116,7 +116,7 @@ classDiagram
     Person *-- "1" MemberStatus : has
 ```
 
-## 2. Activities, attendance and member records
+## 2. Activities, attendance, competition / project parts and member records
 
 ```mermaid
 classDiagram
@@ -132,18 +132,41 @@ classDiagram
         -int capacity
         -string status
         -int createdBy
-        +__construct(id, title, …, capacity, status, createdBy)
+        -string link
+        -string signupDeadline
+        -string result
+        +__construct(id, title, …, capacity, status, createdBy, link, signupDeadline, result)
         +fromRow(row)$ Activity
         +kinds()$ array
+        -cleanLink(link)$ string
         +startTs() int
         +isOver(now) bool
         +hasRoom(going) bool
+        +linkHost() string
+        +signupClosesAt() int
+        +signupOpen(now) bool
         +kind()* string
         +kindLabel()* string
         +expectsAttendanceFrom(hasSeat)* bool
         +canCheckIn(hasSeat)* bool
         +attendanceRule()* string
+        +joinsBy()* string
+        +usesSeats()* bool
+        +canAssignDirectly()* bool
+        +partsNeedDueDates()* bool
         +toRow() array
+    }
+    class RsvpActivity {
+        <<abstract>>
+        +joinsBy() string
+        +usesSeats() bool
+    }
+    class PartsActivity {
+        <<abstract>>
+        +joinsBy() string
+        +usesSeats() bool
+        +expectsAttendanceFrom(hasSeat) bool
+        +canCheckIn(hasSeat) bool
     }
     class Meeting {
         +expectsAttendanceFrom(hasSeat) bool
@@ -157,9 +180,59 @@ classDiagram
         +expectsAttendanceFrom(hasSeat) bool
         +canCheckIn(hasSeat) bool
     }
-    Activity <|-- Meeting
-    Activity <|-- Seminar
-    Activity <|-- Outreach
+    class Competition {
+        +canAssignDirectly() bool
+        +partsNeedDueDates() bool
+    }
+    class SectionProject {
+        +canAssignDirectly() bool
+        +partsNeedDueDates() bool
+    }
+    Activity <|-- RsvpActivity
+    Activity <|-- PartsActivity
+    RsvpActivity <|-- Meeting
+    RsvpActivity <|-- Seminar
+    RsvpActivity <|-- Outreach
+    PartsActivity <|-- Competition
+    PartsActivity <|-- SectionProject
+
+    class ActivityPart {
+        <<final>>
+        -int id
+        -int activityId
+        -string name
+        -string details
+        -int spots
+        -bool together
+        -string[] roles
+        -string dueDate
+        -string doneAt
+        -string result
+        +fromRow(row, activity)$ ActivityPart
+        +openSpots(picked) int
+        +isFull(picked) bool
+        +whyCantResize(newSpots, picked) string
+        +spotsLabel() string
+        +isDone() bool
+        +toArray(today) array
+    }
+    class PartRoster {
+        <<final>>
+        -ApprovalQueue volunteers
+        -HashSet picked
+        +statusOf(userId) string
+        +roleOf(userId) string
+        +pickedCount() int
+        +volunteers() array
+        +whyCantVolunteer(activity, userId, canRsvp, now) string
+        +whyCantPick(part, activity, userId, direct) string
+    }
+    PartsActivity "1" *-- "1..*" ActivityPart : parts
+    ActivityPart ..> Activity : partsNeedDueDates()
+    ActivityPart "1" -- "1" PartRoster : who is on it
+    PartRoster *-- ApprovalQueue : volunteers
+    PartRoster *-- HashSet : picked
+    PartRoster ..> Activity : signupOpen(), canAssignDirectly()
 
     class ActivityRoster {
         <<final>>
@@ -427,6 +500,8 @@ classDiagram
         +Activity[] activities «readonly»
         +HashSet cancelled «readonly»
         +int now «readonly»
+        +array going «readonly»
+        +array openSpots «readonly»
         +today() string
     }
     Announcement <|-- GeneralNotice
@@ -608,10 +683,10 @@ classDiagram
 
 | Pillar | Where in the code | What it does in AcadSync |
 | --- | --- | --- |
-| **Encapsulation** | Private fields + getters in every domain class; `Activity`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
-| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the six notices → `Announcement`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
-| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$rule->seats()` / `explain()` / `studentsOrganize()` (one class per way a prof sets up groups); `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()`; `$announcement->apply()` / `facts()` / `onRemove()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type`, the payment method or the announcement kind: each object answers for itself |
-| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `GroupRule`, `DatedDeadline`, `UndoAction`, `Payment`, `Announcement` | Callers use what an object can do, not how it does it |
+| **Encapsulation** | Private fields + getters in every domain class; `Activity` (title, times, a link that must be http(s), a sign-up deadline on or before the first day), `ActivityPart`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
+| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `RsvpActivity` → `Activity`; `Competition`/`SectionProject` → `PartsActivity` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the six notices → `Announcement`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
+| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()` / `joinsBy()` / `usesSeats()` / `canAssignDirectly()` / `partsNeedDueDates()` (competitions and projects never touch attendance); `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$rule->seats()` / `explain()` / `studentsOrganize()` (one class per way a prof sets up groups); `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()`; `$announcement->apply()` / `facts()` / `onRemove()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type`, the payment method or the announcement kind: each object answers for itself |
+| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `RsvpActivity`, `PartsActivity`, `Task`, `GroupRule`, `DatedDeadline`, `UndoAction`, `Payment`, `Announcement` | Callers use what an object can do, not how it does it |
 
 ## Relationships
 
@@ -620,6 +695,9 @@ classDiagram
 | `Person` ◆— `MemberStatus` | composition | every person has exactly one status; it can hold back permissions (Alumni) |
 | `Task` ◆— `Deadline`, `GroupTask` ◆— `GroupRule` | composition | a task owns its deadline and its group rule |
 | `ActivityRoster` ◆— `HashSet`, `ApprovalQueue` | composition | going / checked-in sets and the waitlist queue of one activity |
+| `PartsActivity` ◆— `ActivityPart` | composition | a competition or project owns its parts (at least one) |
+| `PartRoster` ◆— `ApprovalQueue`, `HashSet` | composition | a part's volunteers in arrival order and who is picked |
+| `ActivityPart` / `PartRoster` → `Activity` | dependency | the part asks its activity for the due-date rule; the roster asks whether sign-ups are open and whether officers may assign directly |
 | `MemberRecord` ◇— `Person`, uses `Activity` | aggregation / dependency | a record is built from a person and asks each activity who was expected |
 | `UndoStack` ◇— `UndoAction` | aggregation | the DSA stack holds OOP objects that know how to reverse themselves |
 | `GroupRule` → `StudyGroup` | association | the rule evaluates a task's groups (seats left, +1 extra seats, who may join) |

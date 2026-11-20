@@ -31,14 +31,14 @@ body { background: #F6F3EE; color: #1F1F24; font-family: "Plus Jakarta Sans", sy
 .field {
   display: flex; align-items: center; gap: .625rem;
   background: #F6F3EE; border: 1.5px solid transparent; border-radius: 1rem;
-  height: 3rem; padding: 0 1rem; transition: border-color .15s, background .15s;
+  height: 3rem; padding: .5rem 1rem; transition: border-color .15s, background .15s;   /* fixed height; the inset keeps text off the edges */
 }
 .field:focus-within { border-color: #A99CF5; background: #fff; }
 .field.ok { border-color: #4FB386; background: #fff; }
 .field.bad { border-color: #E5675C; background: #fff; }
 .field input, .field select, .field textarea { flex: 1; min-width: 0; background: transparent; outline: none; font-size: .9375rem; color: #1F1F24; }
-.field input::placeholder, .field textarea::placeholder { color: #A9A9B2; }
-.field svg { color: #8A8A94; flex-shrink: 0; }
+.field input::placeholder, .field textarea::placeholder { color: #6B6B74; }   /* 4.8:1 on the sand field, 5.3:1 on white */
+.field svg { color: #62626B; flex-shrink: 0; }
 .field.area { height: auto; padding: .875rem 1rem; align-items: flex-start; }
 .field select { appearance: none; cursor: pointer; }
 .on-canvas .field { background: #fff; }

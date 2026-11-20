@@ -11,6 +11,25 @@
 .act-bar span { display: block; height: 100%; border-radius: 999px; background: #1F1F24; transition: width .3s ease; }
 .act-officer { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-left: auto; }
 
+/* Highlight when the page scrolls to a card (activities.html#a12) */
+.act-card { transition: box-shadow .3s ease; }
+.act-card.act-flash { box-shadow: 0 0 0 3px #1F1F24, 0 8px 24px -12px rgba(31,31,36,.12); }
+
+/* Parts of a competition / section project */
+.part-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: .5rem .75rem; padding: .75rem .9rem; border-radius: 1.25rem; background: #FAF8F5; }
+.part-row > div:last-child { margin-left: auto; }
+.part-row.is-done { background: #F1FAF5; }
+
+/* This month: 7-column mini calendar */
+.mini-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .2rem; text-align: center; }
+.mini-head { font-size: .7rem; font-weight: 700; color: #5C5C66; padding-bottom: .15rem; }
+.mini-day { position: relative; display: grid; place-items: center; height: 2.1rem; border-radius: .75rem; font-size: .8rem; font-variant-numeric: tabular-nums; color: #5C5C66; }
+.mini-day.has { color: #1F1F24; font-weight: 700; background: #E5F6EE; cursor: pointer; }
+.mini-day.has:hover { background: #BFE8D4; }
+.mini-day.has:focus-visible { outline: 3px solid #1F1F24; outline-offset: 1px; }
+.mini-day.is-today { box-shadow: inset 0 0 0 2px #1F1F24; }
+.mini-dot { position: absolute; bottom: .2rem; width: .3rem; height: .3rem; border-radius: 999px; background: #1F1F24; }
+
 /* Kind picker in the "New activity" sheet */
 .act-kind { height: 2.75rem; border-radius: 999px; font-size: .875rem; font-weight: 600; border: 2px solid transparent; transition: border-color .15s; }
 .act-kind[aria-checked="true"] { border-color: #1F1F24; }

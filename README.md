@@ -4,7 +4,7 @@
 
 **A student organization management system for LSPU class sections.**
 
-Membership · Officers · Activities & attendance · Member records · Tasks, schedule & group work
+Membership · Officers · Activities & attendance · Competitions & section projects · Member records · Tasks, schedule & group work
 
 ![PHP](https://img.shields.io/badge/PHP-8.1%2B-777BB4?logo=php&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-storage-003B57?logo=sqlite&logoColor=white)
@@ -131,6 +131,15 @@ Then open **<http://localhost:8000>**.
 
 - The database is created on the first request, with demo data unless `.env` says otherwise.
 - To start over, delete `data/acadsync.db`.
+- The styles are a ready-built file (`Frontend/css/tailwind.css`), so the app works offline and needs
+  no Node.js. **Only when you add or change Tailwind classes** in a page or script, rebuild it:
+
+  ```bash
+  npm install          # once: installs the Tailwind CLI (3.4.17) into node_modules/
+  npm run build:css    # or: npm run watch:css while you work
+  ```
+
+  The theme (colours, font, shadows) is in `tailwind.config.js`. Commit the rebuilt `tailwind.css`.
 
 > [!WARNING]
 > **Always start the server with `router.php`.** Without it, PHP's built-in server serves every file
@@ -191,7 +200,8 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 | BSINFO-2B | **`K7Q4PM`** |
 
 > [!NOTE]
-> The officers, activities, dues, announcements and Leo's join request come from the seed, so they
+> The officers, activities (including the *Founding Anniversary* competition and the *Booth design*
+> project), dues, announcements and Leo's join request come from the seed, so they
 > only appear in a **new** database. In an older database, the President picks the officers on the
 > **Member Records** page.
 
@@ -215,10 +225,10 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 
 | Can… | Member | Vice President | Secretary | Treasurer | President |
 | --- | :-: | :-: | :-: | :-: | :-: |
-| Request tasks, join groups, RSVP, see their own dues | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Request tasks, join groups, RSVP, volunteer for a part, see their own dues | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Review the approval queue, let new members in | | ✓ | ✓ | ✓ | ✓ |
 | Fix any group: add, move or remove members, answer any join request | | ✓ | ✓ | ✓ | ✓ |
-| Add / cancel activities, post announcements, see all member records | | ✓ | ✓ | ✓ | ✓ |
+| Add / edit / cancel activities, competitions and projects, pick volunteers, enter results, post announcements, see all member records | | ✓ | ✓ | ✓ | ✓ |
 | Take attendance, change a member's status | | | ✓ | | ✓ |
 | Set dues, record cash and GCash payments | | | | ✓ | ✓ |
 | Choose officers, manage subjects, publish tasks directly, auto-group | | | | | ✓ |
@@ -229,7 +239,7 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 | --- | --- |
 | **Active** | Everything counts; charged dues |
 | **Inactive** | On leave: may still join events, but absences don't count and no dues are charged |
-| **Alumni** | Kept in the records; can't RSVP, request tasks or join groups; no dues |
+| **Alumni** | Kept in the records; can't RSVP, volunteer, request tasks or join groups; no dues |
 
 ### 📣 Announcements
 
@@ -276,6 +286,30 @@ in the same step, so the app never says two different things:
 | **Meeting** | Expects every active member |
 | **Seminar** | Only people with a reserved seat can check in |
 | **Outreach** | Counts volunteers who signed up, and still accepts walk-in helpers |
+| **Competition** | No attendance: volunteer for a part, officers pick who represents the section |
+| **Section project** | No attendance: each part has its people and a due date |
+
+- Every activity can carry a **link to the original post** (only `http://` / `https://`, shown by its
+  site name, e.g. *facebook.com ↗*, opened in a new tab) and can last **several days** (Nov 25–26).
+- Officers can **edit** an activity, and enter a plain-text **result** after it ends ("2nd place").
+
+### 🏆 Competitions and section projects
+
+- A **competition** (e.g. the Founding Anniversary) is made of **parts**: Cosplay (2 spots), Culinary
+  Showdown (a team of 4), a dating game (any number), a video with **roles** (Director, Editor…).
+  It can have a **sign-up deadline** (volunteering closes at the end of that day).
+- **Volunteer → officers pick.** Active members volunteer for a part with a note and a preferred role.
+  Until an officer picks them it always reads *Volunteered — the officers will pick*; then *Picked ·
+  Director*, and they are notified. Officers see the volunteers in the order they came (a queue) with
+  their notes; members see who was picked and how many volunteered. A part never gets more people
+  picked than its spots, and it can't be shrunk or removed below the people already picked.
+- A **section project** (e.g. Booth design) has parts with **due dates**. Officers can also **assign**
+  people directly; the people on a part mark it **done**, and the card shows the progress.
+- Picked people can **step down** (the creator is told); cancelling notifies everyone on a part once.
+- The page has **Your sign-ups**, **Needs people** (parts with open spots, soonest deadline first),
+  a **This month** calendar, **results** on past activities, and starters for officers when nothing is
+  planned. Home shows *Your sign-ups* while you have a part that isn't done. Search finds activities
+  and part names. Competitions and projects never change anyone's attendance rate.
 
 ### 📊 Member records
 
@@ -318,10 +352,10 @@ The domain model lives in [`backend/domain/`](backend/domain/). Full UML diagram
 
 | Pillar | Where | In practice |
 | --- | --- | --- |
-| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `GroupRule`, `Activity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`, `Announcement`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
-| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`GeneralNotice` / `PaymentNotice` / `NoClassNotice` / `DeadlineChangeNotice` / `TaskNotice` / `EventNotice` → `Announcement`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
-| **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()`, `$announcement->apply()` / `facts()` | No `role === 'admin'`, payment-method or announcement-kind checks in the endpoints; each object answers for itself |
-| **Encapsulation** | Private fields + getters everywhere; `Activity`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
+| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `GroupRule`, `Activity`, `RsvpActivity`, `PartsActivity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`, `Announcement`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
+| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `RsvpActivity` → `Activity`<br>`Competition` / `SectionProject` → `PartsActivity` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`GeneralNotice` / `PaymentNotice` / `NoClassNotice` / `DeadlineChangeNotice` / `TaskNotice` / `EventNotice` → `Announcement`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
+| **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$activity->joinsBy()` / `canAssignDirectly()` / `partsNeedDueDates()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()`, `$announcement->apply()` / `facts()` | No `role === 'admin'`, payment-method or announcement-kind checks in the endpoints; each object answers for itself |
+| **Encapsulation** | Private fields + getters everywhere; `Activity` (incl. the link and sign-up deadline), `ActivityPart`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
 
 ---
 
@@ -339,9 +373,9 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 | --- | --- | --- |
 | **Array** — storing and accessing records | `FixedArray`, `SubjectArray`; 2D `WeekGrid` | A section's subjects (`load_subjects`); the week as 6 days × 288 five-minute cells to catch clashing class times (`subjects.php`) |
 | **Linked List** — insertion and deletion | `TaskLinkedList` (doubly linked) | The task timeline in date order, with expired tasks dropped from the head; previous / next task (`tasks.php`) |
-| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; unique group names per task; **who is going and who checked in** at an activity; **one office per person** (`records.php`); **a GCash reference used once** and who has paid a due in full (`dues.php`); **classes cancelled on a date** by a No class announcement (`schedule.php`) |
+| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; unique group names per task; **who is going and who checked in** at an activity; **who is picked for a part** (`PartRoster`); one "cancelled" notification per person; **one office per person** (`records.php`); **a GCash reference used once** and who has paid a due in full (`dues.php`); **classes cancelled on a date** by a No class announcement (`schedule.php`) |
 | **Stack** — undo, history | `UndoStack` | The queue's "undo reject"; students' Undo (`undo.php`), holding `UndoAction` objects |
-| **Queue** — waiting lists | `ApprovalQueue` | Task requests and **join requests** reviewed first-come, first-served (only the front can be decided); **activity waitlists** (the front gets the next seat); auto-grouping |
+| **Queue** — waiting lists | `ApprovalQueue` | Task requests and **join requests** reviewed first-come, first-served (only the front can be decided); **activity waitlists** (the front gets the next seat); **volunteers for a competition part** (officers see the earliest first); auto-grouping |
 | **Tree** — hierarchy, tree search | `SubjectTree`, `ChecklistTree` | Section › Subjects › Tasks searched depth-first; checklists rolled up post-order |
 | **Graph** — relationships | `DependencyGraph` | Study-group links: My groupmates (BFS), shortest path between classmates, suggested groupmates |
 
@@ -352,9 +386,9 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 | Insertion Sort | `TaskLinkedList::insertChronologically` | Timeline order |
 | Bubble Sort | `Algorithms::bubbleSortByUrgency` | "Urgent" view |
 | Selection Sort | `Algorithms::selectionSortByLastName` / `ByStudentId` | Classmate directory, attendance sheet, dues member list |
-| Linear Search | `Algorithms::linearSearchTasks` / `linearSearchByName` / `linearSearch` | Duplicate-task warning, name search; "is this person in the group"; `Person::can()` |
+| Linear Search | `Algorithms::linearSearchTasks` / `linearSearchByName` / `linearSearch` / `DsaUtil::contains` | Duplicate-task warning, name search; "is this person in the group"; `Person::can()`; a volunteer's role is one of the part's; search over activities and part names |
 | Binary Search | `Algorithms::binarySearchByStudentId` / `countDueBy` | Student ID search; Schedule › Due by Fri |
-| Merge Sort | `Algorithms::mergeSortBy` | Notifications, activity lists, **member ranking by attendance**, announcements (Coming up by date, Notices newest first, then a stable sort puts pinned first), dues by date |
+| Merge Sort | `Algorithms::mergeSortBy` | Notifications, activity lists, **member ranking by attendance**, announcements (Coming up by date, Notices newest first, then a stable sort puts pinned first), dues by date; parts in order, **Needs people** by sign-up deadline, **Your sign-ups** by due date |
 
 ### SQL is storage only
 
@@ -410,7 +444,7 @@ api/                      JSON endpoints
   records.php             member records, officers (assign VP / Secretary / Treasurer), member status
   announcements.php       typed announcements (notice, payment, no class, deadline change, task, event)
   dues.php                dues, cash and GCash payments
-  activities.php          activities, RSVP + waitlist, attendance
+  activities.php          activities, RSVP + waitlist, attendance; competition / project parts, volunteer → pick, results
   schedule.php            timeline, urgency, week grid, due by Friday
   subjects.php            subjects and class times, clash check
   tasks.php, request_task.php, subtasks.php           tasks, requests, checklists
@@ -418,12 +452,14 @@ api/                      JSON endpoints
   groups.php, classmates.php, undo.php, search.php, notifications.php, dsa.php
 backend/
   Env.php                 reads .env
-  domain/                 OOP model: Person, MemberStatus, Task, Deadline, Activity, MemberRecord, UndoAction, Payment
+  domain/                 OOP model: Person, MemberStatus, Task, Deadline, Activity, ActivityPart, MemberRecord, UndoAction, Payment, Announcement
   custom_dsa.php          all data structures and algorithms
   services.php            loads one section's rows into the structures and objects
   db.php, schema.sql, seed.php, bootstrap.php
 tests/dsa_test.php        tests for every data structure and algorithm (command line only)
 docs/CLASS_DIAGRAM.md     UML class diagram (Mermaid)
 docs/screenshots/         screenshots used in this README
-Frontend/                 *.html pages (incl. dues.html), js/, css/, assets/
+Frontend/                 *.html pages (incl. dues.html), js/, css/ (tailwind.css is built), assets/
+tailwind.config.js        Tailwind theme + which files are scanned (npm run build:css)
+package.json              build tools only (the Tailwind CLI); the app itself doesn't need Node
 ```

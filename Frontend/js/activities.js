@@ -1,28 +1,74 @@
-// Activities: the organization's meetings, seminars and outreach.
+// Activities: the organization's meetings, seminars, outreach, competitions and section projects.
 //   RSVP takes a seat; when an activity is full you join its waitlist (a QUEUE on the server),
 //   and the first person waiting gets the next seat that opens.
-//   Officers add and cancel activities; the Secretary and the President take attendance.
-//   Each kind has its own attendance rule (Meeting / Seminar / Outreach are classes on the server).
+//   Competitions and section projects are made of parts: you volunteer for a part, officers pick
+//   (projects: officers can also assign), and project parts are marked done.
+//   Officers add, edit and cancel activities; the Secretary and the President take attendance.
+//   Each kind has its own rule (Meeting / Seminar / Outreach / Competition / SectionProject are classes on the server).
 
-const KIND_TINT = { meeting: 'bg-lavender-tint', seminar: 'bg-peach-tint', outreach: 'bg-mint-tint' };
+const KIND_TINT = { meeting: 'bg-lavender-tint', seminar: 'bg-peach-tint', outreach: 'bg-mint-tint', competition: 'bg-mint-tint', project: 'bg-lavender-tint' };
 let data = null;
 let tab = location.hash === '#past' ? 'past' : 'upcoming';
 
 const hm = (d) => Fmt.time(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+const isParts = (a) => a.joins_by === 'parts';
 const whenText = (a) => {
   const s = new Date(a.start_ts * 1000);
   const e = new Date(a.end_ts * 1000);
+  if (a.multi_day) return `${rangeText(s, e)} · ${hm(s)} – ${hm(e)}`;
   return `${Fmt.short(s)} · ${hm(s)} – ${hm(e)}`;
+};
+/** "Nov 25–26", or "Nov 30 – Dec 2" across months. */
+const rangeText = (s, e) => (s.getMonth() === e.getMonth()
+  ? `${MONTHS[s.getMonth()]} ${s.getDate()}–${e.getDate()}`
+  : `${Fmt.monthDay(s)} – ${Fmt.monthDay(e)}`);
+/** Whole days from today to an ISO date (0 = today, negative = past). */
+const daysUntil = (iso) => {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.round((Fmt.date(iso) - t) / 86400e3);
+};
+const whenChip = (iso) => {
+  const n = daysUntil(iso);
+  if (n === 0) return UI.chip('Today', 'bg-sun-tint');
+  if (n === 1) return UI.chip('Tomorrow', 'bg-sun-tint');
+  return n > 1 ? `<span class="text-xs text-muted">in ${n} days</span>` : '';
+};
+const findActivity = (id) => [...data.upcoming, ...data.past].find((x) => x.id === id);
+const findPart = (partId) => {
+  for (const a of [...data.upcoming, ...data.past]) {
+    const p = (a.parts || []).find((x) => x.id === partId);
+    if (p) return [p, a];
+  }
+  return [null, null];
 };
 
 (async () => {
   await Shell.init({ active: 'activities', eyebrow: sectionEyebrow, title: 'Activities' });
   await load();
+  goToHash();
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
 async function load() {
   data = await API.get('activities.php');
   render();
+}
+
+/** activities.html#a12 (from a notification, Home or the month strip): open the right tab and scroll to the card. */
+function goToHash() {
+  const m = /^#a(\d+)$/.exec(location.hash);
+  if (m) scrollToActivity(Number(m[1]));
+}
+
+function scrollToActivity(id) {
+  const a = findActivity(id);
+  if (!a) return;
+  const want = data.past.some((x) => x.id === id) ? 'past' : 'upcoming';
+  if (tab !== want) { tab = want; render(); }
+  const el = document.getElementById(`a${id}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  el.classList.add('act-flash');
+  setTimeout(() => el.classList.remove('act-flash'), 1600);
 }
 
 /* ------------------------------------------------------------------ page */
@@ -37,32 +83,50 @@ function render() {
       ${data.can_manage ? `<button type="button" id="new-activity" class="btn btn-dark ml-auto h-11 px-5 text-sm">${icon('plus', 18)}New activity</button>` : ''}
     </div>
     <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-      <section class="space-y-3" aria-label="${tab === 'upcoming' ? 'Upcoming activities' : 'Past activities'}">
+      <section class="min-w-0 space-y-3" aria-label="${tab === 'upcoming' ? 'Upcoming activities' : 'Past activities'}">
         ${list.length ? list.map(card).join('') : emptyState()}
       </section>
-      <aside class="space-y-4">${myAttendanceCard()}${rulesCard()}</aside>
+      <aside class="min-w-0 space-y-4">${mySignupsCard()}${needsPeopleCard()}${monthCard()}${myAttendanceCard()}${rulesCard()}</aside>
     </div>`;
   bind();
 }
 
 function emptyState() {
-  if (tab === 'past') return UI.empty('No past activities yet', 'Finished meetings, seminars and outreach show here with who attended.', 'flag');
-  return UI.empty('Nothing planned yet', data.can_manage ? 'Add the first meeting, seminar or outreach with “New activity”.' : 'When an officer adds an activity, you can RSVP here.', 'flag');
+  if (tab === 'past') return UI.empty('No past activities yet', 'Finished activities show here with who attended and their results.', 'flag');
+  const results = data.latest_results.length ? `
+    <section class="rounded-[1.75rem] bg-white p-5 shadow-card" aria-labelledby="latest-h">
+      <h2 id="latest-h" class="text-lg font-semibold">Latest results</h2>
+      <ul class="mt-3 space-y-3">${data.latest_results.map((r) => `
+        <li><a href="#a${r.activity_id}" data-goto="${r.activity_id}" class="font-semibold hover:underline">${esc(r.title)}</a>
+          ${r.result ? `<p class="text-sm">${esc(r.result)}</p>` : ''}
+          ${r.parts.map((p) => `<p class="text-sm text-muted">${esc(p.name)}: ${esc(p.result)}</p>`).join('')}</li>`).join('')}
+      </ul>
+    </section>` : '';
+  const starters = data.can_manage ? `
+    <div class="rounded-[1.75rem] bg-white p-6 text-center shadow-card">
+      <div class="mx-auto grid h-12 w-12 place-items-center rounded-full bg-mint-tint text-success">${icon('flag', 22)}</div>
+      <div class="mt-3 font-semibold">Nothing planned yet</div>
+      <p class="mt-1 text-sm text-muted">Start something for the section.</p>
+      <div class="mt-4 grid gap-2 sm:grid-cols-3">
+        <button type="button" data-start="meeting" class="btn btn-canvas h-11 text-sm">Plan a meeting</button>
+        <button type="button" data-start="competition" class="btn btn-canvas h-11 text-sm">Post a competition</button>
+        <button type="button" data-start="project" class="btn btn-canvas h-11 text-sm">Start a project</button>
+      </div>
+    </div>` : UI.empty('Nothing planned yet', 'When officers post an activity, it shows here.', 'flag');
+  return starters + results;
 }
 
 function card(a) {
+  if (isParts(a)) return partsCard(a);
   const d = new Date(a.start_ts * 1000);
   const pct = a.capacity ? Math.min(100, Math.round((a.going / a.capacity) * 100)) : 0;
   const seats = a.capacity
     ? `${a.going} of ${plural(a.capacity, 'seat')} taken${a.waitlist ? ` · ${a.waitlist} waiting` : ''}`
     : `${plural(a.going, 'person', 'people')} going · no seat limit`;
   return `
-    <article class="act-card ${a.cancelled ? 'is-cancelled' : ''}" id="act-${a.id}" aria-labelledby="act-${a.id}-h">
+    <article class="act-card ${a.cancelled ? 'is-cancelled' : ''}" id="a${a.id}" aria-labelledby="act-${a.id}-h">
       <div class="flex gap-4">
-        <div class="act-date ${KIND_TINT[a.kind]}" aria-hidden="true">
-          <span class="text-xl font-bold leading-none">${String(d.getDate()).padStart(2, '0')}</span>
-          <span class="mt-1 text-[11px] font-semibold text-muted">${MONTHS[d.getMonth()]}</span>
-        </div>
+        ${dateBlock(a, d)}
         <div class="min-w-0 flex-1">
           <div class="flex flex-wrap items-center gap-1.5">
             ${UI.chip(a.kind_label, KIND_TINT[a.kind])}
@@ -71,7 +135,9 @@ function card(a) {
           </div>
           <h3 id="act-${a.id}-h" class="mt-1.5 text-lg font-semibold leading-snug">${esc(a.title)}</h3>
           <p class="text-sm text-muted">${esc(whenText(a))}</p>
+          ${a.link ? `<div class="mt-2">${UI.linkChip(a.link, a.link_host)}</div>` : ''}
           ${a.description ? `<p class="mt-2 text-sm leading-relaxed">${esc(a.description)}</p>` : ''}
+          ${resultBlock(a)}
           ${!a.cancelled ? `
             <div class="mt-3">
               ${a.capacity ? `<div class="act-bar" role="img" aria-label="${esc(seats)}"><span style="width:${pct}%"></span></div>` : ''}
@@ -83,7 +149,118 @@ function card(a) {
     </article>`;
 }
 
-/** What I can do with this activity, or where I stand. */
+function dateBlock(a, d) {
+  return `<div class="act-date ${KIND_TINT[a.kind]}" aria-hidden="true">
+    <span class="text-xl font-bold leading-none">${String(d.getDate()).padStart(2, '0')}</span>
+    <span class="mt-1 text-[11px] font-semibold text-muted">${MONTHS[d.getMonth()]}</span>
+  </div>`;
+}
+
+function resultBlock(a) {
+  const partResults = (a.parts || []).filter((p) => p.result);
+  if (!a.result && !partResults.length) return '';
+  return `<div class="mt-3 rounded-2xl bg-canvas px-4 py-3">
+    <p class="text-xs font-semibold uppercase tracking-wide text-muted">Result</p>
+    ${a.result ? `<p class="mt-0.5 text-sm font-semibold">${esc(a.result)}</p>` : ''}
+    ${partResults.map((p) => `<p class="mt-0.5 text-sm"><span class="text-muted">${esc(p.name)}:</span> ${esc(p.result)}</p>`).join('')}
+  </div>`;
+}
+
+/** "Sign up by Fri, Nov 20 · Today", or "Sign-ups closed". */
+function signupLine(a) {
+  if (a.cancelled || a.is_over) return '';
+  if (!a.signup_open) return '<span class="text-xs font-semibold text-muted">Sign-ups closed</span>';
+  if (!a.signup_deadline) return `<span class="text-xs text-muted">Sign up by ${esc(Fmt.short(a.signup_closes_at))}</span>`;
+  return `<span class="text-xs font-semibold">Sign up by ${esc(Fmt.short(a.signup_deadline))}</span> ${whenChip(a.signup_deadline)}`;
+}
+
+/** A competition or section project: its parts, who is on them, and what I can do. */
+function partsCard(a) {
+  const d = new Date(a.start_ts * 1000);
+  const prog = a.progress;
+  const pct = prog && prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
+  const cantVolunteer = !a.cancelled && !a.is_over && a.signup_open && !a.me.can_volunteer
+    ? `<p class="mt-2 text-xs text-muted">${esc(data.my_status.label)} members can’t volunteer.</p>` : '';
+  return `
+    <article class="act-card ${a.cancelled ? 'is-cancelled' : ''}" id="a${a.id}" aria-labelledby="act-${a.id}-h">
+      <div class="flex gap-4">
+        ${dateBlock(a, d)}
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-1.5">
+            ${UI.chip(a.kind_label, KIND_TINT[a.kind])}
+            ${a.cancelled ? UI.chip('Cancelled', 'bg-danger-tint') : ''}
+            ${signupLine(a)}
+          </div>
+          <h3 id="act-${a.id}-h" class="mt-1.5 text-lg font-semibold leading-snug">${esc(a.title)}</h3>
+          <p class="text-sm text-muted">${esc(whenText(a))}${a.venue ? ` · ${esc(a.venue)}` : ''}</p>
+          ${a.link ? `<div class="mt-2">${UI.linkChip(a.link, a.link_host)}</div>` : ''}
+          ${a.description ? `<p class="mt-2 text-sm leading-relaxed">${esc(a.description)}</p>` : ''}
+          ${resultBlock(a)}
+          ${prog && !a.cancelled ? `
+            <div class="mt-3">
+              <div class="act-bar" role="img" aria-label="${prog.done} of ${prog.total} parts done"><span style="width:${pct}%"></span></div>
+              <p class="mt-1.5 text-xs text-muted">${prog.done} of ${plural(prog.total, 'part')} done</p>
+            </div>` : ''}
+        </div>
+      </div>
+      <h4 class="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">Parts</h4>
+      <ul class="mt-2 space-y-2">${a.parts.map((p) => partRow(a, p)).join('')}</ul>
+      ${cantVolunteer}
+      ${!a.cancelled && data.can_manage ? `
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          ${!a.is_over ? `<button type="button" data-add-part="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('plus', 16)}Add part</button>
+            <button type="button" data-edit-activity="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('edit', 16)}Edit</button>` : ''}
+          ${a.is_over ? `<button type="button" data-result="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('flag', 16)}${a.result ? 'Edit result' : 'Add result'}</button>` : ''}
+          ${!a.is_over ? `<button type="button" data-cancel-activity="${a.id}" class="ml-auto h-10 px-2 text-sm font-semibold text-muted hover:text-charcoal">Cancel activity</button>` : ''}
+        </div>` : ''}
+    </article>`;
+}
+
+function partRow(a, p) {
+  const counts = [p.spots_label];
+  if (p.spots !== null) counts.push(`${p.picked_count} picked`);
+  else if (p.picked_count) counts.push(`${p.picked_count} picked`);
+  if (p.volunteer_count) counts.push(plural(p.volunteer_count, 'volunteer'));
+  const due = p.due_date ? `<span class="${p.overdue ? 'font-semibold text-danger' : ''}">Due ${esc(Fmt.short(p.due_date))}${p.overdue ? ' · overdue' : ''}</span>` : '';
+  const people = p.picked.length
+    ? `<p class="mt-1 text-xs"><span class="text-muted">${a.kind === 'project' ? 'On it:' : 'Picked:'}</span> ${p.picked.map((x) => `${esc(x.name)}${x.role ? ` · ${esc(x.role)}` : ''}`).join(', ')}</p>` : '';
+  return `
+    <li class="part-row ${p.done ? 'is-done' : ''}">
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span class="font-semibold">${esc(p.name)}</span>
+          ${p.done ? `<span class="chip bg-mint-tint text-success">${icon('check', 13)}Done</span>` : ''}
+        </div>
+        <p class="text-xs text-muted">${esc(counts.join(' · '))}${p.roles.length ? ` · roles: ${esc(p.roles.join(', '))}` : ''}${due ? ' · ' : ''}${due}</p>
+        ${p.details ? `<p class="mt-1 text-sm">${esc(p.details)}</p>` : ''}
+        ${people}
+      </div>
+      <div class="flex flex-wrap items-center justify-end gap-2">${myPartAction(a, p)}${data.can_manage && !a.cancelled ? `<button type="button" data-manage="${p.id}" class="btn btn-light h-10 border border-line px-4 text-sm">Manage${p.volunteers?.length ? ` · ${p.volunteers.length}` : ''}</button>` : ''}</div>
+    </li>`;
+}
+
+/** Where I stand on one part: Volunteer / Volunteered — the officers will pick / Picked · role. */
+function myPartAction(a, p) {
+  if (a.cancelled) return '';
+  const st = p.me.status;
+  // Only the people on the part see Mark done on the card (officers have it in Manage), to keep the card quiet
+  const markDone = a.kind === 'project' && !a.is_over && st === 'picked'
+    ? `<button type="button" data-done="${p.id}" data-value="${p.done ? '0' : '1'}" class="btn ${p.done ? 'btn-canvas' : 'btn-dark'} h-10 px-4 text-sm">${p.done ? 'Not done yet' : `${icon('check', 16)}Mark done`}</button>` : '';
+  if (st === 'picked') {
+    return `<span class="chip bg-mint-tint text-success">${icon('check', 13)}${esc(`Picked${p.me.role ? ` · ${p.me.role}` : ''}`)}</span>
+      ${markDone}${!a.is_over ? `<button type="button" data-step-down="${p.id}" class="h-10 px-2 text-sm font-semibold text-muted hover:text-charcoal">Step down</button>` : ''}`;
+  }
+  if (st === 'volunteer') {
+    return `<span class="chip bg-sun-tint">${icon('clock', 13)}${esc(`Volunteered — the officers will pick${p.me.role ? ` · ${p.me.role}` : ''}`)}</span>
+      ${markDone}${!a.is_over ? `<button type="button" data-withdraw="${p.id}" class="h-10 px-2 text-sm font-semibold text-muted hover:text-charcoal">Withdraw</button>` : ''}`;
+  }
+  if (a.is_over || p.done) return markDone;
+  if (!a.me.can_volunteer) return markDone;
+  if (p.full) return `<span class="text-sm text-muted">Full</span>${markDone}`;
+  return `<button type="button" data-volunteer="${p.id}" class="btn btn-dark h-10 px-4 text-sm">Volunteer</button>${markDone}`;
+}
+
+/** What I can do with an RSVP activity, or where I stand. */
 function myAction(a) {
   const me = a.me;
   if (a.cancelled) return '';
@@ -113,9 +290,77 @@ function officerActions(a) {
     parts.push(`<button type="button" data-attendance="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('clipboard', 16)}Attendance${a.checked_in ? ` · ${a.checked_in}` : ''}</button>`);
   }
   if (data.can_manage && !a.is_over) {
+    parts.push(`<button type="button" data-edit-activity="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('edit', 16)}Edit</button>`);
     parts.push(`<button type="button" data-cancel-activity="${a.id}" class="h-10 px-2 text-sm font-semibold text-muted hover:text-charcoal">Cancel activity</button>`);
   }
+  if (data.can_manage && a.is_over) {
+    parts.push(`<button type="button" data-result="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('flag', 16)}${a.result ? 'Edit result' : 'Add result'}</button>`);
+  }
   return parts.length ? `<span class="act-officer">${parts.join('')}</span>` : '';
+}
+
+/* ------------------------------------------------------------------ right column */
+function mySignupsCard() {
+  const list = data.my_signups;
+  if (!list.length) return '';
+  return `
+    <section class="rounded-[1.75rem] bg-white p-5 shadow-card" aria-labelledby="signups-h">
+      <h2 id="signups-h" class="text-lg font-semibold">Your sign-ups</h2>
+      <ul class="mt-3 space-y-2">${list.map((s) => `
+        <li><a href="#a${s.activity_id}" data-goto="${s.activity_id}" class="block rounded-2xl px-3 py-2 hover:bg-canvas">
+          <span class="block truncate text-sm font-semibold">${esc(s.part_name)}</span>
+          <span class="block truncate text-xs text-muted">${esc(s.activity_title)}</span>
+          <span class="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+            ${s.status === 'picked'
+              ? `<span class="chip bg-mint-tint text-success">${esc(`Picked${s.role ? ` · ${s.role}` : ''}`)}</span>`
+              : '<span class="chip bg-sun-tint">Volunteered — the officers will pick</span>'}
+            ${s.done ? '<span class="text-success">Done</span>' : s.due_date ? `<span class="${s.overdue ? 'font-semibold text-danger' : 'text-muted'}">Due ${esc(Fmt.short(s.due_date))}</span>` : ''}
+          </span>
+        </a></li>`).join('')}
+      </ul>
+    </section>`;
+}
+
+function needsPeopleCard() {
+  const list = data.needs_people;
+  if (!list.length || tab !== 'upcoming') return '';
+  return `
+    <section class="rounded-[1.75rem] bg-white p-5 shadow-card" aria-labelledby="needs-h">
+      <h2 id="needs-h" class="text-lg font-semibold">Needs people</h2>
+      <ul class="mt-3 space-y-1">${list.slice(0, 6).map((n) => `
+        <li><a href="#a${n.activity_id}" data-goto="${n.activity_id}" class="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-canvas">
+          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold">${esc(n.part_name)}</span>
+            <span class="block truncate text-xs text-muted">${esc(n.activity_title)} · sign up by ${esc(Fmt.short(n.closes_at))}</span></span>
+          <span class="chip bg-mint-tint shrink-0">${plural(n.open_spots, 'spot')} open</span>
+        </a></li>`).join('')}
+      </ul>
+    </section>`;
+}
+
+/** This month: a 7-column calendar with a dot on each day that has an activity. */
+function monthCard() {
+  const m = data.month;
+  const first = Fmt.date(m.first);
+  const daysIn = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const has = new Set(m.days);
+  const cells = [];
+  for (let i = 0; i < first.getDay(); i++) cells.push('<span></span>');
+  for (let day = 1; day <= daysIn; day++) {
+    const iso = `${m.first.slice(0, 8)}${String(day).padStart(2, '0')}`;
+    const isToday = iso === m.today;
+    cells.push(has.has(iso)
+      ? `<button type="button" data-day-goto="${m.first_activity[iso]}" class="mini-day has ${isToday ? 'is-today' : ''}" aria-label="${esc(Fmt.short(iso))}: open the activity">${day}<span class="mini-dot" aria-hidden="true"></span></button>`
+      : `<span class="mini-day ${isToday ? 'is-today' : ''}">${day}</span>`);
+  }
+  return `
+    <section class="rounded-[1.75rem] bg-white p-5 shadow-card" aria-labelledby="month-h">
+      <h2 id="month-h" class="text-lg font-semibold">This month <span class="text-sm font-medium text-muted">${MONTHS[first.getMonth()]} ${first.getFullYear()}</span></h2>
+      <div class="mini-cal mt-3" aria-hidden="false">
+        ${DAYS.map((d) => `<span class="mini-head">${d[0]}</span>`).join('')}
+        ${cells.join('')}
+      </div>
+      ${m.days.length ? '' : '<p class="mt-2 text-xs text-muted">No activities this month yet.</p>'}
+    </section>`;
 }
 
 function myAttendanceCard() {
@@ -137,91 +382,425 @@ function myAttendanceCard() {
 function rulesCard() {
   return `
     <section class="rounded-[1.75rem] bg-white p-5 shadow-card" aria-labelledby="rules-h">
-      <h2 id="rules-h" class="text-lg font-semibold">How attendance counts</h2>
+      <h2 id="rules-h" class="text-lg font-semibold">How it counts</h2>
       <ul class="mt-3 space-y-3">
         ${data.kinds.map((k) => `<li>${UI.chip(k.label, KIND_TINT[k.kind])}<p class="mt-1 text-sm">${esc(k.rule)}</p></li>`).join('')}
       </ul>
-      <p class="mt-3 text-xs text-muted">When an activity is full, RSVPs join a waitlist. The first person waiting gets the next seat that opens.</p>
+      <p class="mt-3 text-xs text-muted">When an activity is full, RSVPs join a waitlist. The first person waiting gets the next seat that opens. Competitions and projects never change your attendance rate.</p>
     </section>`;
 }
 
 /* ------------------------------------------------------------------ actions */
+/** POSTs one action, shows a toast, reloads. Returns true when it worked. */
+async function post(body, msg, btn = null) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await API.post('activities.php', body);
+    if (msg) UI.toast(typeof msg === 'function' ? msg(r) : msg);
+    await load();
+    return true;
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    UI.toast(e.message, { iconName: 'alert' });
+    return false;
+  }
+}
+
 function bind() {
   $$('[data-tab]').forEach((b) => b.onclick = () => { tab = b.dataset.tab; history.replaceState(null, '', tab === 'past' ? '#past' : location.pathname); render(); });
-  $('#new-activity')?.addEventListener('click', openCreate);
-  const act = async (btn, body, msg) => {
+  $('#new-activity')?.addEventListener('click', () => openCreate());
+  $$('[data-start]').forEach((b) => b.onclick = () => openCreate(b.dataset.start));
+  $$('[data-goto]').forEach((b) => b.onclick = (e) => { e.preventDefault(); scrollToActivity(Number(b.dataset.goto)); });
+  $$('[data-day-goto]').forEach((b) => b.onclick = () => scrollToActivity(Number(b.dataset.dayGoto)));
+  $$('[data-rsvp]').forEach((b) => b.onclick = () => post({ action: 'rsvp', id: Number(b.dataset.rsvp) },
+    (r) => (r.status === 'going' ? 'You’re going' : `You’re on the waitlist, #${r.position}`), b));
+  $$('[data-cancel-rsvp]').forEach((b) => b.onclick = () => post({ action: 'cancel_rsvp', id: Number(b.dataset.cancelRsvp) },
+    (r) => (r.promoted ? 'RSVP cancelled. The next person waiting got your seat.' : 'RSVP cancelled'), b));
+  $$('[data-attendance]').forEach((b) => b.onclick = () => openAttendance(Number(b.dataset.attendance)));
+  $$('[data-cancel-activity]').forEach((b) => b.onclick = () => {
+    const a = findActivity(Number(b.dataset.cancelActivity));
+    const who = isParts(a) ? 'Everyone who volunteered or was picked' : 'Everyone going or waiting';
+    UI.sheet(`<h2 class="text-2xl font-bold">Cancel “${esc(a.title)}”?</h2>
+      <p class="mt-2 text-sm text-muted">${who} gets a notification. It stays in the list, marked cancelled.</p>
+      <div class="mt-6 grid grid-cols-2 gap-3"><button data-close class="btn btn-canvas">Keep it</button><button data-ok class="btn btn-dark">Cancel activity</button></div>`, {
+      label: 'Cancel activity',
+      onMount: (el, close) => { $('[data-ok]', el).onclick = () => { close(); post({ action: 'cancel', id: a.id }, 'Activity cancelled', b); }; },
+    });
+  });
+  $$('[data-edit-activity]').forEach((b) => b.onclick = () => openEdit(findActivity(Number(b.dataset.editActivity))));
+  $$('[data-result]').forEach((b) => b.onclick = () => openResult(findActivity(Number(b.dataset.result))));
+  $$('[data-add-part]').forEach((b) => b.onclick = () => openPartForm(findActivity(Number(b.dataset.addPart)), null));
+  $$('[data-volunteer]').forEach((b) => b.onclick = () => openVolunteer(Number(b.dataset.volunteer)));
+  $$('[data-withdraw]').forEach((b) => b.onclick = () => post({ action: 'withdraw', part_id: Number(b.dataset.withdraw) }, 'You withdrew', b));
+  $$('[data-step-down]').forEach((b) => b.onclick = () => {
+    const [p, a] = findPart(Number(b.dataset.stepDown));
+    UI.sheet(`<h2 class="text-2xl font-bold">Step down from “${esc(p.name)}”?</h2>
+      <p class="mt-2 text-sm text-muted">The officers are told, and your spot opens for someone else in “${esc(a.title)}”.</p>
+      <div class="mt-6 grid grid-cols-2 gap-3"><button data-close class="btn btn-canvas">Stay on it</button><button data-ok class="btn btn-dark">Step down</button></div>`, {
+      label: 'Step down',
+      onMount: (el, close) => { $('[data-ok]', el).onclick = () => { close(); post({ action: 'step_down', part_id: p.id }, 'You stepped down', b); }; },
+    });
+  });
+  $$('[data-done]').forEach((b) => b.onclick = () => post({ action: 'mark_done', part_id: Number(b.dataset.done), done: b.dataset.value === '1' },
+    b.dataset.value === '1' ? 'Marked done' : 'Marked not done', b));
+  $$('[data-manage]').forEach((b) => b.onclick = () => openManage(Number(b.dataset.manage)));
+}
+
+/* ------------------------------------------------------------------ sheets: parts */
+const roleSelect = (name, roles, selected = null, placeholder = 'No preference') => (roles.length ? `
+  <label class="block"><span class="mb-1.5 block text-xs text-muted">Role</span>
+    <span class="field"><select name="${name}" class="w-full bg-transparent outline-none">
+      <option value="">${esc(placeholder)}</option>
+      ${roles.map((r) => `<option value="${esc(r)}" ${r === selected ? 'selected' : ''}>${esc(r)}</option>`).join('')}
+    </select></span></label>` : '');
+
+function openVolunteer(partId) {
+  const [p, a] = findPart(partId);
+  UI.sheet(`
+    <form novalidate>
+      <p class="text-xs font-semibold uppercase tracking-wide text-muted">${esc(a.title)}</p>
+      <h2 class="mt-1 text-2xl font-bold">Volunteer for ${esc(p.name)}</h2>
+      <p class="mt-1 text-sm text-muted">${esc(p.spots_label)}. Officers pick who represents the section; you’ll be told if you’re picked.</p>
+      <div class="mt-4 space-y-4">
+        <label class="block"><span class="mb-1.5 block text-xs text-muted">What you can do (optional)</span>
+          <span class="field area"><textarea name="note" rows="3" maxlength="300" placeholder="e.g. I sew my own costumes"></textarea></span></label>
+        ${roleSelect('role', p.roles)}
+      </div>
+      <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+      <button type="submit" class="btn btn-dark mt-5 w-full">Send</button>
+    </form>`, {
+    label: `Volunteer for ${p.name}`,
+    onMount: (el, close) => UI.bindForm($('form', el), async (f) => {
+      await API.post('activities.php', { action: 'volunteer', part_id: p.id, note: f.note, role: f.role || '' });
+      close();
+      UI.toast('Volunteered — the officers will pick', { sub: p.name });
+      await load();
+    }),
+  });
+}
+
+/** Officers: the part's volunteers (earliest first), who is picked, assign (projects), edit / remove. */
+function openManage(partId) {
+  const sheet = UI.sheet('<div data-body></div>', { label: 'Manage part' });
+  const body = $('[data-body]', sheet.el);
+  const run = async (btn, payload, msg) => {
     btn.disabled = true;
     try {
-      const r = await API.post('activities.php', body);
-      UI.toast(typeof msg === 'function' ? msg(r) : msg);
+      await API.post('activities.php', payload);
+      UI.toast(msg);
       await load();
+      draw();
     } catch (e) {
       btn.disabled = false;
       UI.toast(e.message, { iconName: 'alert' });
     }
   };
-  $$('[data-rsvp]').forEach((b) => b.onclick = () => act(b, { action: 'rsvp', id: Number(b.dataset.rsvp) },
-    (r) => (r.status === 'going' ? 'You’re going' : `You’re on the waitlist, #${r.position}`)));
-  $$('[data-cancel-rsvp]').forEach((b) => b.onclick = () => act(b, { action: 'cancel_rsvp', id: Number(b.dataset.cancelRsvp) },
-    (r) => (r.promoted ? 'RSVP cancelled. The next person waiting got your seat.' : 'RSVP cancelled')));
-  $$('[data-attendance]').forEach((b) => b.onclick = () => openAttendance(Number(b.dataset.attendance)));
-  $$('[data-cancel-activity]').forEach((b) => b.onclick = () => {
-    const a = data.upcoming.find((x) => x.id === Number(b.dataset.cancelActivity));
-    UI.sheet(`<h2 class="text-2xl font-bold">Cancel “${esc(a.title)}”?</h2>
-      <p class="mt-2 text-sm text-muted">Everyone going or waiting gets a notification. It stays in the list, marked cancelled.</p>
-      <div class="mt-6 grid grid-cols-2 gap-3"><button data-close class="btn btn-canvas">Keep it</button><button data-ok class="btn btn-dark">Cancel activity</button></div>`, {
-      label: 'Cancel activity',
-      onMount: (el, close) => { $('[data-ok]', el).onclick = () => { close(); act(b, { action: 'cancel', id: a.id }, 'Activity cancelled'); }; },
+  const draw = () => {
+    const [p, a] = findPart(partId);
+    if (!p) { sheet.close(); return; }
+    const onIt = new Set([...p.picked.map((x) => x.id), ...(p.volunteers || []).map((x) => x.id)]);
+    const canAssign = a.kind === 'project';
+    body.innerHTML = `
+      <p class="text-xs font-semibold uppercase tracking-wide text-muted">${esc(a.title)}</p>
+      <h2 class="mt-1 text-2xl font-bold leading-tight">${esc(p.name)}</h2>
+      <p class="mt-1 text-sm text-muted">${esc(p.spots_label)} · ${p.picked_count} picked${p.open_spots !== null ? ` · ${plural(p.open_spots, 'spot')} open` : ''}</p>
+
+      <h3 class="mt-5 text-sm font-semibold">Picked</h3>
+      ${p.picked.length ? `<ul class="mt-2 space-y-2">${p.picked.map((x) => `
+        <li class="rounded-2xl bg-canvas p-3">
+          <div class="flex items-center gap-3">
+            ${UI.avatar(x.name, 'bg-mint-tint', 'h-9 w-9 text-xs')}
+            <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold">${esc(x.name)}</span>
+              <span class="block text-xs text-muted">${x.assigned ? 'Assigned' : 'Volunteered'}${x.role ? ` · ${esc(x.role)}` : ''}</span></span>
+            <button type="button" data-unpick="${x.id}" class="btn btn-light h-10 border border-line px-3 text-sm">Un-pick</button>
+          </div>
+          ${p.roles.length ? `<div class="mt-2 flex gap-2"><span class="field h-10 flex-1"><select data-role-for="${x.id}" class="w-full bg-transparent text-sm outline-none" aria-label="Role for ${esc(x.name)}">
+            <option value="">No role</option>${p.roles.map((r) => `<option value="${esc(r)}" ${r === x.role ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></span></div>` : ''}
+        </li>`).join('')}</ul>` : '<p class="mt-1 text-sm text-muted">Nobody yet.</p>'}
+
+      <h3 class="mt-5 text-sm font-semibold">Volunteers <span class="font-normal text-muted">· earliest first</span></h3>
+      ${(p.volunteers || []).length ? `<ol class="mt-2 space-y-2">${p.volunteers.map((v, i) => `
+        <li class="rounded-2xl border border-line p-3">
+          <div class="flex items-center gap-3">
+            <span class="w-5 text-center text-sm font-bold text-muted">${i + 1}</span>
+            <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold">${esc(v.name)}</span>
+              ${v.role ? `<span class="block text-xs text-muted">Prefers ${esc(v.role)}</span>` : ''}</span>
+            <button type="button" data-pick="${v.id}" ${p.full ? 'disabled' : ''} class="btn btn-dark h-10 px-4 text-sm ${p.full ? 'opacity-40' : ''}">Pick</button>
+          </div>
+          ${v.note ? `<p class="mt-2 text-sm">“${esc(v.note)}”</p>` : ''}
+        </li>`).join('')}</ol>${p.full ? '<p class="mt-2 text-xs text-muted">This part is full. Un-pick someone first.</p>' : ''}` : '<p class="mt-1 text-sm text-muted">No volunteers yet.</p>'}
+
+      ${canAssign ? `
+        <h3 class="mt-5 text-sm font-semibold">Assign someone</h3>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <span class="field h-11 min-w-0 flex-1"><select data-assign-who class="w-full bg-transparent text-sm outline-none" aria-label="Who to assign">
+            <option value="">Pick a member</option>
+            ${data.people.filter((m) => !onIt.has(m.id)).map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}
+          </select></span>
+          <button type="button" data-assign ${p.full ? 'disabled' : ''} class="btn btn-dark h-11 px-4 text-sm ${p.full ? 'opacity-40' : ''}">Assign</button>
+        </div>` : ''}
+
+      ${canAssign && !a.is_over ? `<button type="button" data-sheet-done class="btn ${p.done ? 'btn-canvas' : 'btn-dark'} mt-6 w-full">${p.done ? 'Not done yet' : `${icon('check', 16)}Mark done`}</button>` : ''}
+      <div class="mt-3 grid grid-cols-2 gap-3">
+        <button type="button" data-edit-part class="btn btn-canvas">${icon('edit', 16)}Edit part</button>
+        <button type="button" data-remove-part class="btn btn-canvas text-danger">Remove part</button>
+      </div>
+      <button data-close class="btn btn-dark mt-3 w-full">Done</button>`;
+    $$('[data-pick]', body).forEach((b) => b.onclick = () => {
+      const v = p.volunteers.find((x) => x.id === Number(b.dataset.pick));
+      run(b, { action: 'pick', part_id: p.id, user_id: v.id, role: v.role || '' }, `${v.name} picked`);
     });
+    $$('[data-unpick]', body).forEach((b) => b.onclick = () => run(b, { action: 'unpick', part_id: p.id, user_id: Number(b.dataset.unpick) }, 'Un-picked'));
+    $$('[data-role-for]', body).forEach((s) => s.onchange = () => run(s, { action: 'set_role', part_id: p.id, user_id: Number(s.dataset.roleFor), role: s.value }, 'Role saved'));
+    $('[data-assign]', body)?.addEventListener('click', (e) => {
+      const who = Number($('[data-assign-who]', body).value);
+      if (!who) { UI.toast('Pick a member first', { iconName: 'alert' }); return; }
+      run(e.currentTarget, { action: 'assign', part_id: p.id, user_id: who }, 'Assigned');
+    });
+    $('[data-sheet-done]', body)?.addEventListener('click', (e) => run(e.currentTarget, { action: 'mark_done', part_id: p.id, done: !p.done }, p.done ? 'Marked not done' : 'Marked done'));
+    $('[data-edit-part]', body).onclick = () => { sheet.close(); openPartForm(a, p); };
+    $('[data-remove-part]', body).onclick = (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      API.post('activities.php', { action: 'remove_part', part_id: p.id })
+        .then(async () => { sheet.close(); UI.toast('Part removed'); await load(); })
+        .catch((ex) => { btn.disabled = false; UI.toast(ex.message, { iconName: 'alert' }); });
+    };
+  };
+  draw();
+}
+
+/** One part's fields, for the "New activity" builder and the Add / Edit part form. */
+function partFields(kind, p = {}, lastDay = '') {
+  return `
+    <div class="space-y-3">
+      <label class="block"><span class="mb-1.5 block text-xs text-muted">Part</span>
+        <span class="field"><input name="p_name" maxlength="80" placeholder="e.g. Cosplay Competition" value="${esc(p.name || '')}" required></span></label>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="block"><span class="mb-1.5 block text-xs text-muted">How many people</span>
+          <span class="field"><input name="p_spots" type="number" min="1" max="100" inputmode="numeric" placeholder="Any number" value="${p.spots ?? ''}"></span></label>
+        ${kind === 'project' ? `<label class="block"><span class="mb-1.5 block text-xs text-muted">Due</span>
+          <span class="field"><input name="p_due" type="date" ${lastDay ? `max="${lastDay}"` : ''} value="${esc(p.due_date || '')}" required></span></label>` : '<span></span>'}
+      </div>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="p_together" class="h-5 w-5 accent-charcoal" ${p.together ? 'checked' : ''}> Works as one team</label>
+      <label class="block"><span class="mb-1.5 block text-xs text-muted">Roles (optional, comma-separated)</span>
+        <span class="field"><input name="p_roles" placeholder="e.g. Director, Editor, Camera" value="${esc((p.roles || []).join(', '))}"></span></label>
+      <label class="block"><span class="mb-1.5 block text-xs text-muted">What to do (optional)</span>
+        <span class="field area"><textarea name="p_details" rows="2" maxlength="1000">${esc(p.details || '')}</textarea></span></label>
+    </div>`;
+}
+
+/** Reads one part's fields from a container. */
+function readPart(box) {
+  const v = (n) => $(`[name="${n}"]`, box)?.value ?? '';
+  return {
+    name: v('p_name').trim(), details: v('p_details').trim(), spots: v('p_spots') === '' ? '' : Number(v('p_spots')),
+    together: !!$('[name="p_together"]', box)?.checked,
+    roles: v('p_roles').split(',').map((s) => s.trim()).filter(Boolean),
+    due_date: v('p_due') || null,
+  };
+}
+
+function openPartForm(a, p) {
+  const lastDay = Fmt.iso(new Date(a.end_ts * 1000));
+  UI.sheet(`
+    <form novalidate>
+      <p class="text-xs font-semibold uppercase tracking-wide text-muted">${esc(a.title)}</p>
+      <h2 class="mt-1 text-2xl font-bold">${p ? 'Edit part' : 'Add a part'}</h2>
+      <div class="mt-4">${partFields(a.kind, p || {}, lastDay)}</div>
+      ${p && p.picked_count ? `<p class="mt-3 text-xs text-muted">${plural(p.picked_count, 'person', 'people')} picked: it can’t go below that.</p>` : ''}
+      <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+      <button type="submit" class="btn btn-dark mt-5 w-full">${p ? 'Save part' : 'Add part'}</button>
+    </form>`, {
+    label: p ? 'Edit part' : 'Add a part',
+    onMount: (el, close) => UI.bindForm($('form', el), async () => {
+      const fields = readPart(el);
+      if (a.kind !== 'project') delete fields.due_date;
+      await API.post('activities.php', p ? { action: 'edit_part', part_id: p.id, ...fields } : { action: 'add_part', id: a.id, ...fields });
+      close();
+      UI.toast(p ? 'Part saved' : 'Part added');
+      await load();
+    }),
   });
 }
 
-/** New activity: the kind decides the attendance rule (shown as you pick it). */
-function openCreate() {
+/* ------------------------------------------------------------------ sheets: activities */
+/** New activity: the kind decides the rule (shown as you pick it); competitions and projects get parts. */
+function openCreate(startKind = 'meeting') {
   const today = Fmt.iso(new Date());
-  let kind = 'meeting';
+  let kind = startKind;
   UI.sheet(`
     <form novalidate>
       <h2 class="text-2xl font-bold">New activity</h2>
-      <div class="mt-4 grid grid-cols-3 gap-2" role="radiogroup" aria-label="Kind of activity">
+      <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Kind of activity">
         ${data.kinds.map((k) => `<button type="button" role="radio" data-kind="${k.kind}" aria-checked="${k.kind === kind}" class="act-kind ${KIND_TINT[k.kind]}">${esc(k.label)}</button>`).join('')}
       </div>
       <p data-rule class="mt-2 text-xs text-muted"></p>
       <div class="mt-4 space-y-4">
         ${UI.field({ name: 'title', label: 'Title', placeholder: 'e.g. General Assembly', required: true, iconName: 'flag' })}
-        <div class="grid grid-cols-3 gap-2">
-          <label class="col-span-3 block sm:col-span-1"><span class="mb-1.5 block text-xs text-muted">Date</span>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Date</span>
             <span class="field"><input type="date" name="date" min="${today}" value="${today}" required></span></label>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Last day (optional)</span>
+            <span class="field"><input type="date" name="end_date" min="${today}"></span></label>
           <label class="block"><span class="mb-1.5 block text-xs text-muted">Starts</span>
             <span class="field"><input type="time" name="start" value="15:00" required></span></label>
           <label class="block"><span class="mb-1.5 block text-xs text-muted">Ends</span>
             <span class="field"><input type="time" name="end" value="16:00" required></span></label>
         </div>
         ${UI.field({ name: 'venue', label: 'Venue (optional)', placeholder: 'e.g. Room 204', iconName: 'mapPin' })}
-        <label class="block"><span class="mb-1.5 block text-xs text-muted">Seats (leave empty for no limit)</span>
+        <label class="block" data-seats><span class="mb-1.5 block text-xs text-muted">Seats (leave empty for no limit)</span>
           <span class="field">${icon('users', 18)}<input type="number" name="capacity" min="1" max="1000" inputmode="numeric" placeholder="No limit"></span></label>
+        ${UI.field({ name: 'link', label: 'Link to the post (optional)', type: 'url', placeholder: 'https://…', iconName: 'globe' })}
+        <label class="block" data-signup><span class="mb-1.5 block text-xs text-muted">Sign up by (optional)</span>
+          <span class="field"><input type="date" name="signup_deadline" min="${today}"></span></label>
         <label class="block"><span class="mb-1.5 block text-xs text-muted">Details (optional)</span>
           <span class="field area"><textarea name="description" rows="3" maxlength="2000" placeholder="What to bring, what it’s about"></textarea></span></label>
+        <div data-parts-box hidden>
+          <h3 class="text-sm font-semibold">Parts</h3>
+          <ol data-parts class="mt-2 space-y-3"></ol>
+          <button type="button" data-add-row class="btn btn-canvas mt-3 h-11 w-full text-sm">${icon('plus', 16)}Add a part</button>
+        </div>
       </div>
       <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
       <button type="submit" class="btn btn-dark mt-5 w-full">Add activity</button>
     </form>`, {
     label: 'New activity',
     onMount: (el, close) => {
+      const partsList = $('[data-parts]', el);
+      const addRow = () => {
+        const li = document.createElement('li');
+        li.className = 'rounded-2xl border border-line p-3';
+        li.innerHTML = `<div class="mb-2 flex items-center justify-between"><span class="text-xs font-semibold text-muted" data-n></span>
+          <button type="button" data-remove-row class="text-xs font-semibold text-muted hover:text-charcoal">Remove</button></div>${partFields(kind)}`;
+        $('[data-remove-row]', li).onclick = () => { if (partsList.children.length > 1) { li.remove(); number(); } };
+        partsList.appendChild(li);
+        number();
+      };
+      const number = () => [...partsList.children].forEach((li, i) => { $('[data-n]', li).textContent = `Part ${i + 1}`; });
       const showRule = () => {
+        const k = data.kinds.find((x) => x.kind === kind);
         $$('[data-kind]', el).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.kind === kind)));
-        $('[data-rule]', el).textContent = data.kinds.find((k) => k.kind === kind).rule;
+        $('[data-rule]', el).textContent = k.rule;
+        const parts = k.joins_by === 'parts';
+        $('[data-seats]', el).hidden = parts;
+        $('[data-signup]', el).hidden = !parts;
+        $('[data-parts-box]', el).hidden = !parts;
+        if (parts) {
+          const saved = [...partsList.children].map(readPart);   // keep what was typed when switching kinds
+          partsList.innerHTML = '';
+          (saved.length ? saved : [{}]).forEach(() => addRow());
+          [...partsList.children].forEach((li, i) => {
+            const s = saved[i];
+            if (!s) return;
+            $('[name="p_name"]', li).value = s.name; $('[name="p_details"]', li).value = s.details;
+            $('[name="p_spots"]', li).value = s.spots; $('[name="p_together"]', li).checked = s.together;
+            $('[name="p_roles"]', li).value = s.roles.join(', ');
+          });
+        }
+        if (kind === 'project') {
+          $('[name="start"]', el).value = '08:00'; $('[name="end"]', el).value = '17:00';
+          // 08:00 today has usually passed: start the project tomorrow unless a later date was picked
+          const dateInput = $('[name="date"]', el);
+          if (dateInput.value === today && new Date().getHours() >= 8) {
+            const t = new Date(); t.setDate(t.getDate() + 1);
+            dateInput.value = Fmt.iso(t);
+          }
+        }
       };
       $$('[data-kind]', el).forEach((b) => b.onclick = () => { kind = b.dataset.kind; showRule(); });
+      $('[data-add-row]', el).onclick = addRow;
       showRule();
       UI.bindForm($('form', el), async (f) => {
-        await API.post('activities.php', { action: 'create', kind, ...f, capacity: f.capacity || null });
+        const k = data.kinds.find((x) => x.kind === kind);
+        const body = { action: 'create', kind, ...f, capacity: f.capacity || null };
+        if (k.joins_by === 'parts') {
+          body.capacity = null;
+          body.parts = [...partsList.children].map(readPart).map((p) => (kind === 'project' ? p : { ...p, due_date: null }));
+        } else {
+          delete body.signup_deadline;
+        }
+        Object.keys(body).filter((key) => key.startsWith('p_')).forEach((key) => delete body[key]);
+        const r = await API.post('activities.php', body);
         close();
         UI.toast('Activity added', { sub: 'Everyone in the section was notified' });
         tab = 'upcoming';
         await load();
+        scrollToActivity(r.id);
       });
     },
+  });
+}
+
+function openEdit(a) {
+  const s = new Date(a.start_ts * 1000);
+  const e = new Date(a.end_ts * 1000);
+  const two = (n) => String(n).padStart(2, '0');
+  UI.sheet(`
+    <form novalidate>
+      <p class="text-xs font-semibold uppercase tracking-wide text-muted">${esc(a.kind_label)}</p>
+      <h2 class="mt-1 text-2xl font-bold">Edit activity</h2>
+      <div class="mt-4 space-y-4">
+        ${UI.field({ name: 'title', label: 'Title', value: a.title, required: true, iconName: 'flag' })}
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Date</span>
+            <span class="field"><input type="date" name="date" min="${Fmt.iso(new Date()) < Fmt.iso(s) ? Fmt.iso(new Date()) : Fmt.iso(s)}" value="${Fmt.iso(s)}" required></span></label>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Last day</span>
+            <span class="field"><input type="date" name="end_date" value="${Fmt.iso(e)}"></span></label>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Starts</span>
+            <span class="field"><input type="time" name="start" value="${two(s.getHours())}:${two(s.getMinutes())}" required></span></label>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted">Ends</span>
+            <span class="field"><input type="time" name="end" value="${two(e.getHours())}:${two(e.getMinutes())}" required></span></label>
+        </div>
+        ${UI.field({ name: 'venue', label: 'Venue (optional)', value: a.venue || '', iconName: 'mapPin' })}
+        ${UI.field({ name: 'link', label: 'Link to the post (optional)', type: 'url', value: a.link || '', placeholder: 'https://…', iconName: 'globe' })}
+        ${isParts(a) ? `<label class="block"><span class="mb-1.5 block text-xs text-muted">Sign up by (optional)</span>
+          <span class="field"><input type="date" name="signup_deadline" value="${esc(a.signup_deadline || '')}"></span></label>` : ''}
+        <label class="block"><span class="mb-1.5 block text-xs text-muted">Details (optional)</span>
+          <span class="field area"><textarea name="description" rows="3" maxlength="2000">${esc(a.description || '')}</textarea></span></label>
+      </div>
+      <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+      <button type="submit" class="btn btn-dark mt-5 w-full">Save</button>
+    </form>`, {
+    label: 'Edit activity',
+    onMount: (el, close) => UI.bindForm($('form', el), async (f) => {
+      // Send the last day only when it was changed; otherwise the server keeps the same number of days
+      if (f.end_date === Fmt.iso(e)) delete f.end_date;
+      await API.post('activities.php', { action: 'edit', id: a.id, ...f });
+      close();
+      UI.toast('Activity saved');
+      await load();
+    }),
+  });
+}
+
+/** Results (plain text) for a finished activity and, for competitions, each part. */
+function openResult(a) {
+  UI.sheet(`
+    <form novalidate>
+      <p class="text-xs font-semibold uppercase tracking-wide text-muted">${esc(a.title)}</p>
+      <h2 class="mt-1 text-2xl font-bold">Result</h2>
+      <div class="mt-4 space-y-4">
+        <label class="block"><span class="mb-1.5 block text-xs text-muted">Overall (optional)</span>
+          <span class="field"><input name="result" maxlength="300" placeholder="e.g. 2nd place overall" value="${esc(a.result || '')}"></span></label>
+        ${(a.parts || []).map((p) => `<label class="block"><span class="mb-1.5 block text-xs text-muted">${esc(p.name)}</span>
+          <span class="field"><input name="part_${p.id}" maxlength="300" placeholder="e.g. 1st place" value="${esc(p.result || '')}"></span></label>`).join('')}
+      </div>
+      <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+      <button type="submit" class="btn btn-dark mt-5 w-full">Save result</button>
+    </form>`, {
+    label: 'Result',
+    onMount: (el, close) => UI.bindForm($('form', el), async (f) => {
+      await API.post('activities.php', { action: 'set_result', id: a.id, result: f.result });
+      for (const p of a.parts || []) {
+        if ((f[`part_${p.id}`] || '') !== (p.result || '')) {
+          await API.post('activities.php', { action: 'set_result', id: a.id, part_id: p.id, result: f[`part_${p.id}`] });
+        }
+      }
+      close();
+      UI.toast('Result saved');
+      await load();
+    }),
   });
 }
 

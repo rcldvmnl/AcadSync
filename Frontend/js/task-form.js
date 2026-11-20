@@ -138,7 +138,7 @@ function render(subjects, markers, mine) {
           <label class="block"><span class="mb-1.5 block text-xs text-muted">Description ${mode === 'change' ? '· add details or what should change' : ''}</span>
             <span class="field area"><textarea name="description" rows="5" maxlength="2000" placeholder="Add instructions or notes… Start a line with “- ” to add a checklist item.">${esc(task?.description || '')}</textarea></span></label>
           <div>
-            <div class="mb-1.5 text-xs text-muted">How to submit <span class="text-subtle">· pick one or more</span></div>
+            <div class="mb-1.5 text-xs text-muted">How to submit <span class="text-muted">· pick one or more</span></div>
             <div class="grid grid-cols-3 gap-2" id="submit-modes" role="group" aria-label="How to submit"></div>
             <label class="mt-2 block"><span class="sr-only">Submission details</span>
               <span class="field"><span id="submit-icon">${icon('mapPin', 18)}</span><input name="location" list="submit-suggestions" maxlength="120" value="${esc(submit.detail)}"></span>

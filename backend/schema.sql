@@ -216,15 +216,18 @@ CREATE TABLE IF NOT EXISTS subtasks (
 CREATE TABLE IF NOT EXISTS activities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id INTEGER NOT NULL,
-    kind TEXT NOT NULL,                 -- 'meeting' | 'seminar' | 'outreach'
+    kind TEXT NOT NULL,                 -- 'meeting' | 'seminar' | 'outreach' | 'competition' | 'project'
     title TEXT NOT NULL,
     description TEXT,
     venue TEXT,
     starts_at TEXT NOT NULL,            -- 'YYYY-MM-DD HH:MM'
-    ends_at TEXT NOT NULL,
+    ends_at TEXT NOT NULL,              -- may be on a later day (events over several days)
     capacity INTEGER,                   -- NULL = no limit
     status TEXT NOT NULL DEFAULT 'scheduled', -- 'scheduled' | 'cancelled'
     created_by INTEGER NOT NULL,
+    link TEXT,                          -- the original post (http/https only)
+    signup_deadline TEXT,               -- 'YYYY-MM-DD': volunteering closes at the end of that day
+    result TEXT,                        -- e.g. '2nd place', entered after it ends
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY(section_id) REFERENCES sections(id),
     FOREIGN KEY(created_by) REFERENCES users(id)
@@ -254,6 +257,43 @@ CREATE TABLE IF NOT EXISTS attendance (
     checked_at DATETIME DEFAULT (datetime('now', 'localtime')),
     UNIQUE (activity_id, user_id),
     FOREIGN KEY(activity_id) REFERENCES activities(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- 10f-2. ACTIVITY_PARTS — the parts of a competition or section project (Cosplay, Poster…).
+CREATE TABLE IF NOT EXISTS activity_parts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    details TEXT,
+    spots INTEGER,                      -- NULL = any number
+    together INTEGER NOT NULL DEFAULT 0, -- 1 = one team ("team of 4")
+    roles TEXT,                         -- JSON array, e.g. ["Director","Editor"]
+    due_date TEXT,                      -- 'YYYY-MM-DD', project parts only
+    position INTEGER NOT NULL DEFAULT 0,
+    done_at TEXT,
+    done_by INTEGER,
+    result TEXT,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(activity_id) REFERENCES activities(id)
+);
+
+-- 10f-3. PART_MEMBERS — who volunteered for a part and who was picked (once each: HashSet + UNIQUE).
+CREATE TABLE IF NOT EXISTS part_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    part_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'volunteer',  -- 'volunteer' | 'picked'
+    volunteered INTEGER NOT NULL DEFAULT 1,    -- 0 = assigned directly by an officer (projects)
+    role TEXT,
+    note TEXT,
+    picked_by INTEGER,
+    picked_at TEXT,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (part_id, user_id),
+    FOREIGN KEY(part_id) REFERENCES activity_parts(id),
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 

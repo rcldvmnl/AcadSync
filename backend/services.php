@@ -334,6 +334,44 @@ function activity_rosters(int $sectionId): array
 }
 
 /**
+ * The parts of every competition / section project: activity id => ActivityPart[] in display order.
+ * [ALGORITHM: MERGE SORT] by position (stable, so equal positions keep the order they were added).
+ */
+function load_parts(int $sectionId, array $activities): array
+{
+    $byActivity = [];
+    foreach (section_rows('activity_parts', $sectionId) as $r) {
+        $a = $activities[(int) $r['activity_id']] ?? null;
+        if ($a !== null) {
+            $byActivity[$a->id()][] = ['position' => (int) $r['position'], 'part' => ActivityPart::fromRow($r, $a)];
+        }
+    }
+    $out = [];
+    $steps = 0;
+    foreach ($byActivity as $activityId => $items) {
+        foreach (Algorithms::mergeSortBy($items, 'position', false, $steps) as $item) {
+            $out[$activityId][] = $item['part'];
+        }
+    }
+    return $out;
+}
+
+/** One PartRoster (volunteer QUEUE, picked HashSet) per part id. */
+function part_rosters(int $sectionId): array
+{
+    $members = [];
+    foreach (section_rows('part_members', $sectionId) as $m) {
+        $members[(int) $m['part_id']][] = $m;
+    }
+    $out = [];
+    foreach (section_rows('activity_parts', $sectionId) as $p) {
+        $id = (int) $p['id'];
+        $out[$id] = new PartRoster($members[$id] ?? []);
+    }
+    return $out;
+}
+
+/**
  * [DSA: QUEUE] — people waiting to be let into the section, oldest first (front = next to review).
  * Each item is the join_requests row with the person's user row under 'user'.
  */
@@ -774,16 +812,22 @@ function validate_deadline(array $in, string $today): array
 
 /**
  * Builds a new activity from form input (used by Activities and by the "Event" announcement).
- * $in: kind, title, description, venue, date (Y-m-d), start, end (HH:MM), capacity ('' = no limit).
+ * $in: kind, title, description, venue, date (Y-m-d), end_date (Y-m-d, optional: several days),
+ * start, end (HH:MM), capacity ('' = no limit), link, signup_deadline (Y-m-d).
  * Throws InvalidArgumentException; [OOP: ENCAPSULATION] the Activity constructor checks the rest.
  */
 function validate_new_activity(array $in, int $createdBy, int $now): Activity
 {
     $date = trim((string) ($in['date'] ?? ''));
+    $endDate = trim((string) ($in['end_date'] ?? ''));
+    $endDate = $endDate === '' ? $date : $endDate;
     $start = trim((string) ($in['start'] ?? ''));
     $end = trim((string) ($in['end'] ?? ''));
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !valid_time($start) || !valid_time($end)) {
         throw new InvalidArgumentException('Pick a date and the start and end times.');
+    }
+    if (!is_real_date($date) || !is_real_date($endDate)) {
+        throw new InvalidArgumentException('Pick a real date.');
     }
     if (strtotime("$date $start") < $now - 300) {
         throw new InvalidArgumentException('That start time has already passed. Pick a later time or another day.');
@@ -792,8 +836,10 @@ function validate_new_activity(array $in, int $createdBy, int $now): Activity
     return Activity::fromRow([
         'kind' => trim((string) ($in['kind'] ?? '')), 'title' => trim((string) ($in['title'] ?? '')),
         'description' => trim((string) ($in['description'] ?? '')), 'venue' => trim((string) ($in['venue'] ?? '')),
-        'starts_at' => "$date $start", 'ends_at' => "$date $end",
+        'starts_at' => "$date $start", 'ends_at' => "$endDate $end",
         'capacity' => $capacity === null || $capacity === '' ? null : (int) $capacity, 'created_by' => $createdBy,
+        'link' => isset($in['link']) ? (string) $in['link'] : null,
+        'signup_deadline' => isset($in['signup_deadline']) ? (string) $in['signup_deadline'] : null,
     ]);
 }
 
@@ -824,9 +870,21 @@ function announcement_context(array $user, array $ctx): AnnouncementContext
             $going[(int) $r['activity_id']] = ($going[(int) $r['activity_id']] ?? 0) + 1;
         }
     }
+    // Competitions / projects: spots still open across their parts ("any number" parts don't count)
+    $activities = load_activities($sectionId);
+    $rosters = part_rosters($sectionId);
+    $openSpots = [];
+    foreach (load_parts($sectionId, $activities) as $activityId => $list) {
+        $open = 0;
+        foreach ($list as $p) {
+            $open += $p->openSpots(($rosters[$p->id()] ?? new PartRoster([]))->pickedCount()) ?? 0;
+        }
+        $openSpots[$activityId] = ['open' => $open, 'parts' => count($list)];
+    }
     return new AnnouncementContext(
         sectionId: $sectionId, userId: (int) $user['id'], me: Person::fromRow($user),
         tasks: $ctx['taskIndex'], subjects: $ctx['subjectIndex'], slots: class_slots($sectionId, $ctx['subjectIndex']),
-        dues: $dues, activities: load_activities($sectionId), cancelled: class_cancellations($sectionId), now: time(), going: $going,
+        dues: $dues, activities: $activities, cancelled: class_cancellations($sectionId), now: time(), going: $going,
+        openSpots: $openSpots,
     );
 }

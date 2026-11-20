@@ -280,6 +280,55 @@ function seed_database(): void
         }
     }
 
+    // --- A competition and a section project, built through the Activity / ActivityPart classes so the seed
+    //     follows the same rules. Parts: [name, spots (null = any number), together, roles, due offset, details]
+    //     People: [part index, username, status, role, note, done]
+    $partsActivity = function (array $row, array $parts, array $people) use ($A, $u, $day, $stamp): void {
+        $a = Activity::fromRow($row + ['created_by' => $u['juan.delacruz']]);
+        $aid = Store::insert('activities', $a->toRow() + ['section_id' => $A, 'created_at' => $stamp('-2 days')]);
+        $ids = [];
+        foreach ($parts as $i => [$name, $spots, $together, $roles, $due, $details]) {
+            $p = ActivityPart::fromRow(['activity_id' => $aid, 'name' => $name, 'spots' => $spots, 'together' => $together, 'roles' => $roles,
+                'due_date' => $due === null ? null : $day($due), 'details' => $details, 'position' => $i], $a);
+            $ids[$i] = Store::insert('activity_parts', $p->toRow() + ['section_id' => $A]);
+        }
+        foreach ($people as [$i, $who, $status, $role, $note, $done]) {
+            Store::insert('part_members', ['section_id' => $A, 'part_id' => $ids[$i], 'user_id' => $u[$who], 'status' => $status,
+                'volunteered' => $status === 'volunteer' || $note !== null ? 1 : 0, 'role' => $role, 'note' => $note,
+                'picked_by' => $status === 'picked' ? $u['juan.delacruz'] : null, 'picked_at' => $status === 'picked' ? $stamp('-1 day') : null,
+                'created_at' => $stamp('-1 day')]);
+            if ($done) {
+                Store::update('activity_parts', $ids[$i], ['done_at' => $stamp('-3 hours'), 'done_by' => $u[$who]]);
+            }
+        }
+    };
+    $partsActivity(['kind' => 'competition', 'title' => 'Founding Anniversary', 'venue' => 'LSPU Gym',
+        'description' => 'Two days of contests for the college anniversary. Volunteer for a part; the officers pick who represents the section.',
+        'starts_at' => $day(5) . ' 08:00', 'ends_at' => $day(6) . ' 17:00', 'link' => 'https://www.facebook.com/', 'signup_deadline' => $day(0)], [
+        ['Cosplay Competition', 2, false, [], null, 'Come in costume as any character.'],
+        ['College Culinary Showdown', 4, true, [], null, 'One team of 4 cooks a dish in 60 minutes.'],
+        ['Dating game', null, false, [], null, 'Anyone can join on the day.'],
+        ['Guess the Song', 2, false, [], null, ''],
+        ["90's Remake: Video", 10, true, ['Director', 'Editor', 'Camera', 'Actor'], null, 'Remake a 90’s scene in 3 minutes.'],
+    ], [
+        [0, 'ana.bautista', 'volunteer', null, 'I sew my own costumes', false],
+        [1, 'marco.cruz', 'picked', null, 'I cook at our carinderia', false],
+        [3, 'paolo.reyes', 'picked', null, 'I know every OPM song', false],
+        [4, 'maria.santos', 'volunteer', 'Director', 'I directed our Grade 12 short film', false],
+    ]);
+    $partsActivity(['kind' => 'project', 'title' => 'Booth design', 'venue' => 'Quadrangle',
+        'description' => 'Our section’s booth for the anniversary fair.', 'starts_at' => $day(0) . ' 08:00', 'ends_at' => $day(14) . ' 17:00'], [
+        ['Poster', 1, false, [], 3, 'A3 poster with the section name and theme.'],
+        ['Booth frame', 2, true, [], 10, 'Bamboo frame, 2 m × 2 m.'],
+        ['Logo', 1, false, [], 5, ''],
+        ['Flyers', 2, false, [], 12, '100 copies, half-page.'],
+    ], [
+        [0, 'paolo.reyes', 'picked', null, null, true],
+        [1, 'maria.santos', 'picked', null, null, false],
+        [1, 'marco.cruz', 'picked', null, null, false],
+        [2, 'kyla.lim', 'picked', null, null, false],
+    ]);
+
     // --- Dues: Marco (Treasurer) collects the membership fee; amounts are centavos ----------------
     $fee = Store::insert('dues', ['section_id' => $A, 'title' => 'Membership fee', 'amount' => 15000, 'due_date' => $day(10),
         'created_by' => $u['marco.cruz'], 'created_at' => $stamp('-10 days')]);

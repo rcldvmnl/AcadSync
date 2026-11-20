@@ -60,8 +60,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $earlier = Algorithms::mergeSortBy($earlier, 'pin_key', true, $steps);
 
     // What the composer may offer: only choices the server would accept
+    // A new activity made from an Event announcement is an RSVP kind only: a competition or project
+    // needs parts, which that small form doesn't have (it can still POINT to one).
+    $rsvpKinds = [];
+    foreach (Activity::kinds() as $k) {
+        if ($k['joins_by'] === 'rsvp') {
+            $rsvpKinds[] = $k;
+        }
+    }
     $options = ['dues' => [], 'tasks' => [], 'activities' => [], 'subjects' => [],
-        'activity_kinds' => Activity::kinds(), 'can_create_due' => $me->can(Permission::MANAGE_DUES),
+        'activity_kinds' => $rsvpKinds, 'can_create_due' => $me->can(Permission::MANAGE_DUES),
         'can_create_activity' => $me->can(Permission::MANAGE_ACTIVITIES)];
     if ($me->can(Permission::POST_ANNOUNCEMENTS)) {
         foreach ($c->dues as $d) {

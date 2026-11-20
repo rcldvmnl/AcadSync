@@ -17,12 +17,15 @@ AcadSync is a school project for LSPU (BSINFO-2A). It combines two final require
 A **section** is the organization. Its creator is the **President**, who picks a **Vice President**,
 a **Secretary** and a **Treasurer**; everyone else is a **Member**. Classmates enter the class code to
 ask to join and an officer lets them in. The app covers membership, officers, activities with
-attendance, member records, announcements, dues and payments, and the class's tasks, schedule,
-groups and checklists.
+attendance, competitions and section projects (parts people volunteer for; officers pick), member
+records, announcements, dues and payments, and the class's tasks, schedule, groups and checklists.
 
 ## Stack and how to run
 
-- Frontend: plain HTML + Tailwind (CDN) + vanilla JS in `Frontend/` (`js/`, `css/`). Font: Plus Jakarta Sans.
+- Frontend: plain HTML + Tailwind + vanilla JS in `Frontend/` (`js/`, `css/`). Font: Plus Jakarta Sans.
+  Tailwind is a **built file**, `Frontend/css/tailwind.css` (Tailwind CLI 3.4.17, theme in `tailwind.config.js`,
+  source `Frontend/css/tailwind.src.css`), linked last in each page's `<head>`. After adding a class that no
+  page or script used before, run `npm run build:css` (once: `npm install`). No CDN, works offline.
 - Backend: PHP 8 (XAMPP `C:\xampp\php\php.exe`, currently 8.5), JSON endpoints in `api/`, SQLite via PDO.
 - Run: `copy .env.example .env`, then `C:\xampp\php\php.exe -S localhost:8000 router.php`
   from the project root. Open http://localhost:8000. **Always use `router.php`** (it blocks
@@ -39,7 +42,11 @@ Ana `ana.bautista` (Member), Carlo `carlo.domingo` (Inactive), Bea `bea.garcia` 
 Leo `leo.navarro` (2B member with a pending request to join 2A). Class codes: 2A `B2826K`, 2B `K7Q4PM`.
 User ids in a fresh DB: Juan 1, Maria 2, Paolo 3, Ana 4, Carlo 5, Kyla 6, Marco 7, Bea 8, Leo 9, Ivy 10.
 In the owner's older real database, no officers are set until Juan assigns them on Member Records,
-and there are no dues, announcements or join requests yet.
+and there are no dues, announcements, join requests, competitions or projects yet.
+The seed (new databases only) also has the *Founding Anniversary* competition (5 parts, sign-ups close
+today; Ana volunteered for Cosplay, Marco picked for Culinary, Paolo for Guess the Song, Maria
+volunteered as Director) and the *Booth design* project (Poster: Paolo, done; Booth frame: Maria + Marco;
+Logo: Kyla; Flyers open).
 
 ## Layout
 
@@ -49,7 +56,8 @@ api/                 JSON endpoints (auth, section, records, activities, schedul
                      notifications, dsa, join_requests, announcements, dues)
 backend/Env.php      .env loader
 backend/domain/      OOP model: Person.php, MemberStatus.php, Task.php, Deadline.php, Activity.php,
-                     MemberRecord.php, UndoAction.php, Payment.php (Payment, CashPayment, GcashPayment, Due)
+                     ActivityPart.php (ActivityPart, PartRoster), MemberRecord.php, UndoAction.php,
+                     Payment.php (Payment, CashPayment, GcashPayment, Due), Announcement.php
 backend/custom_dsa.php   all data structures + algorithms
 backend/services.php     loads a section's rows into structures/objects (load_context, member_records, …)
 backend/bootstrap.php    session, JSON helpers, current_user/current_member/current_person,
@@ -116,9 +124,23 @@ router.php, .htaccess, .env.example, .gitignore
   groups stay when the count is fixed. Empty groups are joined directly (first in = leader).
 - `Deadline` interface → `DatedDeadline` → `ExactDeadline`/`RangeDeadline`, plus `NoDeadline`
   (`opensAt()` / `attentionAt()`: an open date range counts as today on the schedule).
-- `Activity` (abstract) → `Meeting` (everyone expected, anyone checked in), `Seminar` (seat needed),
-  `Outreach` (volunteers expected, walk-ins allowed). `ActivityRoster` = HashSets (going, checked-in)
+- `Activity` (abstract) → `RsvpActivity` (abstract) → `Meeting` (everyone expected, anyone checked in),
+  `Seminar` (seat needed), `Outreach` (volunteers expected, walk-ins allowed); and `PartsActivity`
+  (abstract, no attendance at all) → `Competition` (volunteer → officers pick) and `SectionProject`
+  (parts with due dates; officers may assign directly; parts are marked done). Every activity has an
+  optional `link` (http/https only, ≤ 500 chars, shown by host in a new tab with `rel="noopener noreferrer"`),
+  `signup_deadline` (open until 23:59:59 that day, on or before the first day), `result`, and may span
+  several days. Polymorphic: `joinsBy()` ('rsvp' | 'parts'), `usesSeats()`, `canAssignDirectly()`,
+  `partsNeedDueDates()`. `ActivityPart` (domain/ActivityPart.php, table `activity_parts`) validates
+  itself (name, 1–100 spots or any number, ≤ 10 roles, due date only for projects); `PartRoster`
+  (table `part_members`, status volunteer | picked) = `ApprovalQueue` of volunteers + `HashSet` of picked,
+  `whyCantVolunteer()` / `whyCantPick()`. Loaders `load_parts()` / `part_rosters()` in services.php.
+  `api/activities.php` has the actions create (with parts), edit, add/edit/remove_part, volunteer, withdraw,
+  pick, assign, unpick, set_role, step_down, mark_done, set_result; picks re-read the part inside a
+  transaction. The Event announcement can point at a competition (facts: "N spots open across M parts")
+  but only creates RSVP kinds. `ActivityRoster` = HashSets (going, checked-in)
   + `ApprovalQueue` waitlist. `MemberRecord` computes attendance from finished activities.
+  Spec: docs/superpowers/specs/2026-11-20-competitions-and-projects-design.md.
 - `UndoAction` (abstract) → `ToggleDoneAction`, `RejoinGroupAction`, `RequestAgainAction`; stored in
   the session and rebuilt into an `UndoStack`. `Env` is a final static settings class.
 
@@ -126,13 +148,17 @@ router.php, .htaccess, .env.example, .gitignore
 
 Array: `SubjectArray`, 2D `WeekGrid` (class-time clash check). Linked list: doubly linked
 `TaskLinkedList` (timeline, prev/next task). HashSet: unique emails/IDs/codes, one group per task,
-unique group names per task, check-ins, one office per person, GCash refs used once, who paid a due.
+unique group names per task, check-ins, one office per person, GCash refs used once, who paid a due,
+who is picked for a part, one "cancelled" notification per person, the month's activity days.
 Stack: queue "undo reject", student Undo. Queue: approval queue, join requests (`build_join_queue`,
-only the front can be decided), activity waitlist, auto-grouping. Tree: `SubjectTree` (DFS search),
+only the front can be decided), activity waitlist, volunteers for a part (`PartRoster`), auto-grouping.
+Tree: `SubjectTree` (DFS search),
 `ChecklistTree` (post-order rollup). Graph: `DependencyGraph` (edges tagged with group id; BFS
 groupmates, shortest path, suggestions). Merge Sort: notifications, activity lists, member attendance
-ranking, announcements (by id, then stable by pinned), dues by date. Linear search: `linearSearch` /
-`linearContains` for "is this id in the group". Binary search: student ID, "Due by Fri".
+ranking, announcements (by id, then stable by pinned), dues by date, parts by position, Needs people,
+Your sign-ups. Linear search: `linearSearch` /
+`linearContains` for "is this id in the group" and "is this role one of the part's"; search over
+activity titles and part names. Binary search: student ID, "Due by Fri".
 "How it works" (`dsa.html`) shows them live.
 
 ## Security state
@@ -166,7 +192,10 @@ The current to-do list (fixes and features, checked against the README) is in
 [NEXT_STEPS.md](NEXT_STEPS.md). The items below are older notes.
 
 - Decide whether to purge the old DB from GitHub history.
-- The yellow glow on the active nav item (`app.css`) is flagged by the design checker; kept on purpose
-  for now. Cream background on activities/records has a recorded exception in `.impeccable/config.json`.
+- The yellow glow on the active nav item (`app.css`) and the sand ground `#F6F3EE` come from the Figma
+  components page; both have a recorded exception for every page in `.impeccable/config.json`.
+- Text colours meet WCAG AA: `muted` `#62626B` (secondary text, ≥ 4.5:1 on white, sand and every tint),
+  `hint` `#6B6B74` (placeholders). `subtle` `#A9A9B2` is only for icons and borders, never text.
+  `impeccable detect Frontend/*.html` reports 0 issues.
 - Dues/payments, the join approval queue and announcements were added on 2026-11-20.
 - README still needs the team members and the YouTube / Canva links (placeholders are there).

@@ -35,6 +35,7 @@ final class AnnouncementContext
      * @param Activity[] $activities the section's activities, by id
      * @param HashSet  $cancelled  "Y-m-d|subjectId" / "Y-m-d|*" for classes already cancelled
      * @param array    $going      activity id => how many have a seat
+     * @param array    $openSpots  activity id => ['open' => spots still open, 'parts' => number of parts] (competitions, projects)
      */
     public function __construct(
         public readonly int $sectionId,
@@ -48,6 +49,7 @@ final class AnnouncementContext
         public readonly HashSet $cancelled,
         public readonly int $now,
         public readonly array $going = [],
+        public readonly array $openSpots = [],
     ) {
     }
 
@@ -730,6 +732,9 @@ final class EventNotice extends Announcement
         $new = $in['new_activity'] ?? null;
         if (is_array($new) && $new) {
             $a = validate_new_activity($new, $c->userId, $c->now);   // [OOP: ENCAPSULATION] Activity checks itself
+            if ($a->joinsBy() !== 'rsvp') {                            // [OOP: POLYMORPHISM] parts kinds need their parts
+                throw new InvalidArgumentException('Post a competition or project from Activities: it needs its parts.');
+            }
             return new self(...[...self::common($in, $c), null, date('Y-m-d H:i', $a->startTs()), ['create' => true] + self::snapshot($a)]);
         }
         $a = $c->activities[(int) ($in['activity_id'] ?? 0)] ?? null;
@@ -780,6 +785,16 @@ final class EventNotice extends Announcement
         $lines = [$line];
         if ($a->isOver($c->now)) {
             return ['lines' => [...$lines, 'Finished'], 'action' => null];   // no RSVP once it has ended
+        }
+        $href = "activities.html#a{$a->id()}";
+        if ($a->joinsBy() === 'parts') {                 // [OOP: POLYMORPHISM] competitions and projects: parts, not seats
+            if (!$a->signupOpen($c->now)) {
+                return ['lines' => [...$lines, 'Sign-ups closed'], 'action' => ['label' => 'Open', 'href' => $href]];
+            }
+            $o = $c->openSpots[$a->id()] ?? ['open' => 0, 'parts' => 0];
+            $lines[] = ($o['open'] === 1 ? '1 spot open' : "{$o['open']} spots open") . ' across ' . ($o['parts'] === 1 ? '1 part' : "{$o['parts']} parts");
+            $lines[] = 'Sign up by ' . date('D, M j', $a->signupClosesAt());   // [OOP: POLYMORPHISM] each kind's own close
+            return ['lines' => $lines, 'action' => ['label' => 'Volunteer', 'href' => $href]];
         }
         if ($a->capacity() !== null) {
             $left = max(0, $a->capacity() - ($c->going[$a->id()] ?? 0));

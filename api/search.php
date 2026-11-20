@@ -4,6 +4,7 @@
  * Searches the open section:
  *   - subjects and tasks with a depth-first TREE search (Section > Subject > Task)
  *   - classmates with a LINEAR SEARCH by name
+ *   - activities (titles, and competition / project part names) with a LINEAR SEARCH
  */
 
 declare(strict_types=1);
@@ -13,7 +14,7 @@ $user = current_member();
 $ctx = load_context($user);
 $q = (string) param('q', '');
 if (strlen($q) < 2) {
-    respond(['subjects' => [], 'tasks' => [], 'classmates' => [], 'q' => $q]);
+    respond(['subjects' => [], 'tasks' => [], 'classmates' => [], 'activities' => [], 'q' => $q]);
 }
 
 // [DSA: TREE] — tree-based searching over the section hierarchy
@@ -39,4 +40,27 @@ foreach (Algorithms::linearSearchByName(Algorithms::selectionSortByLastName($ctx
     $people[] = public_user($m);
 }
 
-respond(['q' => $q, 'subjects' => $subjects, 'tasks' => $tasks, 'classmates' => $people]);
+// [ALGORITHM: LINEAR SEARCH] — activities by title, and competitions / projects by part name (not cancelled)
+$sectionId = (int) $ctx['section']['id'];
+$all = load_activities($sectionId);
+$partsOf = load_parts($sectionId, $all);
+$found = [];
+foreach ($all as $a) {
+    if ($a->isCancelled()) {
+        continue;
+    }
+    $matched = [];
+    foreach ($partsOf[$a->id()] ?? [] as $p) {
+        if (DsaUtil::contains($p->name(), $q)) {
+            $matched[] = $p->name();
+        }
+    }
+    if (DsaUtil::contains($a->title(), $q) || $matched) {
+        $found[] = ['id' => $a->id(), 'title' => $a->title(), 'kind' => $a->kind(), 'kind_label' => $a->kindLabel(),
+            'start_ts' => $a->startTs(), 'is_over' => $a->isOver(time()), 'parts' => $matched];
+    }
+}
+$steps = 0;
+$found = Algorithms::mergeSortBy($found, 'start_ts', true, $steps);   // [ALGORITHM: MERGE SORT] newest first
+
+respond(['q' => $q, 'subjects' => $subjects, 'tasks' => $tasks, 'classmates' => $people, 'activities' => $found]);

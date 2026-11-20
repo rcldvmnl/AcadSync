@@ -332,6 +332,42 @@
         ],
         "createdAt": "2026-11-20T03:04:46.702Z",
         "reason": "Canvas #F6F3EE is the 'canvas' token on the user's AcadSync Figma components page (design fidelity); same exception as every other page"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/activities.html"
+        ],
+        "createdAt": "2026-11-20T13:57:14.121Z",
+        "reason": "Same shared nav glow as every other page (app.css .nav-item.active / .nav-fab); recorded exception from the Figma AcadSync v2 components page, already ignored on the other 17 pages"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/records.html"
+        ],
+        "createdAt": "2026-11-20T13:57:14.418Z",
+        "reason": "Same shared nav glow as every other page (app.css .nav-item.active / .nav-fab); recorded exception from the Figma AcadSync v2 components page, already ignored on the other 17 pages"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "Frontend/my-tasks.html"
+        ],
+        "createdAt": "2026-11-20T13:57:14.728Z",
+        "reason": "Same shared nav glow as every other page (app.css .nav-item.active / .nav-fab); recorded exception from the Figma AcadSync v2 components page, already ignored on the other 17 pages"
+      },
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "Frontend/my-tasks.html"
+        ],
+        "createdAt": "2026-11-20T13:57:15.027Z",
+        "reason": "Canvas #F6F3EE is the 'canvas' token on the AcadSync Figma components page and the app-wide ground (PROJECT_CONTEXT.md design rule); same exception as every other page"
       }
     ]
   }

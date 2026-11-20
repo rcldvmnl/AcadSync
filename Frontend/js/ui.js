@@ -200,6 +200,15 @@ const UI = {
   chip(text, cls = 'bg-white') { return `<span class="chip ${cls}">${esc(text)}</span>`; },
 
   /**
+   * A link to the original post, shown by its site name ("facebook.com ↗"). Always opens in a new tab
+   * without access to this page (noopener). Only http(s) links are drawn (the server refuses the rest).
+   */
+  linkChip(url, host, cls = 'bg-white border border-line') {
+    if (!url || !/^https?:\/\//i.test(String(url))) return '';
+    return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="chip ${cls} hover:border-charcoal" aria-label="Open the original post on ${esc(host)} (new tab)">${esc(host)} ↗</a>`;
+  },
+
+  /**
    * How the prof set the groups up, in a few words: "5 groups", "4 per group", "8 groups of 4",
    * "Assigned · 6 groups". The server's GroupRule subclass writes it (group_label).
    */
@@ -548,7 +557,7 @@ const Shell = {
         <h1 class="truncate text-xl font-bold tracking-tight lg:text-[28px] lg:leading-tight">${esc(title)}</h1>
       </div>
       ${search ? `<form action="search.html" class="hidden w-80 items-center gap-2 rounded-full bg-white px-4 py-3 shadow-card lg:flex" role="search">
-        ${icon('search', 18, 'text-muted')}<input name="q" class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-subtle" placeholder="Search tasks, subjects, classmates" aria-label="Search">
+        ${icon('search', 18, 'text-muted')}<input name="q" class="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-hint" placeholder="Search tasks, subjects, classmates" aria-label="Search">
       </form>
       <a href="search.html" class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-card lg:hidden" aria-label="Search">${icon('search', 20)}</a>` : ''}
       <a href="notifications.html" class="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-card" aria-label="Notifications${unread ? ` (${unread} unread)` : ''}">

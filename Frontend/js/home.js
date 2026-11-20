@@ -15,8 +15,36 @@
   });
   $('#main').innerHTML = admin ? adminView(data) : studentView(data);
   Announcements.mount($('#announcements'));
+  signupsReminder();
   if (!admin) { groupReminder(); duesReminder(); }
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
+
+/**
+ * "Your sign-ups": the competition / project parts you were picked or assigned for and haven't finished.
+ * Shown only while there is one (volunteering alone doesn't count: the officers haven't picked yet).
+ */
+async function signupsReminder() {
+  try {
+    const { my_signups: list } = await API.get('activities.php?mine=1');
+    const mine = list.filter((s) => s.status === 'picked' && !s.done);
+    if (!mine.length) return;
+    $('#main').insertAdjacentHTML('afterbegin', `
+      <section class="mb-5 rounded-[1.5rem] bg-mint-tint p-4" aria-labelledby="home-signups-h">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white">${icon('flag', 18)}</span>
+          <h2 id="home-signups-h" class="text-sm font-semibold">Your sign-ups</h2>
+        </div>
+        <ul class="mt-2 space-y-1">${mine.slice(0, 4).map((s) => `
+          <li><a href="activities.html#a${s.activity_id}" class="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-white/60">
+            <span class="min-w-0 flex-1 truncate text-sm">${esc(s.part_name)} · ${s.due_date
+              ? `<span class="${s.overdue ? 'font-semibold text-danger' : 'text-muted'}">due ${esc(Fmt.short(s.due_date))}</span>`
+              : `<span class="text-muted">${esc(`Picked${s.role ? ` · ${s.role}` : ''}`)}</span>`}</span>
+            ${icon('chevronRight', 16, 'text-muted')}
+          </a></li>`).join('')}
+        </ul>
+      </section>`);
+  } catch { /* the reminder is optional */ }
+}
 
 /** "You owe ₱150 in dues" — shown above the dashboard while a due is unpaid. */
 async function duesReminder() {
