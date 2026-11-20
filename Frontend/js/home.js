@@ -45,11 +45,13 @@ const ANN_TONE = {
 
 const Announcements = {
   data: null,
-  open: false,        // "Show all"
+  box: null,          // the Home card
+  fillAll: null,      // re-draws the "See all" popup while it is open
   earlierOpen: false,
 
   async mount(box) {
     if (!box) return;
+    Announcements.box = box;
     try {
       Announcements.data = await API.get('announcements.php');
     } catch {
@@ -106,50 +108,107 @@ const Announcements = {
       </li>`;
   },
 
+  /** Fetch again, then re-draw the Home card and the popup if it is open. */
+  async reload() {
+    Announcements.data = await API.get('announcements.php');
+    Announcements.render(Announcements.box);
+    Announcements.fillAll?.();
+  },
+
+  /** One short row for Home: kind, date, title and one line. Tapping it opens every announcement. */
+  row(a, more) {
+    const w = Announcements.when(a);
+    const sub = (a.lines || [])[0] || a.body || '';
+    return `
+      <div class="mt-3">
+        <button type="button" data-ann-all class="relative z-[1] flex w-full items-center gap-3 rounded-2xl border border-line bg-white p-3 text-left transition hover:bg-canvas/60">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl ${ANN_TONE[a.kind] || 'bg-canvas'}" aria-hidden="true">${icon(a.icon || 'bell', 16)}</span>
+          <span class="min-w-0 flex-1">
+            <span class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide">
+              <span>${esc(a.kind_label)}</span>
+              ${w ? `<span class="chip px-1.5 py-0 text-[10px] normal-case ${w.soon ? 'bg-charcoal text-white' : 'bg-canvas'}">${esc(w.rel)}</span>` : ''}
+              ${a.pinned ? `<span class="chip bg-sun-tint px-1.5 py-0 text-[10px] normal-case">${icon('flag', 10)}Pinned</span>` : ''}
+            </span>
+            <span class="mt-0.5 block truncate text-[15px] font-semibold leading-snug">${esc(a.title)}</span>
+            ${sub ? `<span class="block truncate text-xs text-muted">${esc(sub.split('\n')[0])}</span>` : ''}
+          </span>
+          ${icon('chevronRight', 18, 'shrink-0 text-muted')}
+        </button>
+        ${more ? `<div class="mx-3 h-2 rounded-b-xl border border-t-0 border-line bg-white" aria-hidden="true"></div>
+          ${more > 1 ? '<div class="mx-6 h-1.5 rounded-b-lg border border-t-0 border-line bg-white" aria-hidden="true"></div>' : ''}` : ''}
+      </div>`;
+  },
+
+  /**
+   * Home shows one announcement (a pinned one first, else the soonest coming up, else the newest
+   * notice). The rest sit behind "See all", in a popup, like notifications.
+   */
   render(box) {
     const d = Announcements.data;
-    const coming = d.coming_up || [];
-    const notices = d.notices || [];
-    const total = coming.length + notices.length;
-    if (!total && !d.earlier_total && !d.can_post) { box.innerHTML = ''; box.hidden = true; return; }
+    const all = [...(d.coming_up || []), ...(d.notices || [])];
+    if (!all.length && !d.earlier_total && !d.can_post) { box.innerHTML = ''; box.hidden = true; return; }
     box.hidden = false;
-    // Home shows 3 at first (coming up first, then notices); pinned ones are always shown, from either list
-    let room = Announcements.open ? Infinity : 3;
-    const take = (list) => list.filter((a) => {
-      if (a.pinned) return true;
-      if (room <= 0) return false;
-      room--;
-      return true;
-    });
-    const shownComing = take(coming);
-    const shownNotices = take(notices);
-    const hidden = total - shownComing.length - shownNotices.length;
-    const group = (title, list) => (list.length ? `
+    const top = all.find((a) => a.pinned) || all[0];
+    const more = all.length - (top ? 1 : 0);
+    box.innerHTML = `
+      <div class="rounded-[1.75rem] bg-white p-4 shadow-card sm:p-5">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="text-lg font-bold">Announcements</h2>
+          <div class="flex items-center gap-2">
+            ${all.length || d.earlier_total ? `<button type="button" data-ann-all class="inline-flex h-9 items-center gap-1.5 rounded-full bg-canvas px-3.5 text-sm font-semibold">See all
+              ${all.length ? `<span class="grid h-5 min-w-5 place-items-center rounded-full bg-charcoal px-1.5 text-[11px] text-white">${all.length}</span>` : ''}</button>` : ''}
+            ${d.can_post ? `<button type="button" data-ann-new class="btn btn-dark h-9 px-3.5 text-sm">${icon('plus', 16)}Post</button>` : ''}
+          </div>
+        </div>
+        ${top ? Announcements.row(top, more) : '<p class="mt-2 text-sm text-muted">Nothing new right now.</p>'}
+      </div>`;
+    $$('[data-ann-all]', box).forEach((b) => b.onclick = () => Announcements.showAll());
+    $('[data-ann-new]', box)?.addEventListener('click', () => Announcements.compose(Announcements.reload));
+    // A notification about an announcement links to home.html#announcements: open the list
+    if (location.hash === '#announcements' && !Announcements.scrolled) {
+      Announcements.scrolled = true;
+      box.scrollIntoView({ block: 'start' });
+      if (all.length || d.earlier_total) Announcements.showAll();
+    }
+  },
+
+  /** The popup with every announcement: Coming up, Notices, then Earlier (folded). */
+  showAll() {
+    const sheet = UI.sheet(`
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="text-xl font-bold">Announcements</h2>
+        <button type="button" data-close class="grid h-10 w-10 place-items-center rounded-full bg-canvas" aria-label="Close">${icon('x', 18)}</button>
+      </div>
+      <div data-ann-list class="mt-4"></div>`, { label: 'Announcements' });
+    const list = $('[data-ann-list]', sheet.el);
+    Announcements.fillAll = () => {
+      if (!list.isConnected) { Announcements.fillAll = null; return; }
+      Announcements.fillList(list);
+    };
+    Announcements.fillAll();
+  },
+
+  fillList(el) {
+    const d = Announcements.data;
+    const group = (title, items) => (items.length ? `
       <div>
         <h3 class="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">${title}</h3>
-        <ul class="space-y-3">${list.map((a) => Announcements.card(a)).join('')}</ul>
+        <ul class="space-y-3">${items.map((a) => Announcements.card(a)).join('')}</ul>
       </div>` : '');
-    box.innerHTML = `
-      <div class="rounded-[1.75rem] bg-white p-5 shadow-card">
-        <div class="flex items-center justify-between gap-2">
-          <h2 class="text-xl font-bold">Announcements</h2>
-          ${d.can_post ? `<button type="button" data-ann-new class="btn btn-dark h-10 px-4 text-sm">${icon('plus', 16)}Post</button>` : ''}
-        </div>
-        ${total ? `<div class="mt-4 space-y-5">${group('Coming up', shownComing)}${group('Notices', shownNotices)}</div>`
-          : '<p class="mt-3 text-sm text-muted">Nothing new right now.</p>'}
-        ${Announcements.open || hidden > 0 ? `<button type="button" data-ann-more class="mt-4 text-sm font-semibold">${Announcements.open ? 'Show less' : `Show all ${total}`}</button>` : ''}
-        ${d.earlier_total ? `
-          <div class="mt-4 border-t border-line pt-3">
-            <button type="button" data-ann-earlier aria-expanded="${Announcements.earlierOpen}" class="flex w-full items-center justify-between text-sm font-semibold">
-              <span>Earlier <span class="font-normal text-muted">(${d.earlier_total})</span></span>${icon('chevronDown', 18, Announcements.earlierOpen ? 'rotate-180' : '')}</button>
-            ${Announcements.earlierOpen ? `<ul class="mt-3 space-y-3 opacity-80">${d.earlier.map((a) => Announcements.card(a)).join('')}</ul>
-              ${d.earlier_total > d.earlier.length ? `<p class="mt-2 text-xs text-muted">Showing the ${d.earlier.length} most recent of ${d.earlier_total}.</p>` : ''}` : ''}
-          </div>` : ''}
-      </div>`;
-    const reload = async () => { Announcements.data = await API.get('announcements.php'); Announcements.render(box); };
-    $('[data-ann-more]', box)?.addEventListener('click', () => { Announcements.open = !Announcements.open; Announcements.render(box); });
-    $('[data-ann-earlier]', box)?.addEventListener('click', () => { Announcements.earlierOpen = !Announcements.earlierOpen; Announcements.render(box); });
-    $('[data-ann-new]', box)?.addEventListener('click', () => Announcements.compose(reload));
+    const any = (d.coming_up || []).length + (d.notices || []).length;
+    el.innerHTML = `
+      ${any ? `<div class="space-y-5">${group('Coming up', d.coming_up || [])}${group('Notices', d.notices || [])}</div>`
+        : '<p class="text-sm text-muted">Nothing new right now.</p>'}
+      ${d.earlier_total ? `
+        <div class="mt-5 border-t border-line pt-3">
+          <button type="button" data-ann-earlier aria-expanded="${Announcements.earlierOpen}" class="flex w-full items-center justify-between text-sm font-semibold">
+            <span>Earlier <span class="font-normal text-muted">(${d.earlier_total})</span></span>${icon('chevronDown', 18, Announcements.earlierOpen ? 'rotate-180' : '')}</button>
+          ${Announcements.earlierOpen ? `<ul class="mt-3 space-y-3 opacity-80">${d.earlier.map((a) => Announcements.card(a)).join('')}</ul>
+            ${d.earlier_total > d.earlier.length ? `<p class="mt-2 text-xs text-muted">Showing the ${d.earlier.length} most recent of ${d.earlier_total}.</p>` : ''}` : ''}
+        </div>` : ''}`;
+    const box = el;
+    const reload = Announcements.reload;
+    $('[data-ann-earlier]', box)?.addEventListener('click', () => { Announcements.earlierOpen = !Announcements.earlierOpen; Announcements.fillList(box); });
     $$('[data-more]', box).forEach((b) => b.onclick = () => {
       const p = $('[data-body]', b.closest('li'));
       const clamped = p.classList.toggle('line-clamp-3');
@@ -165,7 +224,6 @@ const Announcements = {
       try { await API.post('announcements.php', { action: 'delete', id: Number(b.dataset.annDelete) }); UI.toast('Announcement removed'); await reload(); }
       catch (e) { b.disabled = false; UI.toast(e.message, { iconName: 'alert' }); }
     });
-    if (location.hash === '#announcements' && !Announcements.scrolled) { Announcements.scrolled = true; box.scrollIntoView({ block: 'start' }); }
   },
 
   /* ------------------------------------------------------------------ composer */

@@ -39,10 +39,22 @@ and a pending join request from Leo.
 | **Group setups**: `GroupRule` is abstract with `AssignedGroups`, `FixedGroupCount`, `FixedGroupSize`, `FixedSizeAndCount`. Groups appear at posting when their number is known; empty groups are joined directly; every officer can move/remove members; the task form has a setup picker with a live preview and a builder for the prof's own list; Task Details shows Groups first | `Task.php`, `groups.php`, `request_task.php`, `admin_action.php`, `services.php`, `seed.php`, `task-form.js`, `group-work.js`, `groups.js`, `task.js` |
 | Task Details: Instructions and "Finished this task?" moved to the left column | `task.js` |
 | **Typed announcements** (spec + plan in `docs/superpowers/`): Notice, Payment, No class, Deadline change, Task, Event, each doing its real change; Home lists Coming up / Notices / Earlier; No class crosses the class out on Schedule, Home and Whole Week. After review: permission checked before details, payment notices only to members charged dues, finished events leave Coming up, impossible dates refused, unique index on cancellations | `Announcement.php`, `announcements.php`, `services.php`, `schedule.php`, `request_task.php`, `activities.php`, `schema.sql`, `db.php`, `seed.php`, `home.js`, `ui.js`, `schedule.js`, `week.js` |
+| Home Announcements: one short row (pinned first) + **See all** popup with every announcement, Pin/Remove and Earlier | `home.js` |
 
 ---
 
 ## Still to do
+
+### 0. Next feature: Competitions and section projects on Activities (design approved, plan ready)
+Design (approved 2026-11-20): [docs/superpowers/specs/2026-11-20-competitions-and-projects-design.md](superpowers/specs/2026-11-20-competitions-and-projects-design.md).
+Plan (5 tasks, approved, not started): [docs/superpowers/plans/2026-11-20-competitions-and-projects.md](superpowers/plans/2026-11-20-competitions-and-projects.md).
+Execution method chosen by the owner: **Native** (`superpowers:executing-plans`: build each task in the
+session, then one fresh whole-branch review on the most capable model). Two new Activity kinds, **Competition** (volunteer → officers
+pick) and **Section project** (parts assigned to people, with due dates and progress); a clickable link to
+the original post; a sign-up deadline; events over several days; and new Activities cards: Your sign-ups,
+Needs people, This month and Results. Start the new conversation with:
+> Read docs/PROJECT_CONTEXT.md and docs/NEXT_STEPS.md, then use superpowers:executing-plans (native) on
+> docs/superpowers/plans/2026-11-20-competitions-and-projects.md.
 
 ### 1. Fill in the README submission section (needs the team)
 Team member names, student IDs and who did what; YouTube demo and Canva slides links.

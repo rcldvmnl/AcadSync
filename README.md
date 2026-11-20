@@ -245,9 +245,10 @@ in the same step, so the app never says two different things:
 | **Task** | Reminds everyone of an upcoming task | subject and deadline, *Open task* |
 | **Event** | Points at an upcoming activity, or makes a new one | date, time, venue, seats left, *RSVP* |
 
-- On **Home**, dated announcements are listed under **Coming up**, soonest first with "Today",
-  "Tomorrow" or "in 3 days"; undated news under **Notices**; past ones fold into **Earlier**.
-  Pinned ones stay on top. Long messages show 3 lines with *Read more*.
+- **Home** shows one announcement as a short row (a pinned one first, else the soonest). **See all**
+  (with the count) opens a popup like notifications: dated announcements under **Coming up**, soonest
+  first with "Today", "Tomorrow" or "in 3 days"; undated news under **Notices**; past ones fold into
+  **Earlier**. Pinned ones stay on top. Long messages show 3 lines with *Read more*.
 - The form only offers kinds and choices you may use (a Secretary doesn't see *Deadline change*),
   with a live preview of the card. A title is optional for typed announcements (a default is written).
 - Everyone in the section gets a notification. Whoever posted it, or the President, can remove it;
