@@ -1,7 +1,7 @@
 # AcadSync: project context (for a new conversation)
 
 Paste or attach this file at the start of a new chat so the assistant knows the project.
-Last updated: 2026-11-20.
+Last updated: 2026-11-20 (end of the second session).
 
 ## What it is
 
@@ -193,13 +193,18 @@ activity titles and part names. Binary search: student ID, "Due by Fri".
   absolute `--user-data-dir`.
 - `php tests/dsa_test.php` (must say 0 failed), `php -l` every PHP file and `node --check` every JS
   file after edits.
+- Scratch test scripts from the last session (not committed, git-ignored, may be gone) are in
+  `.superpowers/sdd/2026-11-20-competitions-and-projects/`: `parts_test.php` (API, 81 checks; run with
+  `run_api.sh`, which needs a scratch server on port 8123) and headless-browser checks (`*_check.mjs`, scratch
+  server with a `/login-as` router on port 8124). The plan ledger `progress.md` there lists every ruling made.
 - Edit files with the editor tools. Never pipe a script's output over a project file (`cmd > tmp; cp tmp file`):
   if the script fails, the file is emptied.
 
 ## Open items / ideas
 
 The current to-do list (fixes and features, checked against the README) is in
-[NEXT_STEPS.md](NEXT_STEPS.md). The items below are older notes.
+[NEXT_STEPS.md](NEXT_STEPS.md). **Its item 0 lists 9 code-review findings (1 critical) on the uncommitted
+work; fix those first.** The items below are older notes.
 
 - Decide whether to purge the old DB from GitHub history.
 - The yellow glow on the active nav item (`app.css`) and the sand ground `#F6F3EE` come from the Figma
