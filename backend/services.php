@@ -77,6 +77,7 @@ function present_task(array $t, array $subjectIndex, array $users): array
         'deadline_end' => $t['deadline_end'],
         'deadline_type' => $t['deadline_type'],
         'deadline_ts' => DsaUtil::deadlineTs($t),
+        'opens_ts' => Deadlines::fromRow($t)->opensAt(),       // first day of a range (= deadline for an exact date)
         'deadline_label' => Deadlines::fromRow($t)->label(),   // [OOP] each Deadline class words itself
         'location' => $t['location'],
         'work_mode' => $t['work_mode'] ?? 'individual',

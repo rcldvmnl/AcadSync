@@ -215,6 +215,18 @@ $dupes = Algorithms::linearSearchTasks([task(1, null, 'Reporting chapter three')
 check('linearSearchTasks flags a likely duplicate', pluck(pluck($dupes, 'task'), 'id'), [1]);
 
 // ---------------------------------------------------------------------------
+section('Deadline placement (where a task sits on the schedule)');
+$friNoon = strtotime('2026-11-20 12:00');
+$range = Deadlines::fromRow(['deadline' => '2026-11-20', 'deadline_end' => '2026-11-23', 'deadline_time' => '23:59']);
+check('open range (Nov 20-23) counts from now', $range->attentionAt($friNoon), $friNoon);
+check('open range still sorts by its last day', date('Y-m-d H:i', $range->timestamp()), '2026-11-23 23:59');
+$later = Deadlines::fromRow(['deadline' => '2026-11-25', 'deadline_end' => '2026-11-27', 'deadline_time' => null]);
+check('range opening later counts from its first day', date('Y-m-d H:i', $later->attentionAt($friNoon)), '2026-11-25 00:00');
+$exact = Deadlines::fromRow(['deadline' => '2026-11-24', 'deadline_end' => null, 'deadline_time' => '08:00']);
+check('exact date counts at its deadline', date('Y-m-d H:i', $exact->attentionAt($friNoon)), '2026-11-24 08:00');
+check('no date has no place', Deadlines::fromRow(['deadline' => null])->attentionAt($friNoon), null);
+
+// ---------------------------------------------------------------------------
 section('Group planning');
 check('10 students, 3-4 per group', Algorithms::planGroupSizes(10, 3, 4), [4, 3, 3]);
 check('17 students, exactly 3', Algorithms::planGroupSizes(17, 3, 3), [4, 4, 3, 3, 3]);

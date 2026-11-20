@@ -276,7 +276,8 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 - **Checklists** on a task, with sub-steps, shared by the whole group.
 - **Undo** for leaving a group, cancelling a join request and ticking off a task.
 - **Schedule:** a class grid per day, plus Today / Urgent / This week / Due by Fri / Due soon views.
-  Saving a subject warns you when its class times clash with another subject.
+  A date range ("any day Nov 20 – 23") counts as due today, and as urgent, from its first day; lists
+  stay in deadline order. Saving a subject warns you when its class times clash with another subject.
 
 ---
 

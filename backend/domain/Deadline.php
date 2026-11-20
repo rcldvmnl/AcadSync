@@ -23,6 +23,15 @@ interface Deadline
 
     /** exact | range | unset — the value stored in tasks.deadline_type. */
     public function type(): string;
+
+    /** When work can first be handed in: the first day of a range, or the deadline of an exact date. */
+    public function opensAt(): ?int;
+
+    /**
+     * Where the task belongs on the schedule right now. An exact date: at its deadline. A range that
+     * is already open: now (it can be called or submitted today). A range that opens later: its first day.
+     */
+    public function attentionAt(int $now): ?int;
 }
 
 /** What every dated deadline shares: the last day and an optional time (default 11:59 PM). */
@@ -38,6 +47,22 @@ abstract class DatedDeadline implements Deadline
     {
         $ts = strtotime($this->lastDay . ' ' . ($this->time ?: self::DEFAULT_TIME));
         return $ts === false ? null : $ts;
+    }
+
+    /** An exact date opens at its deadline; RangeDeadline overrides this with its first day. */
+    public function opensAt(): ?int
+    {
+        return $this->timestamp();
+    }
+
+    public function attentionAt(int $now): ?int
+    {
+        $end = $this->timestamp();
+        $open = $this->opensAt();
+        if ($end === null || $open === null) {
+            return $end;
+        }
+        return max($open, min($now, $end));
     }
 
     protected function timeLabel(): string
@@ -87,6 +112,13 @@ final class RangeDeadline extends DatedDeadline
     {
         return $this->firstDay;
     }
+
+    /** The range opens at the start of its first day. */
+    public function opensAt(): ?int
+    {
+        $ts = strtotime($this->firstDay . ' 00:00');
+        return $ts === false ? null : $ts;
+    }
 }
 
 /** The professor hasn't announced the date yet. */
@@ -100,6 +132,16 @@ final class NoDeadline implements Deadline
     public function label(): string
     {
         return 'Date not set yet';
+    }
+
+    public function opensAt(): ?int
+    {
+        return null;
+    }
+
+    public function attentionAt(int $now): ?int
+    {
+        return null;
     }
 
     public function type(): string

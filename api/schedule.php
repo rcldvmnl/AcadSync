@@ -56,7 +56,8 @@ foreach ($active as $t) {
     if ($nextDue === null && !isset($done[(int) $t['id']])) {
         $nextDue = DsaUtil::deadlineTs($t);
     }
-    $ts = DsaUtil::deadlineTs($t);
+    // [OOP: POLYMORPHISM] — an open date range counts from today, not from its last day
+    $ts = Deadlines::fromRow($t)->attentionAt($now);
     if ($ts === null || isset($done[(int) $t['id']])) {   // finished work doesn't count as "due"
         continue;
     }

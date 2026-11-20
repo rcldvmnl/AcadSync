@@ -124,10 +124,32 @@ const Fmt = {
     if (task.deadline_type === 'unset' || !task.deadline_ts) return 'Date not set yet';
     const end = task.deadline_end || task.deadline;
     const time = task.deadline_time ? ` · ${Fmt.time(task.deadline_time)}` : '';
-    if (task.deadline_type === 'range') return `Any day ${Fmt.monthDay(task.deadline)} – ${Fmt.monthDay(end)}${time}`;
+    if (task.deadline_type === 'range') {
+      if (!Fmt.isOpenRange(task)) return `Any day ${Fmt.monthDay(task.deadline)} – ${Fmt.monthDay(end)}${time}`;
+      // Open now: say plainly that today counts, and which day is the last
+      if (Fmt.isToday(end)) return `Last day today${time}`;
+      // The badge already shows the dates, so a short weekday is enough here (fits a phone card)
+      const last = Fmt.date(end);
+      const within6 = (task.deadline_ts * 1000 - Date.now()) < 6 * 86400e3;
+      return `Open today · ends ${Fmt.isTomorrow(end) ? 'tomorrow' : within6 ? DAYS[last.getDay()] : Fmt.monthDay(last)}`;
+    }
     const day = Fmt.isToday(end) ? 'today' : Fmt.isTomorrow(end) ? 'tomorrow' : Fmt.short(end);
     const soon = task.deadline_ts * 1000 - Date.now() < 86400e3 ? ` · ${Fmt.relative(task.deadline_ts)}` : '';
     return `Due ${day}${time}${soon}`;
+  },
+  /**
+   * Where a task belongs on the schedule (Unix seconds), same rule as Deadline::attentionAt() on the
+   * server: an exact date at its deadline; a date range that is already open counts from now (it can
+   * be submitted or called today); a range that opens later counts from its first day.
+   */
+  placeTs(task, now = Date.now() / 1000) {
+    if (!task.deadline_ts) return null;
+    const opens = task.opens_ts ?? task.deadline_ts;
+    return Math.max(opens, Math.min(now, task.deadline_ts));
+  },
+  /** A date range whose first day has come (and hasn't ended). */
+  isOpenRange(task, now = Date.now() / 1000) {
+    return task.deadline_type === 'range' && !!task.opens_ts && task.opens_ts <= now && task.deadline_ts >= now;
   },
   initials(name) { return String(name || '?').split(/[\s,]+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join(''); },
   greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; },
@@ -208,10 +230,16 @@ const UI = {
     const done = !!t.done;
     const group = t.work_mode === 'group';
     const badgeBg = done ? 'bg-mint-tint' : group ? 'bg-charcoal text-white' : 'bg-lavender-tint';
+    const sub = group && !done ? 'text-white/70' : 'text-muted';
+    // A date range shows all its days ("20–23 NOV"), so it never looks like it's due on the last day only
+    const first = t.deadline_type === 'range' && d && t.deadline ? Fmt.date(t.deadline) : null;
+    const badge = !d ? `<div class="text-xs font-bold ${sub}">TBA</div>`
+      : first ? `<div><div class="text-[13px] font-bold tracking-tight">${first.getDate()}–${d.getDate()}</div>
+          <div class="mt-1 text-[9px] font-semibold uppercase ${sub}">${first.getMonth() === d.getMonth() ? MONTHS[d.getMonth()] : `${MONTHS[first.getMonth()]}–${MONTHS[d.getMonth()]}`}</div></div>`
+      : `<div><div class="text-xl font-bold">${String(d.getDate()).padStart(2, '0')}</div><div class="mt-1 text-[10px] font-semibold uppercase ${sub}">${MONTHS[d.getMonth()]}</div></div>`;
     const body = `
-        <div class="relative grid h-14 w-12 shrink-0 place-items-center rounded-2xl ${badgeBg} text-center leading-none">
-          ${d ? `<div><div class="text-xl font-bold">${String(d.getDate()).padStart(2, '0')}</div><div class="mt-1 text-[10px] font-semibold uppercase ${group && !done ? 'text-white/70' : 'text-muted'}">${MONTHS[d.getMonth()]}</div></div>`
-              : `<div class="text-xs font-bold ${group && !done ? 'text-white/70' : 'text-muted'}">TBA</div>`}
+        <div class="relative grid h-14 w-12 shrink-0 place-items-center rounded-2xl ${badgeBg} text-center leading-none" ${first ? `aria-label="Any day ${Fmt.monthDay(first)} to ${Fmt.monthDay(d)}"` : ''}>
+          ${badge}
           ${group ? `<span class="absolute -bottom-1.5 -right-1.5 grid h-6 w-6 place-items-center rounded-full bg-sun text-charcoal ring-2 ring-white">${icon('users', 12)}</span>` : ''}
         </div>
         <div class="min-w-0 flex-1">

@@ -224,16 +224,21 @@ classDiagram
         +timestamp() int
         +label() string
         +type() string
+        +opensAt() int
+        +attentionAt(now) int
     }
     class DatedDeadline {
         <<abstract>>
         #string lastDay
         #string time
         +timestamp() int
+        +opensAt() int
+        +attentionAt(now) int
     }
     class ExactDeadline
     class RangeDeadline {
         -string firstDay
+        +opensAt() int
     }
     class NoDeadline
     class Deadlines {
@@ -495,7 +500,7 @@ classDiagram
 | --- | --- | --- |
 | **Encapsulation** | Private fields + getters in every domain class; `Activity`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
 | **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `CashPayment`/`GcashPayment` → `Payment`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
-| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$deadline->timestamp()`; `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type` or the payment method: each object answers for itself |
+| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type` or the payment method: each object answers for itself |
 | **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `DatedDeadline`, `UndoAction`, `Payment` | Callers use what an object can do, not how it does it |
 
 ## Relationships

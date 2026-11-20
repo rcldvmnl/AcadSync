@@ -4,6 +4,8 @@
 //   This week -> tasks due from now until Sunday night
 //   Due soon  -> every dated task due after tomorrow (next 7 days, then later)
 // Tasks marked as done never disappear or move — they stay in place, checked off.
+// Placement uses Fmt.placeTs(): a date range that is already open ("any day Nov 20 – 23") counts as
+// today, not as its last day; lists stay in deadline order.
 
 let data;
 let filter = ['today', 'urgent', 'week', 'friday', 'soon'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'today';
@@ -156,7 +158,7 @@ function progressCard() {
   const pct = Math.round((done / items.length) * 100);
   const b = bounds();
   const open = items.filter((t) => !t.done);
-  const dueWeek = open.filter((t) => t.deadline_ts && t.deadline_ts <= b.endWeek).length;
+  const dueWeek = open.filter((t) => t.deadline_ts && Fmt.placeTs(t, b.now) <= b.endWeek).length;
   const next = open.find((t) => t.deadline_ts);
   const stat = (value, label) => `<div class="rounded-2xl bg-canvas px-3 py-2.5"><div class="text-lg font-bold leading-none">${value}</div><div class="mt-1 text-[11px] text-muted">${label}</div></div>`;
   return `
@@ -227,19 +229,20 @@ function tasksSection() {
     : UI.empty(emptyTitle, emptyText));
   const timeline = byWork(data.timeline);
   const dated = timeline.filter((t) => t.deadline_ts);
+  const at = (t) => Fmt.placeTs(t, b.now);   // open ranges count from now, not from their last day
   const count = (items) => {
     const left = items.filter((t) => !t.done).length;
     return `${left} to do${items.length > left ? ` · ${items.length - left} done` : ''}`;
   };
 
   if (filter === 'urgent') {
-    const items = byWork(data.by_urgency).filter((t) => t.deadline_ts && t.deadline_ts <= b.endTomorrow);
+    const items = byWork(data.by_urgency).filter((t) => t.deadline_ts && at(t) <= b.endTomorrow);
     return `${heading('Urgent · today & tomorrow', count(items))}
-      <p class="-mt-1 text-xs text-muted">Most urgent first (Bubble Sort by time left).</p>
-      ${list(items, 'Nothing urgent', 'Nothing is due today or tomorrow.')}`;
+      <p class="-mt-1 text-xs text-muted">Most urgent first (Bubble Sort by time left). Date ranges open today or tomorrow are included.</p>
+      ${list(items, 'Nothing urgent', 'Nothing is due or open today or tomorrow.')}`;
   }
   if (filter === 'week') {
-    const items = dated.filter((t) => t.deadline_ts <= b.endWeek);
+    const items = dated.filter((t) => at(t) <= b.endWeek);
     const sunday = new Date(b.endWeek * 1000);
     return `${heading(`Due this week`, count(items))}
       <p class="-mt-1 text-xs text-muted">From today until Sunday, ${Fmt.monthDay(sunday)}.</p>
@@ -256,9 +259,9 @@ function tasksSection() {
       ${list(items, `Nothing due by ${DAYS_LONG[fri.getDay()]}`)}`;
   }
   if (filter === 'soon') {
-    const items = dated.filter((t) => t.deadline_ts > b.endTomorrow);
-    const next7 = items.filter((t) => t.deadline_ts <= b.in7);
-    const later = items.filter((t) => t.deadline_ts > b.in7);
+    const items = dated.filter((t) => at(t) > b.endTomorrow);
+    const next7 = items.filter((t) => at(t) <= b.in7);
+    const later = items.filter((t) => at(t) > b.in7);
     const sub = (title, group) => `<div class="flex items-baseline justify-between px-1 pt-1"><h3 class="text-sm font-semibold">${title}</h3><span class="text-xs text-muted">${count(group)}</span></div>${list(group)}`;
     return `${heading('Due soon', count(items))}
       <p class="-mt-1 text-xs text-muted">Every upcoming deadline after tomorrow, nearest first. Today & tomorrow are under Urgent.</p>
@@ -266,9 +269,9 @@ function tasksSection() {
   }
 
   // Today: everything, bucketed so you can see what's next at a glance
-  const today = dated.filter((t) => t.deadline_ts <= b.endToday);
-  const week = dated.filter((t) => t.deadline_ts > b.endToday && t.deadline_ts <= b.endWeek);
-  const later = dated.filter((t) => t.deadline_ts > b.endWeek);
+  const today = dated.filter((t) => at(t) <= b.endToday);
+  const week = dated.filter((t) => at(t) > b.endToday && at(t) <= b.endWeek);
+  const later = dated.filter((t) => at(t) > b.endWeek);
   const unset = timeline.filter((t) => !t.deadline_ts);
   const group = (title, items, empty) => `${heading(title, count(items))}${list(items, empty)}`;
 

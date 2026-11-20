@@ -101,13 +101,15 @@ function submitCell(t) {
 function render(t, admin) {
   const unset = t.deadline_type === 'unset' || !t.deadline_ts;
   const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
-  const dueToday = !unset && t.deadline_ts * 1000 <= endOfToday;
+  const openRange = !unset && Fmt.isOpenRange(t);   // "any day Nov 20 – 23" and Nov 20 has come
+  const dueToday = !unset && !openRange && t.deadline_ts * 1000 <= endOfToday;
   const strong = t.color === 'mint' ? 'mint-soft' : tone(t.color).strong;
 
   const status = t.status !== 'approved'
     ? UI.chip(t.status === 'pending' ? 'Pending review' : 'Not approved', 'bg-charcoal text-white')
     : unset ? UI.chip('Date not set yet', 'bg-white')
-    : dueToday ? UI.chip('Urgent · due today', 'bg-charcoal text-white') : '';
+    : dueToday ? UI.chip('Urgent · due today', 'bg-charcoal text-white')
+    : openRange ? UI.chip('Urgent · open now', 'bg-charcoal text-white') : '';
 
   const end = t.deadline_end || t.deadline;
   const deadlineMain = unset ? 'Not set yet'
@@ -115,7 +117,8 @@ function render(t, admin) {
     : `${Fmt.short(end)}${t.deadline_time ? ` · ${Fmt.time(t.deadline_time)}` : ''}`;
   const deadlineSub = unset ? 'The professor hasn’t announced the exact date yet.'
     : t.deadline_ts * 1000 < Date.now() ? `Was due ${Fmt.relative(t.deadline_ts)}`
-    : t.deadline_type === 'range' ? 'Submit on any day in the range'
+    : openRange ? `Open now · ends ${Fmt.relative(t.deadline_ts)}`
+    : t.deadline_type === 'range' ? `Opens ${Fmt.short(t.deadline)} · submit on any day in the range`
     : `Due ${Fmt.relative(t.deadline_ts)}`;
 
   // Description: plain lines are instructions, "- " lines become a checklist.
