@@ -39,6 +39,7 @@ final class Store
         self::$pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
         self::$pdo->exec('PRAGMA user_version = ' . SCHEMA_VERSION);
         self::addMissingColumns();
+        self::addUniqueIndexes();
 
         // A brand-new database gets the demo section and accounts unless .env turns that off
         if ($fresh && Env::bool('SEED_DEMO_DATA', true)) {
@@ -53,6 +54,8 @@ final class Store
     {
         $added = [
             'tasks' => ['group_count' => 'INTEGER', 'group_mode' => 'TEXT', 'group_plan' => 'TEXT'],
+            // typed announcements (Announcement subclasses); older rows read as plain notices
+            'announcements' => ['kind' => "TEXT NOT NULL DEFAULT 'general'", 'ref_id' => 'INTEGER', 'event_at' => 'TEXT', 'details' => 'TEXT'],
             'password_resets' => ['attempts' => 'INTEGER NOT NULL DEFAULT 0'],
             // officer positions (vice_president | secretary | treasurer) and member status (active | inactive | alumni)
             'memberships' => ['position' => 'TEXT', 'status' => "TEXT NOT NULL DEFAULT 'active'"],
@@ -67,6 +70,20 @@ final class Store
                     self::$pdo->exec("ALTER TABLE $table ADD COLUMN $name $type");
                 }
             }
+        }
+    }
+
+    /**
+     * Safety nets against two requests arriving at the same moment (the HashSet checks catch
+     * everything else first). Skipped quietly on a database that already holds a duplicate.
+     */
+    private static function addUniqueIndexes(): void
+    {
+        try {
+            // one cancellation per class (or whole day, subject 0) per date
+            self::$pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS ux_class_cancellations ON class_cancellations (section_id, date, COALESCE(subject_id, 0))');
+        } catch (PDOException $e) {
+            error_log('[AcadSync] unique index skipped: ' . $e->getMessage());
         }
     }
 
@@ -171,7 +188,7 @@ final class Store
         static $allowed = [
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
             'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests', 'subtasks',
-            'activities', 'activity_rsvps', 'attendance', 'officer_terms', 'join_requests', 'announcements', 'dues', 'payments',
+            'activities', 'activity_rsvps', 'attendance', 'officer_terms', 'join_requests', 'announcements', 'dues', 'payments', 'class_cancellations',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

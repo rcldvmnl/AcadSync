@@ -233,9 +233,25 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 
 ### 📣 Announcements
 
-- Officers post announcements (title and message) and can pin them; pinned ones stay on top.
-- Members see them on **Home**, and everyone in the section gets a notification.
-- Whoever posted an announcement, or the President, can remove it.
+Officers pick a **kind** when posting, and a typed announcement **does the real thing** it announces,
+in the same step, so the app never says two different things:
+
+| Kind | What it does | The card shows |
+| --- | --- | --- |
+| **Notice** | Plain news: a title and a message | the message |
+| **Payment** | Points at an open due, or makes a new one (Treasurer / President) | amount, due date, *View dues* |
+| **No class** | Cancels one subject's class, or every class, on one date: crossed out on the Schedule and Home | subject and time, *Open schedule* |
+| **Deadline change** | Moves the task's deadline (President): schedule, Urgent and cards all follow | old → new deadline, *Open task* |
+| **Task** | Reminds everyone of an upcoming task | subject and deadline, *Open task* |
+| **Event** | Points at an upcoming activity, or makes a new one | date, time, venue, seats left, *RSVP* |
+
+- On **Home**, dated announcements are listed under **Coming up**, soonest first with "Today",
+  "Tomorrow" or "in 3 days"; undated news under **Notices**; past ones fold into **Earlier**.
+  Pinned ones stay on top. Long messages show 3 lines with *Read more*.
+- The form only offers kinds and choices you may use (a Secretary doesn't see *Deadline change*),
+  with a live preview of the card. A title is optional for typed announcements (a default is written).
+- Everyone in the section gets a notification. Whoever posted it, or the President, can remove it;
+  removing a *No class* brings the class back (other changes stay, and are edited on their own page).
 
 ### 💰 Dues and payments
 
@@ -301,9 +317,9 @@ The domain model lives in [`backend/domain/`](backend/domain/). Full UML diagram
 
 | Pillar | Where | In practice |
 | --- | --- | --- |
-| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `GroupRule`, `Activity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
-| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
-| **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()` | No `role === 'admin'` or payment-method checks in the endpoints; each object answers for itself |
+| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `GroupRule`, `Activity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`, `Announcement`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
+| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`GeneralNotice` / `PaymentNotice` / `NoClassNotice` / `DeadlineChangeNotice` / `TaskNotice` / `EventNotice` → `Announcement`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
+| **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()`, `$announcement->apply()` / `facts()` | No `role === 'admin'`, payment-method or announcement-kind checks in the endpoints; each object answers for itself |
 | **Encapsulation** | Private fields + getters everywhere; `Activity`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
 
 ---
@@ -322,7 +338,7 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 | --- | --- | --- |
 | **Array** — storing and accessing records | `FixedArray`, `SubjectArray`; 2D `WeekGrid` | A section's subjects (`load_subjects`); the week as 6 days × 288 five-minute cells to catch clashing class times (`subjects.php`) |
 | **Linked List** — insertion and deletion | `TaskLinkedList` (doubly linked) | The task timeline in date order, with expired tasks dropped from the head; previous / next task (`tasks.php`) |
-| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; unique group names per task; **who is going and who checked in** at an activity; **one office per person** (`records.php`); **a GCash reference used once** and who has paid a due in full (`dues.php`) |
+| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; unique group names per task; **who is going and who checked in** at an activity; **one office per person** (`records.php`); **a GCash reference used once** and who has paid a due in full (`dues.php`); **classes cancelled on a date** by a No class announcement (`schedule.php`) |
 | **Stack** — undo, history | `UndoStack` | The queue's "undo reject"; students' Undo (`undo.php`), holding `UndoAction` objects |
 | **Queue** — waiting lists | `ApprovalQueue` | Task requests and **join requests** reviewed first-come, first-served (only the front can be decided); **activity waitlists** (the front gets the next seat); auto-grouping |
 | **Tree** — hierarchy, tree search | `SubjectTree`, `ChecklistTree` | Section › Subjects › Tasks searched depth-first; checklists rolled up post-order |
@@ -337,7 +353,7 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 | Selection Sort | `Algorithms::selectionSortByLastName` / `ByStudentId` | Classmate directory, attendance sheet, dues member list |
 | Linear Search | `Algorithms::linearSearchTasks` / `linearSearchByName` / `linearSearch` | Duplicate-task warning, name search; "is this person in the group"; `Person::can()` |
 | Binary Search | `Algorithms::binarySearchByStudentId` / `countDueBy` | Student ID search; Schedule › Due by Fri |
-| Merge Sort | `Algorithms::mergeSortBy` | Notifications, activity lists, **member ranking by attendance**, announcements (newest, then a stable sort puts pinned first), dues by date |
+| Merge Sort | `Algorithms::mergeSortBy` | Notifications, activity lists, **member ranking by attendance**, announcements (Coming up by date, Notices newest first, then a stable sort puts pinned first), dues by date |
 
 ### SQL is storage only
 
@@ -391,7 +407,7 @@ api/                      JSON endpoints
   section.php             ask to join / create / switch / leave sections
   join_requests.php       officers let people in (FIFO queue)
   records.php             member records, officers (assign VP / Secretary / Treasurer), member status
-  announcements.php       post, pin and remove announcements
+  announcements.php       typed announcements (notice, payment, no class, deadline change, task, event)
   dues.php                dues, cash and GCash payments
   activities.php          activities, RSVP + waitlist, attendance
   schedule.php            timeline, urgency, week grid, due by Friday

@@ -20,7 +20,7 @@ async function load() {
   state.data = data;
   state.subjects = subj.subjects;
   if (!state.admin) {
-    const total = data.week.days.reduce((n, d) => n + d.classes.length, 0);
+    const total = data.week.days.reduce((n, d) => n + d.classes.filter((c) => !c.cancelled).length, 0);   // cancelled ones don't count
     const first = data.week.days[0].date;
     const last = data.week.days[data.week.days.length - 1].date;
     $('#header .text-xs').textContent = `${Fmt.monthDay(first)} – ${Fmt.date(last).getDate()} · ${total} classes`;
@@ -130,12 +130,13 @@ function classBlock(c, startH, lane, lanes) {
   const t = tone(c.color);
   const width = 100 / lanes;
   const short = h < 56;
+  const off = !!c.cancelled;   // a "No class" announcement cancelled it on this date
   return `
-    <a href="subject.html?id=${c.subject_id}" title="${esc(`${c.code} · ${c.title} · ${Fmt.time(c.start_time)}–${Fmt.time(c.end_time)}${c.room ? ` · ${c.room}` : ''}`)}"
-      class="absolute overflow-hidden rounded-xl ${t.chip} px-2 py-1.5 leading-tight transition hover:z-20 hover:shadow-card"
+    <a href="subject.html?id=${c.subject_id}" title="${esc(off ? `No class · ${c.code} · ${c.cancel_note || ''}` : `${c.code} · ${c.title} · ${Fmt.time(c.start_time)}–${Fmt.time(c.end_time)}${c.room ? ` · ${c.room}` : ''}`)}"
+      class="absolute overflow-hidden rounded-xl ${off ? 'border border-dashed border-line bg-white text-muted' : t.chip} px-2 py-1.5 leading-tight transition hover:z-20 hover:shadow-card"
       style="top:${top + 2}px;height:${h - 4}px;left:calc(${lane * width}% + 3px);width:calc(${width}% - 6px)">
-      <div class="flex items-center gap-1 text-[11px] font-bold"><span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:${t.bar}"></span><span class="truncate">${esc(c.code)}</span></div>
-      ${short ? '' : `<div class="mt-0.5 line-clamp-2 text-[11px] font-medium">${esc(c.title)}</div>`}
+      <div class="flex items-center gap-1 text-[11px] font-bold"><span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background:${t.bar}"></span><span class="truncate ${off ? 'line-through' : ''}">${esc(c.code)}</span></div>
+      ${off ? `<div class="mt-0.5 truncate text-[10px] font-bold text-danger">No class</div>` : short ? '' : `<div class="mt-0.5 line-clamp-2 text-[11px] font-medium">${esc(c.title)}</div>`}
       <div class="mt-0.5 truncate text-[10px] text-muted">${Fmt.time(c.start_time).replace(' ', '')}–${Fmt.time(c.end_time).replace(' ', '')}</div>
       ${!short && c.room ? `<div class="truncate text-[10px] text-muted">${esc(c.room)}</div>` : ''}
     </a>`;

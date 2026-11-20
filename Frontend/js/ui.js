@@ -325,37 +325,40 @@ const UI = {
     const now = new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
     const toM = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
-    const live = c.today && mins >= toM(c.start_time) && mins < toM(c.end_time);
+    const off = !!c.cancelled;   // a "No class" announcement cancelled it on this date
+    const live = !off && c.today && mins >= toM(c.start_time) && mins < toM(c.end_time);
     return `
-      <a href="subject.html?id=${c.subject_id}" class="flex items-center gap-3 rounded-2xl bg-white px-3 py-2.5 shadow-card transition hover:-translate-y-0.5 ${live ? 'ring-2 ring-charcoal' : ''}">
-        <span class="h-8 w-1 shrink-0 rounded-full" style="background:${tone(c.color).bar}"></span>
-        <div class="w-[4.25rem] shrink-0 leading-tight">
+      <a href="subject.html?id=${c.subject_id}" class="flex items-center gap-3 rounded-2xl bg-white px-3 py-2.5 shadow-card transition hover:-translate-y-0.5 ${live ? 'ring-2 ring-charcoal' : ''}" ${off ? `title="${esc(c.cancel_note || 'No class')}"` : ''}>
+        <span class="h-8 w-1 shrink-0 rounded-full ${off ? 'opacity-30' : ''}" style="background:${tone(c.color).bar}"></span>
+        <div class="w-[4.25rem] shrink-0 leading-tight ${off ? 'text-muted line-through' : ''}">
           <div class="text-xs font-semibold">${Fmt.time(c.start_time)}</div>
           <div class="text-[10px] text-muted">${Fmt.time(c.end_time)}</div>
         </div>
-        <div class="min-w-0 flex-1 leading-tight">
-          <div class="truncate text-sm font-semibold">${esc(c.title)}</div>
-          <div class="truncate text-[11px] text-muted">${esc([c.code, c.room].filter(Boolean).join(' · '))}</div>
+        <div class="min-w-0 flex-1 leading-tight ${off ? 'text-muted' : ''}">
+          <div class="truncate text-sm font-semibold ${off ? 'line-through' : ''}">${esc(c.title)}</div>
+          <div class="truncate text-[11px] text-muted">${off ? esc(c.cancel_note || 'No class') : esc([c.code, c.room].filter(Boolean).join(' · '))}</div>
         </div>
-        ${live ? '<span class="chip shrink-0 bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">NOW</span>' : ''}
+        ${off ? '<span class="chip shrink-0 bg-danger-tint px-2 py-0.5 text-[10px] font-bold">No class</span>'
+          : live ? '<span class="chip shrink-0 bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">NOW</span>' : ''}
       </a>`;
   },
 
   /** Time column + coloured bar + subject — "Class Row". */
   classRow(c, { href = `subject.html?id=${c.subject_id}`, trailing = icon('chevronRight', 18, 'text-muted') } = {}) {
+    const off = !!c.cancelled;   // a "No class" announcement cancelled it on this date
     return `
       <a href="${href}" class="flex items-center gap-4 rounded-3xl bg-white px-4 py-4 shadow-card transition hover:-translate-y-0.5">
-        <div class="w-[4.5rem] shrink-0">
+        <div class="w-[4.5rem] shrink-0 ${off ? 'text-muted line-through' : ''}">
           <div class="text-[15px] font-medium">${Fmt.time(c.start_time)}</div>
           <div class="text-xs text-muted">${Fmt.time(c.end_time)}</div>
         </div>
-        <span class="w-1 self-stretch rounded-full" style="background:${tone(c.color).bar}"></span>
-        <div class="min-w-0 flex-1">
+        <span class="w-1 self-stretch rounded-full ${off ? 'opacity-30' : ''}" style="background:${tone(c.color).bar}"></span>
+        <div class="min-w-0 flex-1 ${off ? 'text-muted' : ''}">
           <div class="text-[10px] font-semibold tracking-wide text-muted">${esc(c.code)}</div>
-          <div class="font-semibold leading-snug">${esc(c.title)}</div>
-          <div class="mt-0.5 text-xs text-muted">${esc([c.room, c.instructor].filter(Boolean).join(' · '))}</div>
+          <div class="font-semibold leading-snug ${off ? 'line-through' : ''}">${esc(c.title)}</div>
+          <div class="mt-0.5 text-xs text-muted">${off ? esc(c.cancel_note || 'No class') : esc([c.room, c.instructor].filter(Boolean).join(' · '))}</div>
         </div>
-        ${trailing}
+        ${off ? '<span class="chip shrink-0 bg-danger-tint text-xs font-bold">No class</span>' : trailing}
       </a>`;
   },
 

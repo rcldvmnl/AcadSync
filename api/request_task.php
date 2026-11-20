@@ -70,35 +70,18 @@ function task_fields(array $ctx, ?array $base): array
         fail('Pick a category, or choose Other and type what kind of task it is (2–30 characters).');
     }
 
-    // Deadline
-    $type = (string) param('deadline_type', $base['deadline_type'] ?? 'exact');
-    $deadline = param('deadline', $base['deadline'] ?? null) ?: null;
-    $deadlineEnd = param('deadline_end', $base['deadline_end'] ?? null) ?: null;
-    $time = param('deadline_time', $base['deadline_time'] ?? null) ?: null;
-    $isDate = fn ($d) => is_string($d) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && strtotime($d) !== false;
-    $today = date('Y-m-d');
-    if ($type === 'unset') {
-        $deadline = $deadlineEnd = $time = null;
-    } elseif ($type === 'range') {
-        if (!$isDate($deadline) || !$isDate($deadlineEnd) || $deadline > $deadlineEnd) {
-            fail('Pick the first and last day of the range.');
-        }
-        if ($deadlineEnd < $today) {
-            fail('That date range is already over.');
-        }
-    } else {
-        $type = 'exact';
-        $deadlineEnd = null;
-        if (!$isDate($deadline)) {
-            fail('Pick a deadline date.');
-        }
-        if ($deadline < $today) {
-            fail('The deadline can’t be in the past.');
-        }
+    // Deadline (shared with announcements' "Deadline change": validate_deadline in services.php)
+    try {
+        $when = validate_deadline([
+            'deadline_type' => param('deadline_type', $base['deadline_type'] ?? 'exact'),
+            'deadline' => param('deadline', $base['deadline'] ?? null),
+            'deadline_end' => param('deadline_end', $base['deadline_end'] ?? null),
+            'deadline_time' => param('deadline_time', $base['deadline_time'] ?? null),
+        ], date('Y-m-d'));
+    } catch (InvalidArgumentException $e) {
+        fail($e->getMessage());
     }
-    if ($time !== null && !valid_time((string) $time)) {
-        fail('Pick a valid due time.');
-    }
+    ['deadline_type' => $type, 'deadline' => $deadline, 'deadline_end' => $deadlineEnd, 'deadline_time' => $time] = $when;
 
     // Individual or group work, and for group work how the prof set the groups up
     $mode = (string) param('work_mode', $base['work_mode'] ?? 'individual');

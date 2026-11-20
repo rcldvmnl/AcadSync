@@ -21,6 +21,7 @@ require_once __DIR__ . '/domain/Activity.php';
 require_once __DIR__ . '/domain/MemberRecord.php';
 require_once __DIR__ . '/domain/UndoAction.php';
 require_once __DIR__ . '/domain/Payment.php';
+require_once __DIR__ . '/domain/Announcement.php';
 require_once __DIR__ . '/services.php';
 
 session_name('acadsync');

@@ -291,8 +291,25 @@ CREATE TABLE IF NOT EXISTS announcements (
     pinned INTEGER NOT NULL DEFAULT 0,  -- pinned ones are listed first
     created_by INTEGER NOT NULL,
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    kind TEXT NOT NULL DEFAULT 'general', -- general | payment | no_class | deadline_change | task | event (Announcement subclass)
+    ref_id INTEGER,                     -- the due / task / activity it points at
+    event_at TEXT,                      -- 'YYYY-MM-DD HH:MM' it happens (sorting, "in 3 days"); NULL = undated
+    details TEXT,                       -- JSON snapshot for the card (amount, old → new deadline, subject…)
     FOREIGN KEY(section_id) REFERENCES sections(id),
     FOREIGN KEY(created_by) REFERENCES users(id)
+);
+
+-- 10i-b. CLASS_CANCELLATIONS — "No class" announcements: a subject's class (or every class) on one date.
+--        Read through a HashSet of "date|subject" keys to cross the class out on the Schedule.
+CREATE TABLE IF NOT EXISTS class_cancellations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    announcement_id INTEGER NOT NULL,   -- the No class notice that made it (removing it brings the class back)
+    date TEXT NOT NULL,                 -- 'YYYY-MM-DD'
+    subject_id INTEGER,                 -- NULL = every class that day
+    created_by INTEGER NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id)
 );
 
 -- 10j. DUES — fees the Treasurer collects (amounts in centavos: ₱150.00 = 15000).

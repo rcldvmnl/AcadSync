@@ -171,3 +171,9 @@ final class Deadlines
         return new ExactDeadline((string) $last, $time);
     }
 }
+
+/** A real calendar date in Y-m-d ("2026-02-31" is not one, though strtotime would roll it over). */
+function is_real_date(mixed $d): bool
+{
+    return is_string($d) && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m) === 1 && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+}

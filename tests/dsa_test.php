@@ -21,9 +21,24 @@ date_default_timezone_set('Asia/Manila');
 require_once __DIR__ . '/../backend/domain/Deadline.php';
 require_once __DIR__ . '/../backend/custom_dsa.php';
 require_once __DIR__ . '/../backend/domain/Task.php';
+require_once __DIR__ . '/../backend/domain/Activity.php';
+require_once __DIR__ . '/../backend/domain/MemberStatus.php';
+require_once __DIR__ . '/../backend/domain/Person.php';
+require_once __DIR__ . '/../backend/domain/Payment.php';
+require_once __DIR__ . '/../backend/domain/Announcement.php';
+require_once __DIR__ . '/../backend/services.php';   // defines functions only; nothing touches the database here
 
 $passed = 0;
 $failed = 0;
+/** Runs $f and returns the InvalidArgumentException message, or 'built' when nothing was refused. */
+$refused = function (callable $f): string {
+    try {
+        $f();
+        return 'built';
+    } catch (InvalidArgumentException $e) {
+        return $e->getMessage();
+    }
+};
 
 function check(string $name, mixed $actual, mixed $expected): void
 {
@@ -267,6 +282,94 @@ check('assigned: auto-group leaves people to the officers', $assigned->autoPlan(
 check('invalid rule is refused', (function () { try { GroupRule::create(GroupRule::BY_SIZE, 1, null); return 'built'; } catch (InvalidArgumentException) { return 'refused'; } })(), 'refused');
 check('old rows: count + strict size -> both', GroupRule::fromRow(['group_min' => 3, 'group_max' => 3, 'group_count' => 5])->mode(), 'size_count');
 check('old rows: a size range only -> per group', GroupRule::fromRow(['group_min' => 2, 'group_max' => 3, 'group_count' => null])->mode(), 'size');
+
+// ---------------------------------------------------------------------------
+section('Shared validation');
+$ok = validate_deadline(['deadline_type' => 'range', 'deadline' => '2026-11-20', 'deadline_end' => '2026-11-23', 'deadline_time' => '23:59'], '2026-11-20');
+check('deadline: range kept', [$ok['deadline_type'], $ok['deadline_end']], ['range', '2026-11-23']);
+check('deadline: unset clears dates', validate_deadline(['deadline_type' => 'unset', 'deadline' => '2026-11-25'], '2026-11-20')['deadline'], null);
+check('deadline: past exact refused', $refused(fn () => validate_deadline(['deadline_type' => 'exact', 'deadline' => '2026-11-19'], '2026-11-20')), 'The deadline can’t be in the past.');
+check('deadline: bad time refused', $refused(fn () => validate_deadline(['deadline_type' => 'exact', 'deadline' => '2026-11-25', 'deadline_time' => '25:00'], '2026-11-20')), 'Pick a valid due time.');
+check('deadline: range over refused', $refused(fn () => validate_deadline(['deadline_type' => 'range', 'deadline' => '2026-11-10', 'deadline_end' => '2026-11-12'], '2026-11-20')), 'That date range is already over.');
+$a = validate_new_activity(['kind' => 'seminar', 'title' => 'Intro to Figma', 'venue' => 'AVR', 'date' => '2026-11-28', 'start' => '13:00', 'end' => '15:00', 'capacity' => '30'], 1, strtotime('2026-11-20 10:00'));
+check('activity: built', [$a->kind(), $a->capacity()], ['seminar', 30]);
+check('activity: past start refused', $refused(fn () => validate_new_activity(['kind' => 'meeting', 'title' => 'X', 'date' => '2026-11-19', 'start' => '13:00', 'end' => '14:00'], 1, strtotime('2026-11-20 10:00'))), 'That start time has already passed. Pick a later time or another day.');
+check('activity: missing times refused', $refused(fn () => validate_new_activity(['kind' => 'meeting', 'title' => 'X', 'date' => '2026-11-28'], 1, strtotime('2026-11-20 10:00'))), 'Pick a date and the start and end times.');
+
+// ---------------------------------------------------------------------------
+section('Announcements (typed)');
+$person = fn (int $id, string $role, ?string $position) => Person::fromRow(['id' => $id, 'first_name' => 'P' . $id, 'last_name' => 'X',
+    'student_id' => "2023-00$id", 'email' => "$id@x", 'role' => $role, 'position' => $position, 'status' => 'active']);
+$pres = $person(1, 'admin', null);
+$secr = $person(6, 'student', 'secretary');
+$taskRow = fn (int $id, string $status) => ['id' => $id, 'section_id' => 1, 'subject_id' => 4, 'title' => "Task $id", 'status' => $status, 'kind' => 'new',
+    'work_mode' => 'individual', 'deadline' => '2026-11-25', 'deadline_end' => null, 'deadline_time' => '17:00', 'deadline_type' => 'exact'];
+$annCtx = fn (Person $p, ?HashSet $cancelled = null) => new AnnouncementContext(
+    sectionId: 1, userId: $p->id(), me: $p,
+    tasks: [3 => $taskRow(3, 'approved'), 9 => $taskRow(9, 'removed')],
+    subjects: [4 => ['id' => 4, 'code' => 'ITEC 204', 'title' => 'Data Structures']],
+    slots: [['subject_id' => 4, 'day_of_week' => 5, 'start_time' => '13:00', 'end_time' => '14:30', 'code' => 'ITEC 204']],   // Fridays
+    dues: [2 => new Due(2, 'Membership fee', 15000, '2026-11-30', 'open', 7)],
+    activities: [], cancelled: $cancelled ?? new HashSet(), now: strtotime('2026-11-20 10:00'));   // Friday, Nov 20
+$pc = $annCtx($pres);
+check('ann: old row without kind reads as a notice', Announcement::fromRow(['id' => 1, 'title' => 'Hi', 'body' => '', 'pinned' => 0, 'created_by' => 1, 'created_at' => '2026-11-20 08:00']) instanceof GeneralNotice, true);
+check('ann: no class sorts by its date', Announcement::fromInput('no_class', ['date' => '2026-11-27', 'subject_id' => 4], $pc)->eventAt(), strtotime('2026-11-27 00:00'));
+check('ann: no class on a day the subject doesn\'t meet', $refused(fn () => Announcement::fromInput('no_class', ['date' => '2026-11-28', 'subject_id' => 4], $pc)), 'ITEC 204 has no class on Saturdays.');
+$taken = new HashSet();
+$taken->add('2026-11-27|*');
+check('ann: no class twice refused', $refused(fn () => Announcement::fromInput('no_class', ['date' => '2026-11-27', 'subject_id' => 4], $annCtx($pres, $taken))), 'That class is already cancelled on Fri, Nov 27.');
+check('ann: no class in the past refused', $refused(fn () => Announcement::fromInput('no_class', ['date' => '2026-11-19'], $pc)), 'Pick today or a later day.');
+check('ann: no class default title', Announcement::fromInput('no_class', ['date' => '2026-11-27', 'subject_id' => 4], $pc)->title(), 'No ITEC 204 class on Friday');
+check('ann: deadline change needs an upcoming task', $refused(fn () => Announcement::fromInput('deadline_change', ['task_id' => 9, 'deadline_type' => 'exact', 'deadline' => '2026-11-26'], $pc)), 'Pick an upcoming task.');
+check('ann: deadline change to the past refused', $refused(fn () => Announcement::fromInput('deadline_change', ['task_id' => 3, 'deadline_type' => 'exact', 'deadline' => '2026-11-19'], $pc)), 'The deadline can’t be in the past.');
+check('ann: deadline change needs the President\'s permission', Announcement::fromInput('deadline_change', ['task_id' => 3, 'deadline_type' => 'exact', 'deadline' => '2026-11-26', 'deadline_time' => '17:00'], $pc)->requiredPermission(), 'publish_task');
+$kindsOf = fn (AnnouncementContext $c) => array_map(fn ($k) => $k['kind'], Announcement::kinds($c));
+check('ann: the Secretary can\'t pick deadline change', Algorithms::linearContains($kindsOf($annCtx($secr)), 'deadline_change'), false);
+check('ann: the President can pick all six', count($kindsOf($pc)), 6);
+check('ann: payment for a due from elsewhere refused', $refused(fn () => Announcement::fromInput('payment', ['due_id' => 99], $pc)), 'Pick an open due from this section.');
+check('ann: a new due needs manage_dues', Announcement::fromInput('payment', ['new_due' => ['title' => 'Org shirt', 'amount' => '350', 'due_date' => '2026-12-11']], $pc)->requiredPermission(), 'manage_dues');
+check('ann: a notice needs a title', $refused(fn () => Announcement::fromInput('general', ['title' => '  '], $pc)), 'Give the announcement a title (up to 80 characters).');
+check('ann: unknown kind refused', $refused(fn () => Announcement::fromInput('party', [], $pc)), 'Pick what kind of announcement it is.');
+
+// Review fixes
+$noDues = new AnnouncementContext(sectionId: 1, userId: 6, me: $secr, tasks: [], subjects: [], slots: [], dues: [], activities: [],
+    cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
+check('fix: no open dues and can\'t add one → no Payment kind', Algorithms::linearContains($kindsOf($noDues), 'payment'), false);
+check('fix: a new due in the past refused', $refused(fn () => Announcement::fromInput('payment', ['new_due' => ['title' => 'Late', 'amount' => '50', 'due_date' => '2026-11-19']], $pc)), 'Pick today or a later day for the due date.');
+$overdueCtx = new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [], subjects: [], slots: [],
+    dues: [5 => new Due(5, 'Old fee', 10000, '2026-11-10', 'open', 7)], activities: [], cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
+check('fix: a reminder for an overdue due is undated (stays in Notices)', Announcement::fromInput('payment', ['due_id' => 5], $overdueCtx)->eventAt(), null);
+$moved = Announcement::fromInput('deadline_change', ['task_id' => 3, 'deadline_type' => 'exact', 'deadline' => '2026-11-26', 'deadline_time' => '17:00'], $pc);
+$taskNote = Announcement::fromInput('task', ['task_id' => 3], $pc);
+$later = $taskRow(3, 'approved');
+$later['deadline'] = '2026-11-30';
+$laterCtx = new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [3 => $later], subjects: [4 => ['id' => 4, 'code' => 'ITEC 204', 'title' => 'DS']],
+    slots: [], dues: [], activities: [], cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
+check('fix: a task notice follows the task\'s current deadline', $taskNote->eventAtIn($laterCtx), strtotime('2026-11-30 17:00'));
+check('fix: an older deadline change follows it too', $moved->eventAtIn($laterCtx), strtotime('2026-11-30 17:00'));
+check('fix: an older deadline change says it moved again', Algorithms::linearContains($moved->facts($laterCtx)['lines'], 'Moved again: Due Mon, Nov 30 · 5:00 PM'), true);
+
+// Deferred minors
+$twice = new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [], subjects: [4 => ['id' => 4, 'code' => 'ITEC 204', 'title' => 'DS']],
+    slots: [['subject_id' => 4, 'day_of_week' => 5, 'start_time' => '16:00', 'end_time' => '17:00', 'code' => 'ITEC 204'],
+            ['subject_id' => 4, 'day_of_week' => 5, 'start_time' => '13:00', 'end_time' => '14:30', 'code' => 'ITEC 204']],
+    dues: [], activities: [], cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
+check('minor: a subject meeting twice that day shows both times', Announcement::fromInput('no_class', ['date' => '2026-11-27', 'subject_id' => 4], $twice)->facts($twice)['lines'][0], 'ITEC 204 · 1:00–2:30 PM, 4:00–5:00 PM');
+check('minor: an impossible no-class date refused', $refused(fn () => Announcement::fromInput('no_class', ['date' => '2026-02-31'], $pc)), 'Pick the day there’s no class.');
+check('minor: an impossible deadline refused', $refused(fn () => validate_deadline(['deadline_type' => 'exact', 'deadline' => '2026-02-31'], '2026-01-01')), 'Pick a deadline date.');
+check('minor: an impossible due date refused', $refused(fn () => new Due(0, 'X', 100, '2026-02-31', 'open', 1)), 'Pick a valid date.');
+$morning = Activity::fromRow(['id' => 8, 'kind' => 'meeting', 'title' => 'Assembly', 'venue' => 'Room 1', 'starts_at' => '2026-11-20 07:00', 'ends_at' => '2026-11-20 08:00', 'created_by' => 1]);
+$evCtx = new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [], subjects: [], slots: [], dues: [], activities: [8 => $morning],
+    cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
+$ev = Announcement::fromRow(['id' => 3, 'kind' => 'event', 'title' => 'Meeting: Assembly', 'body' => '', 'pinned' => 0, 'created_by' => 1, 'created_at' => '2026-11-19 08:00',
+    'ref_id' => 8, 'event_at' => '2026-11-20 07:00', 'details' => json_encode(['title' => 'Assembly', 'kind_label' => 'Meeting', 'venue' => 'Room 1', 'starts_at' => '2026-11-20 07:00', 'ends_at' => '2026-11-20 08:00', 'capacity' => null])]);
+check('minor: an event that ended today is over', $ev->isOverIn($evCtx), true);
+check('minor: a finished event has no RSVP button', [$ev->facts($evCtx)['action'], Algorithms::linearContains($ev->facts($evCtx)['lines'], 'Finished')], [null, true]);
+$alum = ['id' => 9, 'first_name' => 'A', 'last_name' => 'B', 'student_id' => '1', 'email' => 'x', 'role' => 'student', 'position' => null, 'status' => 'alumni'];
+check('minor: payment notices skip people who aren\'t charged', Announcement::fromInput('payment', ['due_id' => 2], $pc)->notifies($alum), false);
+check('minor: other notices reach everyone', Announcement::fromInput('general', ['title' => 'Hi'], $pc)->notifies($alum), true);
+check('minor: permission is checked before the details', $refused(fn () => Announcement::fromInput('deadline_change', ['task_id' => 3, 'deadline_type' => 'exact', 'deadline' => '2026-11-19'], $annCtx($secr))), 'Only the President can move a deadline.');
+check('minor: a new due without permission is refused first', $refused(fn () => Announcement::fromInput('payment', ['new_due' => ['title' => '', 'amount' => 'x']], $annCtx($secr))), 'Only the Treasurer or the President can add a due.');
 
 // ---------------------------------------------------------------------------
 section('Group planning');

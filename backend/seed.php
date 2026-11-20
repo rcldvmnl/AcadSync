@@ -295,13 +295,44 @@ function seed_database(): void
             'method' => $method, 'reference' => $ref, 'received_by' => $u['marco.cruz'], 'paid_at' => $stamp($ago)]);
     }
 
-    // --- Announcements --------------------------------------------------------------
-    Store::insert('announcements', ['section_id' => $A, 'title' => 'Membership fee is due next week', 'pinned' => 1,
-        'body' => "₱150 per member. Pay Marco (Treasurer) in cash or by GCash, and send him the reference number.",
-        'created_by' => $u['juan.delacruz'], 'created_at' => $stamp('-3 days')]);
-    Store::insert('announcements', ['section_id' => $A, 'title' => 'Room change for the planning meeting',
-        'body' => 'The Midterm Planning Meeting stays in Room 204. Bring your class schedule.',
-        'created_by' => $u['kyla.lim'], 'created_at' => $stamp('-1 day')]);
+    // --- Announcements: made through the Announcement classes, so seed data follows the same rules
+    //     (a typed announcement does its real change: the No class one cancels a class on the Schedule)
+    $announce = function (string $by, string $kind, array $in, string $ago) use ($A, $u, $stamp): void {
+        $user = null;
+        foreach (section_members($A) as $m) {
+            if ((int) $m['id'] === $u[$by]) {
+                $user = $m;
+            }
+        }
+        $c = announcement_context($user, load_context($user));
+        $a = Announcement::fromInput($kind, $in, $c);
+        $id = Store::insert('announcements', ['created_at' => $stamp($ago)] + $a->toRow($A));
+        $a->apply($c, $id);
+    };
+    $announce('marco.cruz', 'payment', ['due_id' => $fee, 'pinned' => true,
+        'body' => 'Pay Marco (Treasurer) in cash or by GCash, and send him the reference number.'], '-3 days');
+    $figma = null;
+    foreach (Store::all('activities') as $act) {
+        $figma = $act['title'] === 'Intro to Figma' ? (int) $act['id'] : $figma;
+    }
+    $announce('kyla.lim', 'event', ['activity_id' => $figma, 'body' => 'Bring a laptop with Figma installed.'], '-2 days');
+    // No ITEC 204 class on the next day it meets
+    $itec = $s['ITEC 204'];
+    $meets = [];
+    foreach (Store::all('class_schedules') as $cs) {
+        if ((int) $cs['subject_id'] === $itec) {
+            $meets[(int) $cs['day_of_week']] = true;
+        }
+    }
+    for ($i = 1; $i <= 7; $i++) {
+        if (isset($meets[(int) date('N', strtotime("+$i day", $now))])) {
+            $announce('juan.delacruz', 'no_class', ['date' => $day($i), 'subject_id' => $itec,
+                'body' => 'Prof is at the regional seminar. Use the time for the final project.'], '-1 day');
+            break;
+        }
+    }
+    $announce('kyla.lim', 'general', ['title' => 'Room change for the planning meeting',
+        'body' => 'The Midterm Planning Meeting stays in Room 204. Bring your class schedule.'], '-1 day');
 
     // --- Leo (BSINFO-2B) entered 2A's class code and waits for an officer --------------
     Store::insert('join_requests', ['section_id' => $A, 'user_id' => $u['leo.navarro'], 'created_at' => $stamp('-5 hours')]);

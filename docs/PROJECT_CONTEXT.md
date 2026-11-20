@@ -94,6 +94,15 @@ router.php, .htaccess, .env.example, .gitignore
 - `Payment` (abstract) → `CashPayment` (receipt no. optional), `GcashPayment` (13-digit ref, must be
   unique: `referenceIsUnique()`); built by `Payment::create($method, …)`. `Due` (final) holds a fee,
   `balance()` and `standing()` (paid / partial / overdue / unpaid). Money is stored as centavos.
+- `Announcement` (abstract) → `GeneralNotice`, `PaymentNotice`, `NoClassNotice`, `DeadlineChangeNotice`,
+  `TaskNotice`, `EventNotice` (`announcements.kind`; old rows without a kind read as `GeneralNotice`).
+  Built by `Announcement::fromInput($kind, $input, AnnouncementContext)`, which validates; `apply()` does the
+  real change in the same transaction as the insert (new due / activity, moved deadline, a
+  `class_cancellations` row); `onRemove()` (No class: deletes the cancellation). `requiredPermission()`
+  per choice (Deadline change → publish_task, new due → manage_dues, new activity → manage_activities).
+  Shared checks: `validate_deadline()` and `validate_new_activity()` in services.php (also used by
+  request_task.php and activities.php). Schedule reads cancellations through `class_cancellations()` (HashSet).
+  Spec: docs/superpowers/specs/2026-11-20-typed-announcements-design.md.
 - `Task` → `IndividualTask`, `GroupTask` (has a `GroupRule`); `StudyGroup`.
   `GroupRule` (abstract) is how the prof set the groups up, one subclass each (`tasks.group_mode`):
   `AssignedGroups` (`assigned`: the prof's list in `tasks.group_plan` JSON; students can't change it),

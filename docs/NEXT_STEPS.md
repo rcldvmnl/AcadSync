@@ -37,6 +37,8 @@ and a pending join request from Leo.
 | Nav: Classmates before Groups for members (desktop and phone) | `ui.js` |
 | Classmates › Groups subject headers fit on phones | `classmates.css` |
 | **Group setups**: `GroupRule` is abstract with `AssignedGroups`, `FixedGroupCount`, `FixedGroupSize`, `FixedSizeAndCount`. Groups appear at posting when their number is known; empty groups are joined directly; every officer can move/remove members; the task form has a setup picker with a live preview and a builder for the prof's own list; Task Details shows Groups first | `Task.php`, `groups.php`, `request_task.php`, `admin_action.php`, `services.php`, `seed.php`, `task-form.js`, `group-work.js`, `groups.js`, `task.js` |
+| Task Details: Instructions and "Finished this task?" moved to the left column | `task.js` |
+| **Typed announcements** (spec + plan in `docs/superpowers/`): Notice, Payment, No class, Deadline change, Task, Event, each doing its real change; Home lists Coming up / Notices / Earlier; No class crosses the class out on Schedule, Home and Whole Week. After review: permission checked before details, payment notices only to members charged dues, finished events leave Coming up, impossible dates refused, unique index on cancellations | `Announcement.php`, `announcements.php`, `services.php`, `schedule.php`, `request_task.php`, `activities.php`, `schema.sql`, `db.php`, `seed.php`, `home.js`, `ui.js`, `schedule.js`, `week.js` |
 
 ---
 

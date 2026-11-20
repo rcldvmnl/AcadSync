@@ -733,3 +733,100 @@ function clean_slots(array $slots): array
     }
     return $out;
 }
+
+/**
+ * Checks a task deadline (used by the task form and by the "Deadline change" announcement).
+ * $in: deadline_type (exact | range | unset), deadline, deadline_end, deadline_time. $today: Y-m-d.
+ * Returns the four tasks columns, tidied. Throws InvalidArgumentException with the message to show.
+ */
+function validate_deadline(array $in, string $today): array
+{
+    $type = (string) ($in['deadline_type'] ?? 'exact');
+    $deadline = ($in['deadline'] ?? null) ?: null;
+    $end = ($in['deadline_end'] ?? null) ?: null;
+    $time = ($in['deadline_time'] ?? null) ?: null;
+    $isDate = fn ($d) => is_real_date($d);   // "2026-02-31" is refused (strtotime would roll it to March)
+    if ($type === 'unset') {
+        return ['deadline_type' => 'unset', 'deadline' => null, 'deadline_end' => null, 'deadline_time' => null];
+    }
+    if ($type === 'range') {
+        if (!$isDate($deadline) || !$isDate($end) || $deadline > $end) {
+            throw new InvalidArgumentException('Pick the first and last day of the range.');
+        }
+        if ($end < $today) {
+            throw new InvalidArgumentException('That date range is already over.');
+        }
+    } else {
+        $type = 'exact';
+        $end = null;
+        if (!$isDate($deadline)) {
+            throw new InvalidArgumentException('Pick a deadline date.');
+        }
+        if ($deadline < $today) {
+            throw new InvalidArgumentException('The deadline can’t be in the past.');
+        }
+    }
+    if ($time !== null && !valid_time((string) $time)) {
+        throw new InvalidArgumentException('Pick a valid due time.');
+    }
+    return ['deadline_type' => $type, 'deadline' => $deadline, 'deadline_end' => $end, 'deadline_time' => $time];
+}
+
+/**
+ * Builds a new activity from form input (used by Activities and by the "Event" announcement).
+ * $in: kind, title, description, venue, date (Y-m-d), start, end (HH:MM), capacity ('' = no limit).
+ * Throws InvalidArgumentException; [OOP: ENCAPSULATION] the Activity constructor checks the rest.
+ */
+function validate_new_activity(array $in, int $createdBy, int $now): Activity
+{
+    $date = trim((string) ($in['date'] ?? ''));
+    $start = trim((string) ($in['start'] ?? ''));
+    $end = trim((string) ($in['end'] ?? ''));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !valid_time($start) || !valid_time($end)) {
+        throw new InvalidArgumentException('Pick a date and the start and end times.');
+    }
+    if (strtotime("$date $start") < $now - 300) {
+        throw new InvalidArgumentException('That start time has already passed. Pick a later time or another day.');
+    }
+    $capacity = $in['capacity'] ?? null;
+    return Activity::fromRow([
+        'kind' => trim((string) ($in['kind'] ?? '')), 'title' => trim((string) ($in['title'] ?? '')),
+        'description' => trim((string) ($in['description'] ?? '')), 'venue' => trim((string) ($in['venue'] ?? '')),
+        'starts_at' => "$date $start", 'ends_at' => "$date $end",
+        'capacity' => $capacity === null || $capacity === '' ? null : (int) $capacity, 'created_by' => $createdBy,
+    ]);
+}
+
+/** [DSA: HASHSET] — classes cancelled by "No class" announcements: "Y-m-d|subjectId", or "Y-m-d|*" for a whole day. */
+function class_cancellations(int $sectionId): HashSet
+{
+    $set = new HashSet();
+    foreach (section_rows('class_cancellations', $sectionId) as $row) {
+        $set->add($row['date'] . '|' . ($row['subject_id'] !== null ? (int) $row['subject_id'] : '*'));
+    }
+    return $set;
+}
+
+/** [OOP] What every Announcement kind needs to check its input and word its card, for the open section. */
+function announcement_context(array $user, array $ctx): AnnouncementContext
+{
+    $sectionId = (int) $ctx['section']['id'];
+    $dues = [];
+    foreach (section_rows('dues', $sectionId) as $row) {
+        $due = Due::fromRow($row);
+        if ($due->isOpen()) {
+            $dues[$due->id()] = $due;
+        }
+    }
+    $going = [];
+    foreach (section_rows('activity_rsvps', $sectionId) as $r) {
+        if ($r['status'] === 'going') {
+            $going[(int) $r['activity_id']] = ($going[(int) $r['activity_id']] ?? 0) + 1;
+        }
+    }
+    return new AnnouncementContext(
+        sectionId: $sectionId, userId: (int) $user['id'], me: Person::fromRow($user),
+        tasks: $ctx['taskIndex'], subjects: $ctx['subjectIndex'], slots: class_slots($sectionId, $ctx['subjectIndex']),
+        dues: $dues, activities: load_activities($sectionId), cancelled: class_cancellations($sectionId), now: time(), going: $going,
+    );
+}

@@ -235,7 +235,7 @@ final class Due
         if ($amount <= 0 || $amount > 10_000_00) {
             throw new InvalidArgumentException('The amount must be between ₱0.01 and ₱10,000.');
         }
-        if ($dueDate !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dueDate)) {
+        if ($dueDate !== null && !is_real_date($dueDate)) {
             throw new InvalidArgumentException('Pick a valid date.');
         }
     }

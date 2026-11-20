@@ -361,6 +361,87 @@ classDiagram
     Due ..> MemberStatus : owesDues()
 ```
 
+## 4b. Typed announcements (`backend/domain/Announcement.php`)
+
+Each kind does the real change it announces in `apply()`, inside the same transaction as the post.
+
+```mermaid
+classDiagram
+    direction TB
+    class Announcement {
+        <<abstract>>
+        +KINDS$
+        +KIND$
+        +LABEL$
+        +ICON$
+        -int id
+        -string title
+        -string body
+        -bool pinned
+        -int createdBy
+        #int refId
+        #string eventAt
+        #array details
+        +fromRow(row)$ Announcement
+        +fromInput(kind, input, context)$ Announcement
+        +kinds(context)$ array
+        +canPost(context)$ bool
+        #build(input, context)$ Announcement
+        +defaultTitle()* string
+        +facts(context)* array
+        +apply(context, announcementId)* void
+        +onRemove(context) void
+        +requiredPermission() string
+        +eventAt() int
+        +notifyText(context) string
+        +toRow(sectionId) array
+        +toArray(context, canDelete) array
+    }
+    class GeneralNotice
+    class PaymentNotice {
+        +requiredPermission() string
+        +apply(context, id) void
+    }
+    class NoClassNotice {
+        +apply(context, id) void
+        +onRemove(context) void
+    }
+    class DeadlineChangeNotice {
+        +canPost(context)$ bool
+        +requiredPermission() string
+        +apply(context, id) void
+    }
+    class TaskNotice
+    class EventNotice {
+        +requiredPermission() string
+        +apply(context, id) void
+    }
+    class AnnouncementContext {
+        <<final>>
+        +int sectionId «readonly»
+        +int userId «readonly»
+        +Person me «readonly»
+        +array tasks «readonly»
+        +array slots «readonly»
+        +Due[] dues «readonly»
+        +Activity[] activities «readonly»
+        +HashSet cancelled «readonly»
+        +int now «readonly»
+        +today() string
+    }
+    Announcement <|-- GeneralNotice
+    Announcement <|-- PaymentNotice
+    Announcement <|-- NoClassNotice
+    Announcement <|-- DeadlineChangeNotice
+    Announcement <|-- TaskNotice
+    Announcement <|-- EventNotice
+    Announcement ..> AnnouncementContext : uses
+    PaymentNotice ..> Due : points at / makes
+    EventNotice ..> Activity : points at / makes
+    DeadlineChangeNotice ..> Task : moves the deadline of
+    NoClassNotice ..> HashSet : cancelled classes
+```
+
 ## 5. Undo (OOP objects kept in a DSA stack) and settings
 
 ```mermaid
@@ -528,9 +609,9 @@ classDiagram
 | Pillar | Where in the code | What it does in AcadSync |
 | --- | --- | --- |
 | **Encapsulation** | Private fields + getters in every domain class; `Activity`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
-| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
-| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$rule->seats()` / `explain()` / `studentsOrganize()` (one class per way a prof sets up groups); `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type` or the payment method: each object answers for itself |
-| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `GroupRule`, `DatedDeadline`, `UndoAction`, `Payment` | Callers use what an object can do, not how it does it |
+| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the six notices → `Announcement`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
+| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$rule->seats()` / `explain()` / `studentsOrganize()` (one class per way a prof sets up groups); `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()`; `$announcement->apply()` / `facts()` / `onRemove()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type`, the payment method or the announcement kind: each object answers for itself |
+| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `GroupRule`, `DatedDeadline`, `UndoAction`, `Payment`, `Announcement` | Callers use what an object can do, not how it does it |
 
 ## Relationships
 

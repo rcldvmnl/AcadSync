@@ -38,10 +38,27 @@ $anchor = strtotime((string) param('week', date('Y-m-d', $now))) ?: $now;
 $monday = strtotime('monday this week', $anchor);
 $sectionId = (int) $ctx['section']['id'];
 $slots = class_slots($sectionId, $ctx['subjectIndex']);
+// "No class" announcements cancel a class (or the whole day) on one date only
+$cancelled = class_cancellations($sectionId);   // [DSA: HASHSET] "date|subjectId" / "date|*"
+$noteFor = [];                                  // the same keys => the announcement's title, for the label
+$titles = [];
+foreach (section_rows('announcements', $sectionId) as $a) {
+    $titles[(int) $a['id']] = $a['title'];
+}
+foreach (section_rows('class_cancellations', $sectionId) as $row) {
+    $noteFor[$row['date'] . '|' . ($row['subject_id'] !== null ? (int) $row['subject_id'] : '*')] = $titles[(int) $row['announcement_id']] ?? 'No class';
+}
 $days = [];
 for ($d = 0; $d < 7; $d++) {   // the whole week, Monday (1) to Sunday (7)
     $ts = strtotime("+$d day", $monday);
-    $days[] = ['date' => date('Y-m-d', $ts), 'dow' => $d + 1, 'classes' => classes_on_day($slots, $d + 1)];
+    $date = date('Y-m-d', $ts);
+    $classes = [];
+    foreach (classes_on_day($slots, $d + 1) as $class) {
+        $key = $cancelled->contains("$date|*") ? "$date|*" : "$date|{$class['subject_id']}";
+        $off = $cancelled->contains($key);
+        $classes[] = $class + ['cancelled' => $off, 'cancel_note' => $off ? ($noteFor[$key] ?? 'No class') : null];
+    }
+    $days[] = ['date' => $date, 'dow' => $d + 1, 'classes' => $classes];
 }
 
 // Dashboard numbers
@@ -113,7 +130,9 @@ respond([
     'section' => present_section($ctx['section'], count($members)),
     'timeline' => array_map($present, $active),
     'by_urgency' => array_map($present, $byUrgency),
-    'week' => ['monday' => date('Y-m-d', $monday), 'days' => $days],
+    'week' => ['monday' => date('Y-m-d', $monday), 'days' => $days,
+        // every cancellation ("date|subjectId" / "date|*"), so "Next class" can skip one next week too
+        'cancelled' => array_keys($noteFor)],
     'due_by' => ['date' => date('Y-m-d', $limit), 'ids' => $dueByIds, 'steps' => $steps, 'searched' => count($active)],
     'subjects' => $subjects,
     'stats' => [

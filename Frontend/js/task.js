@@ -155,20 +155,22 @@ function render(t, admin) {
           ${info.map(([k, v]) => `<div class="rounded-2xl bg-white p-3.5 shadow-card ${k === 'Work' ? 'col-span-2' : ''}"><div class="text-xs text-muted">${k}</div><div class="mt-0.5 text-[15px] font-medium leading-snug">${esc(v)}</div></div>`).join('')}
           ${submitCell(t)}
         </div>
-      </div>
-
-      <div class="space-y-4">
-        ${unset ? `<div class="flex gap-3 rounded-[1.5rem] bg-sun-tint p-4">${icon('bell', 18, 'mt-0.5 shrink-0')}
-          <div><div class="text-sm font-semibold">We’ll notify you when the date is set</div><div class="text-xs text-muted">The professor hasn’t announced the exact date yet.</div></div></div>` : ''}
-        ${t.work_mode === 'group' && t.status === 'approved' ? `<div id="groups" class="scroll-mt-6">${UI.skeleton(1, 'h-40')}</div>` : ''}
+        <!-- Instructions sit under the task info, so the left column isn't left empty on wide screens
+             (on phones: info → instructions → groups → checklist) -->
         <div class="rounded-[1.75rem] bg-white p-5 shadow-card">
           <h3 class="text-lg font-semibold">Instructions</h3>
           ${prose.length ? prose.map((p) => `<p class="mt-2 text-[15px] leading-relaxed">${esc(p)}</p>`).join('') : '<p class="mt-2 text-sm text-muted">No instructions yet.</p>'}
           ${checklist.length ? `<h3 class="mt-4 text-lg font-semibold">What to prepare</h3>
             <ul class="mt-2 space-y-2">${checklist.map((c) => `<li class="flex items-center gap-3 text-[15px]"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-mint-tint text-success">${icon('check', 14)}</span>${esc(c)}</li>`).join('')}</ul>` : ''}
         </div>
-        ${t.status === 'approved' ? '<div id="checklist"></div>' : ''}
         ${t.status === 'approved' ? doneCard(t) : ''}
+      </div>
+
+      <div class="space-y-4">
+        ${unset ? `<div class="flex gap-3 rounded-[1.5rem] bg-sun-tint p-4">${icon('bell', 18, 'mt-0.5 shrink-0')}
+          <div><div class="text-sm font-semibold">We’ll notify you when the date is set</div><div class="text-xs text-muted">The professor hasn’t announced the exact date yet.</div></div></div>` : ''}
+        ${t.work_mode === 'group' && t.status === 'approved' ? `<div id="groups" class="scroll-mt-6">${UI.skeleton(1, 'h-40')}</div>` : ''}
+        ${t.status === 'approved' ? '<div id="checklist"></div>' : ''}
         ${t.status === 'approved' ? (admin
           ? `<div class="grid grid-cols-2 gap-3">
               <button type="button" id="delete-task" class="btn btn-danger">Remove</button>

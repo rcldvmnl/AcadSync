@@ -116,23 +116,10 @@ switch (param('action')) {
         if (!$me->can(Permission::MANAGE_ACTIVITIES)) {
             fail('Only officers can add activities.', 403);
         }
-        $date = (string) param('date', '');
-        $start = (string) param('start', '');
-        $end = (string) param('end', '');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !valid_time($start) || !valid_time($end)) {
-            fail('Pick a date and the start and end times.');
-        }
-        if (strtotime("$date $start") < $now - 300) {
-            fail('That start time has already passed. Pick a later time or another day.');
-        }
-        $capacity = param('capacity');
         try {
-            // [OOP: ENCAPSULATION] the Activity constructor rejects anything invalid
-            $activity = Activity::fromRow([
-                'kind' => (string) param('kind', ''), 'title' => (string) param('title', ''), 'description' => (string) param('description', ''),
-                'venue' => (string) param('venue', ''), 'starts_at' => "$date $start", 'ends_at' => "$date $end",
-                'capacity' => $capacity === null || $capacity === '' ? null : (int) $capacity, 'created_by' => $uid,
-            ]);
+            // [OOP: ENCAPSULATION] the Activity constructor rejects anything invalid (shared helper:
+            // announcements' "Event" builds new activities the same way)
+            $activity = validate_new_activity(input(), $uid, $now);
         } catch (InvalidArgumentException $e) {
             fail($e->getMessage());
         }

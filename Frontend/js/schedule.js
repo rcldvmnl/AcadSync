@@ -96,8 +96,10 @@ function renderClasses() {
   $$('[data-dow]').forEach((b) => b.onclick = () => { selectedDow = Number(b.dataset.dow); render(); });
   const day = data.week.days.find((d) => d.dow === selectedDow);
   const isToday = day && day.date === Fmt.iso(new Date());
+  const off = day ? day.classes.filter((c) => c.cancelled).length : 0;   // cancelled by a No class announcement
+  const on = day ? day.classes.length - off : 0;
   $('#classes').innerHTML = day && day.classes.length
-    ? `<div class="flex items-center justify-between px-1 text-xs text-muted"><span>${day.classes.length} class${day.classes.length === 1 ? '' : 'es'}</span>
+    ? `<div class="flex items-center justify-between px-1 text-xs text-muted"><span>${on ? `${on} class${on === 1 ? '' : 'es'}` : 'No classes'}${off ? ` · ${off} cancelled` : ''}</span>
         <span>${Fmt.time(day.classes[0].start_time)} – ${Fmt.time(day.classes[day.classes.length - 1].end_time)}</span></div>
        ${day.classes.map((c) => UI.classRowCompact({ ...c, today: isToday })).join('')}`
     : `<div class="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm text-muted shadow-card">${icon('calendar', 18)}No classes on ${DAYS_LONG[selectedDow % 7]}</div>`;
@@ -119,7 +121,10 @@ function nextClass() {
   for (let k = 0; k <= 7; k++) {
     const date = new Date(now); date.setDate(now.getDate() + k);
     const day = data.week.days.find((d) => d.dow === (date.getDay() || 7));
-    const c = (day ? day.classes : []).find((x) => k > 0 || toM(x.start_time) > mins);
+    // Skip a class a "No class" announcement cancelled on that exact date (this week or next)
+    const iso = Fmt.iso(date);
+    const off = new Set(data.week.cancelled || []);
+    const c = (day ? day.classes : []).find((x) => (k > 0 || toM(x.start_time) > mins) && !off.has(`${iso}|*`) && !off.has(`${iso}|${x.subject_id}`));
     if (c) {
       const [h, m] = c.start_time.split(':').map(Number);
       date.setHours(h, m, 0, 0);
