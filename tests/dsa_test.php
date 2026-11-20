@@ -25,6 +25,7 @@ require_once __DIR__ . '/../backend/domain/Activity.php';
 require_once __DIR__ . '/../backend/domain/ActivityPart.php';
 require_once __DIR__ . '/../backend/domain/MemberStatus.php';
 require_once __DIR__ . '/../backend/domain/Person.php';
+require_once __DIR__ . '/../backend/domain/MemberRecord.php';
 require_once __DIR__ . '/../backend/domain/Payment.php';
 require_once __DIR__ . '/../backend/domain/Announcement.php';
 require_once __DIR__ . '/../backend/services.php';   // defines functions only; nothing touches the database here
@@ -134,6 +135,13 @@ check('peek is the last push', $stack->peek(), 'c');
 check('toArray is top first', $stack->toArray(), ['c', 'b', 'a']);
 check('pop is LIFO', [$stack->pop(), $stack->pop()], ['c', 'b']);
 check('size after pops', $stack->size(), 1);
+$mid = new UndoStack();
+foreach (['r1', 'r2', 'r3', 'r4'] as $v) {
+    $mid->push($v);
+}
+check('take one from the middle', $mid->removeWhere(fn ($v) => $v === 'r2'), 'r2');
+check('the others keep their order', [$mid->toArray(), $mid->size()], [['r4', 'r3', 'r1'], 3]);
+check('take a missing one', [$mid->removeWhere(fn ($v) => $v === 'zz'), $mid->toArray()], [null, ['r4', 'r3', 'r1']]);
 
 // ---------------------------------------------------------------------------
 section('5. Queue (ApprovalQueue)');
@@ -381,6 +389,9 @@ check('competition kind', [$c->kind(), $c->kindLabel(), $c->joinsBy(), $c->usesS
 $p = Activity::fromRow($base + ['kind' => 'project']);
 check('project kind', [$p->kind(), $p->kindLabel(), $p->joinsBy(), $p->canAssignDirectly(), $p->partsNeedDueDates()],
       ['project', 'Section project', 'parts', true, true]);
+$ev = Activity::fromRow($base + ['kind' => 'event']);
+check('event kind', [$ev->kind(), $ev->kindLabel(), $ev->joinsBy(), $ev->usesSeats()], ['event', 'Event', 'rsvp', true]);
+check('event: anyone checks in, nobody is marked absent', [$ev->canCheckIn(false), $ev->expectsAttendanceFrom(true), $ev->expectsAttendanceFrom(false)], [true, false, false]);
 check('seminar still rsvp', [Activity::fromRow($base + ['kind' => 'seminar'])->joinsBy(), Activity::fromRow($base + ['kind' => 'seminar'])->usesSeats()], ['rsvp', true]);
 check('no attendance for competitions/projects', [$c->expectsAttendanceFrom(true), $c->canCheckIn(true), $p->expectsAttendanceFrom(true), $p->canCheckIn(true)], [false, false, false, false]);
 check('link host', $c->linkHost(), 'facebook.com');
@@ -393,7 +404,7 @@ check('impossible deadline refused', $refused(fn () => Activity::fromRow($base +
 check('open on the deadline day', $c->signupOpen(strtotime('2026-11-20 23:59:00')), true);
 check('closed the day after', $c->signupOpen(strtotime('2026-11-21 00:00:01')), false);
 check('no deadline closes at the start', Activity::fromRow($base + ['kind' => 'competition'])->signupClosesAt(), strtotime('2026-11-25 08:00'));
-check('kinds lists five', count(Activity::kinds()), 5);
+check('kinds lists six', count(Activity::kinds()), 6);
 $multi = validate_new_activity(['kind' => 'competition', 'title' => 'FA', 'date' => '2030-11-25', 'end_date' => '2030-11-26', 'start' => '08:00', 'end' => '17:00'], 1, time());
 check('several days', [$multi->toArray(time())['multi_day'], $multi->endTs()], [true, strtotime('2030-11-26 17:00')]);
 check('end date before start refused', $refused(fn () => validate_new_activity(['kind' => 'competition', 'title' => 'FA', 'date' => '2030-11-25', 'end_date' => '2030-11-24', 'start' => '08:00', 'end' => '17:00'], 1, time())), 'The end time must be after the start time.');
@@ -463,6 +474,30 @@ check('event facts: sign-up deadline', $n->facts($ctxOpen)['lines'][2] ?? null, 
 check('volunteer action', [$n->facts($ctxOpen)['action']['label'] ?? null, $n->facts($ctxOpen)['action']['href'] ?? null], ['Volunteer', 'activities.html#a1']);
 $ctxClosed = $faCtx(strtotime('2026-11-22 10:00'));
 check('event facts: sign-ups closed', [$n->facts($ctxClosed)['lines'][1] ?? null, $n->facts($ctxClosed)['action']['label'] ?? null], ['Sign-ups closed', 'Open']);
+
+// ---------------------------------------------------------------------------
+section('Who can join (invite-only activities)');
+$open = Activity::fromRow(['id' => 20, 'kind' => 'meeting', 'title' => 'Assembly', 'starts_at' => '2026-11-02 08:00', 'ends_at' => '2026-11-02 09:00']);
+$inv = Activity::fromRow(['id' => 21, 'kind' => 'meeting', 'title' => 'Officers only', 'starts_at' => '2026-11-03 08:00', 'ends_at' => '2026-11-03 09:00',
+    'audience' => 'invited', 'invited' => [4, 6, 6]]);
+check('everyone: open to all', [$open->isInviteOnly(), $open->isFor(99)], [false, true]);
+check('invite only: only the people picked', [$inv->isInviteOnly(), $inv->isFor(4), $inv->isFor(6), $inv->isFor(5)], [true, true, true, false]);
+check('invite list has no duplicates', $inv->invitedIds(), [4, 6]);
+check('invite only with nobody refused', $refused(fn () => Activity::fromRow(['kind' => 'meeting', 'title' => 'X', 'starts_at' => '2026-11-03 08:00',
+    'ends_at' => '2026-11-03 09:00', 'audience' => 'invited', 'invited' => []])), 'Pick at least one person to invite.');
+check('stored audience', [$open->toRow()['audience'], $inv->toRow()['audience']], ['everyone', 'invited']);
+$member = fn (int $id) => Person::fromRow(['id' => $id, 'first_name' => 'M', 'last_name' => (string) $id, 'student_id' => "s$id", 'email' => "$id@x",
+    'role' => 'student', 'position' => null, 'status' => 'active']);
+$emptyRosters = [20 => new ActivityRoster([], []), 21 => new ActivityRoster([], [])];
+check('an invited member is expected at an invite-only meeting', MemberRecord::fromActivities($member(4), '2026-10-01', [$open, $inv], $emptyRosters, 0, [])->expected(), 2);
+$invFuture = Activity::fromRow(['id' => 22, 'kind' => 'meeting', 'title' => 'Officers only', 'starts_at' => '2026-11-27 08:00', 'ends_at' => '2026-11-27 09:00',
+    'audience' => 'invited', 'invited' => [4], 'created_by' => 1]);
+$invCtx = new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [], subjects: [], slots: [], dues: [], activities: [22 => $invFuture],
+    cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
+$invNote = Announcement::fromInput('event', ['activity_id' => 22], $invCtx);
+$row = fn (int $id) => ['id' => $id, 'first_name' => 'M', 'last_name' => 'X', 'student_id' => 's', 'email' => 'x', 'role' => 'student', 'position' => null, 'status' => 'active'];
+check('an Event announcement for an invite-only activity reaches only the invited', [$invNote->notifies($row(4)), $invNote->notifies($row(5))], [true, false]);
+check('someone not invited is not counted absent', MemberRecord::fromActivities($member(5), '2026-10-01', [$open, $inv], $emptyRosters, 0, [])->expected(), 1);
 
 // ---------------------------------------------------------------------------
 section('Group planning');

@@ -125,7 +125,8 @@ router.php, .htaccess, .env.example, .gitignore
 - `Deadline` interface → `DatedDeadline` → `ExactDeadline`/`RangeDeadline`, plus `NoDeadline`
   (`opensAt()` / `attentionAt()`: an open date range counts as today on the schedule).
 - `Activity` (abstract) → `RsvpActivity` (abstract) → `Meeting` (everyone expected, anyone checked in),
-  `Seminar` (seat needed), `Outreach` (volunteers expected, walk-ins allowed); and `PartsActivity`
+  `Seminar` (seat needed), `Outreach` (volunteers expected, walk-ins allowed), `SectionEvent` (kind `event`:
+  open to everyone, anyone checked in, never counts against anyone); and `PartsActivity`
   (abstract, no attendance at all) → `Competition` (volunteer → officers pick) and `SectionProject`
   (parts with due dates; officers may assign directly; parts are marked done). Every activity has an
   optional `link` (http/https only, ≤ 500 chars, shown by host in a new tab with `rel="noopener noreferrer"`),
@@ -141,6 +142,15 @@ router.php, .htaccess, .env.example, .gitignore
   but only creates RSVP kinds. `ActivityRoster` = HashSets (going, checked-in)
   + `ApprovalQueue` waitlist. `MemberRecord` computes attendance from finished activities.
   Spec: docs/superpowers/specs/2026-11-20-competitions-and-projects-design.md.
+- **Cancelled activities:** hidden in the page unless *Show cancelled* (localStorage `acadsync.showCancelled`);
+  the GET leaves out cancelled ones that ended over 3 days ago (`HIDE_CANCELLED_AFTER`, count in `hidden_cancelled`);
+  `action=delete` (officers, cancelled only) removes the activity with its part_members, activity_parts,
+  activity_rsvps, attendance and activity_invites in one transaction.
+- **Date range:** the form has *Several days* → From/To (`date`, `end_date`); one day sends `end_date = date`.
+- **Who can join:** `activities.audience` (`everyone` | `invited`) + table `activity_invites`. `Activity` holds the
+  invite list in a HashSet; `isFor(user id)` is asked by RSVP, volunteer, pick/assign, check-in, Needs people,
+  `MemberRecord` (not invited = never expected) and `EventNotice::notifies()`. `create`/`edit` take
+  `audience` + `invited` (checked against the section members).
 - `UndoAction` (abstract) → `ToggleDoneAction`, `RejoinGroupAction`, `RequestAgainAction`; stored in
   the session and rebuilt into an `UndoStack`. `Env` is a final static settings class.
 
@@ -150,7 +160,7 @@ Array: `SubjectArray`, 2D `WeekGrid` (class-time clash check). Linked list: doub
 `TaskLinkedList` (timeline, prev/next task). HashSet: unique emails/IDs/codes, one group per task,
 unique group names per task, check-ins, one office per person, GCash refs used once, who paid a due,
 who is picked for a part, one "cancelled" notification per person, the month's activity days.
-Stack: queue "undo reject", student Undo. Queue: approval queue, join requests (`build_join_queue`,
+Stack: queue "undo reject" (Undo = pop the latest; See all → undo one with `UndoStack::removeWhere`, which pops the ones above onto a holding stack and pushes them back), student Undo. Queue: approval queue, join requests (`build_join_queue`,
 only the front can be decided), activity waitlist, volunteers for a part (`PartRoster`), auto-grouping.
 Tree: `SubjectTree` (DFS search),
 `ChecklistTree` (post-order rollup). Graph: `DependencyGraph` (edges tagged with group id; BFS

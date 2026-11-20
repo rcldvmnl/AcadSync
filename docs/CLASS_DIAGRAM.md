@@ -145,6 +145,9 @@ classDiagram
         +linkHost() string
         +signupClosesAt() int
         +signupOpen(now) bool
+        +isInviteOnly() bool
+        +isFor(userId) bool
+        +invitedIds() array
         +kind()* string
         +kindLabel()* string
         +expectsAttendanceFrom(hasSeat)* bool
@@ -180,6 +183,10 @@ classDiagram
         +expectsAttendanceFrom(hasSeat) bool
         +canCheckIn(hasSeat) bool
     }
+    class SectionEvent {
+        +expectsAttendanceFrom(hasSeat) bool
+        +canCheckIn(hasSeat) bool
+    }
     class Competition {
         +canAssignDirectly() bool
         +partsNeedDueDates() bool
@@ -193,6 +200,7 @@ classDiagram
     RsvpActivity <|-- Meeting
     RsvpActivity <|-- Seminar
     RsvpActivity <|-- Outreach
+    RsvpActivity <|-- SectionEvent
     PartsActivity <|-- Competition
     PartsActivity <|-- SectionProject
 
@@ -608,6 +616,7 @@ classDiagram
         +push(value) void
         +pop() mixed
         +peek() mixed
+        +removeWhere(match) mixed
     }
     class StackNode {
         +mixed value
@@ -684,7 +693,7 @@ classDiagram
 | Pillar | Where in the code | What it does in AcadSync |
 | --- | --- | --- |
 | **Encapsulation** | Private fields + getters in every domain class; `Activity` (title, times, a link that must be http(s), a sign-up deadline on or before the first day), `ActivityPart`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
-| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `RsvpActivity` → `Activity`; `Competition`/`SectionProject` → `PartsActivity` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the six notices → `Announcement`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
+| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach`/`SectionEvent` → `RsvpActivity` → `Activity`; `Competition`/`SectionProject` → `PartsActivity` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the six notices → `Announcement`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
 | **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()` / `joinsBy()` / `usesSeats()` / `canAssignDirectly()` / `partsNeedDueDates()` (competitions and projects never touch attendance); `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$rule->seats()` / `explain()` / `studentsOrganize()` (one class per way a prof sets up groups); `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()`; `$announcement->apply()` / `facts()` / `onRemove()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type`, the payment method or the announcement kind: each object answers for itself |
 | **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `RsvpActivity`, `PartsActivity`, `Task`, `GroupRule`, `DatedDeadline`, `UndoAction`, `Payment`, `Announcement` | Callers use what an object can do, not how it does it |
 

@@ -5,12 +5,14 @@
  *   ABSTRACTION   Activity is abstract: every activity has a title, a time (maybe over several days),
  *                 a venue, maybe a capacity, a link to the original post and a sign-up deadline;
  *                 WHO is expected, WHO may be checked in and HOW people join is left to each kind.
- *   INHERITANCE   Meeting, Seminar and Outreach extend RsvpActivity; Competition and SectionProject
+ *   INHERITANCE   Meeting, Seminar, Outreach and SectionEvent extend RsvpActivity; Competition and SectionProject
  *                 extend PartsActivity; both extend Activity.
  *   POLYMORPHISM  expectsAttendanceFrom() and canCheckIn() differ per kind:
  *                   Meeting      every member is expected; anyone can be checked in
  *                   Seminar      only people with a seat (RSVP'd) are expected and may check in
  *                   Outreach     volunteers who RSVP'd are expected; walk-in helpers may still check in
+ *                   SectionEvent open to everyone (a fair, a party, college week): anyone can be checked in,
+ *                                but nobody is marked absent
  *                   Competition  no attendance: volunteer for a part, officers pick
  *                   SectionProject no attendance: parts with people and due dates
  *                 joinsBy(), usesSeats(), canAssignDirectly(), partsNeedDueDates() too.
@@ -27,6 +29,9 @@ abstract class Activity
 {
     public const MAX_CAPACITY = 1000;
 
+    private ?HashSet $invited = null;   // [OOP: ENCAPSULATION] who may join (null = everyone)
+    private array $invitedIds = [];
+
     public function __construct(
         private int $id,
         private string $title,
@@ -40,6 +45,7 @@ abstract class Activity
         private ?string $link = null,            // the original post (http/https only)
         private ?string $signupDeadline = null,  // 'YYYY-MM-DD': volunteering closes at the end of that day
         private ?string $result = null,          // e.g. "2nd place in Cosplay", entered after it ends
+        ?array $invited = null,                  // null = everyone; otherwise the user ids the poster chose
     ) {
         $title = trim($title);
         if ($title === '' || strlen($title) > 120) {
@@ -76,6 +82,18 @@ abstract class Activity
             throw new InvalidArgumentException('Keep the result under 300 characters.');
         }
         $this->result = $result === '' ? null : $result;
+        if ($invited !== null) {
+            // [DSA: HASHSET] who may join, once each
+            $this->invited = new HashSet();
+            foreach ($invited as $id) {
+                if ((int) $id > 0 && $this->invited->add((string) (int) $id)) {
+                    $this->invitedIds[] = (int) $id;
+                }
+            }
+            if (!$this->invitedIds) {
+                throw new InvalidArgumentException('Pick at least one person to invite.');
+            }
+        }
     }
 
     /**
@@ -104,11 +122,13 @@ abstract class Activity
             (string) ($r['status'] ?? 'scheduled'), (int) ($r['created_by'] ?? 0),
             isset($r['link']) ? (string) $r['link'] : null,
             isset($r['signup_deadline']) ? (string) $r['signup_deadline'] : null,
-            isset($r['result']) ? (string) $r['result'] : null];
+            isset($r['result']) ? (string) $r['result'] : null,
+            ($r['audience'] ?? 'everyone') === 'invited' ? array_values((array) ($r['invited'] ?? [])) : null];
         return match ($r['kind'] ?? '') {
             'meeting' => new Meeting(...$args),
             'seminar' => new Seminar(...$args),
             'outreach' => new Outreach(...$args),
+            'event' => new SectionEvent(...$args),
             'competition' => new Competition(...$args),
             'project' => new SectionProject(...$args),
             default => throw new InvalidArgumentException('Pick a kind of activity.'),
@@ -119,7 +139,7 @@ abstract class Activity
     public static function kinds(): array
     {
         $out = [];
-        foreach (['meeting', 'seminar', 'outreach', 'competition', 'project'] as $kind) {
+        foreach (['meeting', 'seminar', 'outreach', 'event', 'competition', 'project'] as $kind) {
             $a = self::fromRow(['kind' => $kind, 'title' => $kind, 'starts_at' => '2000-01-01 08:00', 'ends_at' => '2000-01-01 09:00']);
             $out[] = ['kind' => $a->kind(), 'label' => $a->kindLabel(), 'rule' => $a->attendanceRule(), 'joins_by' => $a->joinsBy()];
         }
@@ -175,6 +195,24 @@ abstract class Activity
         }
         $host = strtolower((string) parse_url($this->link, PHP_URL_HOST));
         return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
+    }
+
+    /** Did the poster choose who may join? */
+    public function isInviteOnly(): bool
+    {
+        return $this->invited !== null;
+    }
+
+    /** May this person RSVP, volunteer and be expected? Everyone, unless the poster chose the people. */
+    public function isFor(int $userId): bool
+    {
+        return $this->invited === null || $this->invited->contains((string) $userId);
+    }
+
+    /** @return int[] the people invited (empty when it's for everyone) */
+    public function invitedIds(): array
+    {
+        return $this->invitedIds;
     }
 
     public function signupDeadline(): ?string
@@ -253,6 +291,7 @@ abstract class Activity
             'kind' => $this->kind(), 'title' => $this->title, 'description' => $this->description, 'venue' => $this->venue,
             'starts_at' => $this->startsAt, 'ends_at' => $this->endsAt, 'capacity' => $this->capacity, 'created_by' => $this->createdBy,
             'link' => $this->link, 'signup_deadline' => $this->signupDeadline, 'result' => $this->result,
+            'audience' => $this->invited === null ? 'everyone' : 'invited',
         ];
     }
 
@@ -263,6 +302,7 @@ abstract class Activity
             'start_ts' => $this->startTs(), 'end_ts' => $this->endTs(), 'is_over' => $this->isOver($now), 'cancelled' => $this->isCancelled(),
             'link_host' => $this->linkHost(), 'signup_open' => $this->signupOpen($now), 'signup_closes_at' => $this->signupClosesAt(),
             'joins_by' => $this->joinsBy(), 'uses_seats' => $this->usesSeats(),
+            'invite_only' => $this->isInviteOnly(), 'invited_count' => count($this->invitedIds),
             'multi_day' => $this->startDate() !== substr($this->endsAt, 0, 10),
         ];
     }
@@ -464,6 +504,35 @@ final class Outreach extends RsvpActivity
     public function attendanceRule(): string
     {
         return 'Volunteers RSVP. Walk-in helpers can still be checked in.';
+    }
+}
+
+/** A section event open to everyone: RSVP if you're coming (seats optional); it never lowers anyone's attendance. */
+final class SectionEvent extends RsvpActivity
+{
+    public function kind(): string
+    {
+        return 'event';
+    }
+
+    public function kindLabel(): string
+    {
+        return 'Event';
+    }
+
+    public function expectsAttendanceFrom(bool $hasSeat): bool
+    {
+        return false;                      // optional: coming counts, staying home doesn't
+    }
+
+    public function canCheckIn(bool $hasSeat): bool
+    {
+        return true;                       // walk-ins welcome
+    }
+
+    public function attendanceRule(): string
+    {
+        return 'Open to everyone. RSVP if you’re coming; it never counts against anyone.';
     }
 }
 

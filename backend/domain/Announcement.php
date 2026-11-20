@@ -748,7 +748,15 @@ final class EventNotice extends Announcement
     {
         $row = $a->toRow();
         return ['row' => $row, 'title' => $a->title(), 'kind_label' => $a->kindLabel(), 'venue' => $row['venue'] ?? '',
-            'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'capacity' => $a->capacity()];
+            'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'capacity' => $a->capacity(),
+            'invited' => $a->isInviteOnly() ? $a->invitedIds() : null];
+    }
+
+    /** An invite-only activity: only the people the poster chose are told. [ALGORITHM: LINEAR SEARCH] */
+    public function notifies(array $member): bool
+    {
+        $invited = $this->details['invited'] ?? null;
+        return !is_array($invited) || Algorithms::linearContains($invited, (int) $member['id']);
     }
 
     public function requiredPermission(): ?string

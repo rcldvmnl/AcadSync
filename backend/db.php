@@ -60,7 +60,7 @@ final class Store
             // officer positions (vice_president | secretary | treasurer) and member status (active | inactive | alumni)
             'memberships' => ['position' => 'TEXT', 'status' => "TEXT NOT NULL DEFAULT 'active'"],
             // competitions and section projects: the original post, when sign-ups close, the result
-            'activities' => ['link' => 'TEXT', 'signup_deadline' => 'TEXT', 'result' => 'TEXT'],
+            'activities' => ['link' => 'TEXT', 'signup_deadline' => 'TEXT', 'result' => 'TEXT', 'audience' => "TEXT NOT NULL DEFAULT 'everyone'"],
         ];
         foreach ($added as $table => $cols) {
             $have = [];
@@ -191,7 +191,7 @@ final class Store
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
             'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests', 'subtasks',
             'activities', 'activity_rsvps', 'attendance', 'officer_terms', 'join_requests', 'announcements', 'dues', 'payments', 'class_cancellations',
-            'activity_parts', 'part_members',
+            'activity_parts', 'part_members', 'activity_invites',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

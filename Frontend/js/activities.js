@@ -1,4 +1,4 @@
-// Activities: the organization's meetings, seminars, outreach, competitions and section projects.
+// Activities: the organization's meetings, seminars, outreach, events, competitions and section projects.
 //   RSVP takes a seat; when an activity is full you join its waitlist (a QUEUE on the server),
 //   and the first person waiting gets the next seat that opens.
 //   Competitions and section projects are made of parts: you volunteer for a part, officers pick
@@ -6,9 +6,14 @@
 //   Officers add, edit and cancel activities; the Secretary and the President take attendance.
 //   Each kind has its own rule (Meeting / Seminar / Outreach / Competition / SectionProject are classes on the server).
 
-const KIND_TINT = { meeting: 'bg-lavender-tint', seminar: 'bg-peach-tint', outreach: 'bg-mint-tint', competition: 'bg-mint-tint', project: 'bg-lavender-tint' };
+const KIND_TINT = { meeting: 'bg-lavender-tint', seminar: 'bg-peach-tint', outreach: 'bg-mint-tint', event: 'bg-sun-tint', competition: 'bg-mint-tint', project: 'bg-lavender-tint' };
 let data = null;
 let tab = location.hash === '#past' ? 'past' : 'upcoming';
+// Cancelled activities are hidden unless the viewer asks to see them (remembered in this browser only)
+let showCancelled = false;
+try { showCancelled = localStorage.getItem('acadsync.showCancelled') === '1'; } catch { /* private mode */ }
+const visible = (k) => data[k].filter((a) => showCancelled || !a.cancelled);
+const cancelledIn = (k) => data[k].filter((a) => a.cancelled).length;
 
 const hm = (d) => Fmt.time(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
 const isParts = (a) => a.joins_by === 'parts';
@@ -63,6 +68,7 @@ function scrollToActivity(id) {
   const a = findActivity(id);
   if (!a) return;
   const want = data.past.some((x) => x.id === id) ? 'past' : 'upcoming';
+  if (a.cancelled && !showCancelled) { showCancelled = true; render(); }   // a link to a cancelled one shows it
   if (tab !== want) { tab = want; render(); }
   const el = document.getElementById(`a${id}`);
   if (!el) return;
@@ -73,13 +79,15 @@ function scrollToActivity(id) {
 
 /* ------------------------------------------------------------------ page */
 function render() {
-  const list = data[tab];
+  const list = visible(tab);
+  const hidden = cancelledIn(tab);
   $('#main').innerHTML = `
     <div class="mb-5 flex flex-wrap items-center gap-2">
       <div class="flex gap-2" role="tablist" aria-label="Which activities">
         ${[['upcoming', 'Upcoming'], ['past', 'Past']].map(([k, l]) => `
-          <button type="button" role="tab" data-tab="${k}" aria-selected="${tab === k}" aria-pressed="${tab === k}" class="chip chip-filter">${l} <span class="opacity-70">${data[k].length}</span></button>`).join('')}
+          <button type="button" role="tab" data-tab="${k}" aria-selected="${tab === k}" aria-pressed="${tab === k}" class="chip chip-filter">${l} <span class="opacity-70">${visible(k).length}</span></button>`).join('')}
       </div>
+      ${hidden ? `<button type="button" id="toggle-cancelled" aria-pressed="${showCancelled}" class="chip chip-filter">${icon(showCancelled ? 'eyeOff' : 'eye', 14)}${showCancelled ? 'Hide cancelled' : `Show cancelled (${hidden})`}</button>` : ''}
       ${data.can_manage ? `<button type="button" id="new-activity" class="btn btn-dark ml-auto h-11 px-5 text-sm">${icon('plus', 18)}New activity</button>` : ''}
     </div>
     <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
@@ -131,12 +139,14 @@ function card(a) {
           <div class="flex flex-wrap items-center gap-1.5">
             ${UI.chip(a.kind_label, KIND_TINT[a.kind])}
             ${a.cancelled ? UI.chip('Cancelled', 'bg-danger-tint') : ''}
+            ${audienceChip(a)}
             ${a.venue ? `<span class="inline-flex items-center gap-1 text-xs text-muted">${icon('mapPin', 13)}${esc(a.venue)}</span>` : ''}
           </div>
           <h3 id="act-${a.id}-h" class="mt-1.5 text-lg font-semibold leading-snug">${esc(a.title)}</h3>
           <p class="text-sm text-muted">${esc(whenText(a))}</p>
           ${a.link ? `<div class="mt-2">${UI.linkChip(a.link, a.link_host)}</div>` : ''}
           ${a.description ? `<p class="mt-2 text-sm leading-relaxed">${esc(a.description)}</p>` : ''}
+          ${invitedLine(a)}
           ${resultBlock(a)}
           ${!a.cancelled ? `
             <div class="mt-3">
@@ -180,7 +190,7 @@ function partsCard(a) {
   const prog = a.progress;
   const pct = prog && prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
   const cantVolunteer = !a.cancelled && !a.is_over && a.signup_open && !a.me.can_volunteer
-    ? `<p class="mt-2 text-xs text-muted">${esc(data.my_status.label)} members can’t volunteer.</p>` : '';
+    ? `<p class="mt-2 text-xs text-muted">${a.invite_only && !a.me.invited ? 'Only the people the poster invited can volunteer.' : `${esc(data.my_status.label)} members can’t volunteer.`}</p>` : '';
   return `
     <article class="act-card ${a.cancelled ? 'is-cancelled' : ''}" id="a${a.id}" aria-labelledby="act-${a.id}-h">
       <div class="flex gap-4">
@@ -189,12 +199,14 @@ function partsCard(a) {
           <div class="flex flex-wrap items-center gap-1.5">
             ${UI.chip(a.kind_label, KIND_TINT[a.kind])}
             ${a.cancelled ? UI.chip('Cancelled', 'bg-danger-tint') : ''}
+            ${audienceChip(a)}
             ${signupLine(a)}
           </div>
           <h3 id="act-${a.id}-h" class="mt-1.5 text-lg font-semibold leading-snug">${esc(a.title)}</h3>
           <p class="text-sm text-muted">${esc(whenText(a))}${a.venue ? ` · ${esc(a.venue)}` : ''}</p>
           ${a.link ? `<div class="mt-2">${UI.linkChip(a.link, a.link_host)}</div>` : ''}
           ${a.description ? `<p class="mt-2 text-sm leading-relaxed">${esc(a.description)}</p>` : ''}
+          ${invitedLine(a)}
           ${resultBlock(a)}
           ${prog && !a.cancelled ? `
             <div class="mt-3">
@@ -213,6 +225,7 @@ function partsCard(a) {
           ${a.is_over ? `<button type="button" data-result="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('flag', 16)}${a.result ? 'Edit result' : 'Add result'}</button>` : ''}
           ${!a.is_over ? `<button type="button" data-cancel-activity="${a.id}" class="ml-auto h-10 px-2 text-sm font-semibold text-muted hover:text-charcoal">Cancel activity</button>` : ''}
         </div>` : ''}
+      ${a.cancelled ? `<div class="mt-3 flex">${removeButton(a)}</div>` : ''}
     </article>`;
 }
 
@@ -277,14 +290,18 @@ function myAction(a) {
     return `<span class="chip bg-sun-tint">${icon('clock', 13)}Waitlist · #${me.waitlist_position}</span>
       <button type="button" data-cancel-rsvp="${a.id}" class="btn btn-canvas h-10 px-4 text-sm">Leave waitlist</button>`;
   }
-  if (!me.can_rsvp) return `<span class="text-sm text-muted">${esc(data.my_status.label)} members can’t RSVP</span>`;
+  if (!me.can_rsvp) {
+    return a.invite_only && !me.invited
+      ? '<span class="text-sm text-muted">Only for the people the poster invited</span>'
+      : `<span class="text-sm text-muted">${esc(data.my_status.label)} members can’t RSVP</span>`;
+  }
   return a.full
     ? `<button type="button" data-rsvp="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">Join the waitlist</button>`
     : `<button type="button" data-rsvp="${a.id}" class="btn btn-dark h-10 px-4 text-sm">I’m going</button>`;
 }
 
 function officerActions(a) {
-  if (a.cancelled) return '';
+  if (a.cancelled) return removeButton(a);
   const parts = [];
   if (data.can_record || data.can_manage) {
     parts.push(`<button type="button" data-attendance="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm">${icon('clipboard', 16)}Attendance${a.checked_in ? ` · ${a.checked_in}` : ''}</button>`);
@@ -428,6 +445,20 @@ function bind() {
     });
   });
   $$('[data-edit-activity]').forEach((b) => b.onclick = () => openEdit(findActivity(Number(b.dataset.editActivity))));
+  $('#toggle-cancelled')?.addEventListener('click', () => {
+    showCancelled = !showCancelled;
+    try { localStorage.setItem('acadsync.showCancelled', showCancelled ? '1' : '0'); } catch { /* private mode */ }
+    render();
+  });
+  $$('[data-remove-activity]').forEach((b) => b.onclick = () => {
+    const a = findActivity(Number(b.dataset.removeActivity));
+    UI.sheet(`<h2 class="text-2xl font-bold">Remove “${esc(a.title)}” for good?</h2>
+      <p class="mt-2 text-sm text-muted">It was cancelled. Removing it also deletes its RSVPs${isParts(a) ? ', parts and who volunteered' : ''} and invites. This can’t be undone.</p>
+      <div class="mt-6 grid grid-cols-2 gap-3"><button data-close class="btn btn-canvas">Keep it</button><button data-ok class="btn btn-dark">Remove</button></div>`, {
+      label: 'Remove activity',
+      onMount: (el, close) => { $('[data-ok]', el).onclick = () => { close(); post({ action: 'delete', id: a.id }, 'Activity removed', b); }; },
+    });
+  });
   $$('[data-result]').forEach((b) => b.onclick = () => openResult(findActivity(Number(b.dataset.result))));
   $$('[data-add-part]').forEach((b) => b.onclick = () => openPartForm(findActivity(Number(b.dataset.addPart)), null));
   $$('[data-volunteer]').forEach((b) => b.onclick = () => openVolunteer(Number(b.dataset.volunteer)));
@@ -535,7 +566,7 @@ function openManage(partId) {
         <div class="mt-2 flex flex-wrap gap-2">
           <span class="field h-11 min-w-0 flex-1"><select data-assign-who class="w-full bg-transparent text-sm outline-none" aria-label="Who to assign">
             <option value="">Pick a member</option>
-            ${data.people.filter((m) => !onIt.has(m.id)).map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}
+            ${data.people.filter((m) => !onIt.has(m.id) && (!a.invite_only || (a.invited || []).some((x) => x.id === m.id))).map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('')}
           </select></span>
           <button type="button" data-assign ${p.full ? 'disabled' : ''} class="btn btn-dark h-11 px-4 text-sm ${p.full ? 'opacity-40' : ''}">Assign</button>
         </div>` : ''}
@@ -639,16 +670,14 @@ function openCreate(startKind = 'meeting') {
       <div class="mt-4 space-y-4">
         ${UI.field({ name: 'title', label: 'Title', placeholder: 'e.g. General Assembly', required: true, iconName: 'flag' })}
         <div class="grid grid-cols-2 gap-2">
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Date</span>
-            <span class="field"><input type="date" name="date" min="${today}" value="${today}" required></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Last day (optional)</span>
-            <span class="field"><input type="date" name="end_date" min="${today}"></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Starts</span>
+          ${dateRangeFields(today, '', today)}
+          <label class="block"><span class="mb-1.5 block text-xs text-muted" data-start-label>Starts</span>
             <span class="field"><input type="time" name="start" value="15:00" required></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Ends</span>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted" data-end-label>Ends</span>
             <span class="field"><input type="time" name="end" value="16:00" required></span></label>
         </div>
         ${UI.field({ name: 'venue', label: 'Venue (optional)', placeholder: 'e.g. Room 204', iconName: 'mapPin' })}
+        ${whoField()}
         <label class="block" data-seats><span class="mb-1.5 block text-xs text-muted">Seats (leave empty for no limit)</span>
           <span class="field">${icon('users', 18)}<input type="number" name="capacity" min="1" max="1000" inputmode="numeric" placeholder="No limit"></span></label>
         ${UI.field({ name: 'link', label: 'Link to the post (optional)', type: 'url', placeholder: 'https://…', iconName: 'globe' })}
@@ -709,11 +738,13 @@ function openCreate(startKind = 'meeting') {
         }
       };
       $$('[data-kind]', el).forEach((b) => b.onclick = () => { kind = b.dataset.kind; showRule(); });
+      const who = bindWho(el);
+      bindRange(el);
       $('[data-add-row]', el).onclick = addRow;
       showRule();
       UI.bindForm($('form', el), async (f) => {
         const k = data.kinds.find((x) => x.kind === kind);
-        const body = { action: 'create', kind, ...f, capacity: f.capacity || null };
+        const body = { action: 'create', kind, ...f, capacity: f.capacity || null, ...who() };
         if (k.joins_by === 'parts') {
           body.capacity = null;
           body.parts = [...partsList.children].map(readPart).map((p) => (kind === 'project' ? p : { ...p, due_date: null }));
@@ -743,13 +774,10 @@ function openEdit(a) {
       <div class="mt-4 space-y-4">
         ${UI.field({ name: 'title', label: 'Title', value: a.title, required: true, iconName: 'flag' })}
         <div class="grid grid-cols-2 gap-2">
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Date</span>
-            <span class="field"><input type="date" name="date" min="${Fmt.iso(new Date()) < Fmt.iso(s) ? Fmt.iso(new Date()) : Fmt.iso(s)}" value="${Fmt.iso(s)}" required></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Last day</span>
-            <span class="field"><input type="date" name="end_date" value="${Fmt.iso(e)}"></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Starts</span>
+          ${dateRangeFields(Fmt.iso(s), Fmt.iso(e), Fmt.iso(new Date()) < Fmt.iso(s) ? Fmt.iso(new Date()) : Fmt.iso(s))}
+          <label class="block"><span class="mb-1.5 block text-xs text-muted" data-start-label>Starts</span>
             <span class="field"><input type="time" name="start" value="${two(s.getHours())}:${two(s.getMinutes())}" required></span></label>
-          <label class="block"><span class="mb-1.5 block text-xs text-muted">Ends</span>
+          <label class="block"><span class="mb-1.5 block text-xs text-muted" data-end-label>Ends</span>
             <span class="field"><input type="time" name="end" value="${two(e.getHours())}:${two(e.getMinutes())}" required></span></label>
         </div>
         ${UI.field({ name: 'venue', label: 'Venue (optional)', value: a.venue || '', iconName: 'mapPin' })}
@@ -758,19 +786,101 @@ function openEdit(a) {
           <span class="field"><input type="date" name="signup_deadline" value="${esc(a.signup_deadline || '')}"></span></label>` : ''}
         <label class="block"><span class="mb-1.5 block text-xs text-muted">Details (optional)</span>
           <span class="field area"><textarea name="description" rows="3" maxlength="2000">${esc(a.description || '')}</textarea></span></label>
+        ${whoField(a.invite_only, (a.invited || []).map((x) => x.id))}
       </div>
       <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
       <button type="submit" class="btn btn-dark mt-5 w-full">Save</button>
     </form>`, {
     label: 'Edit activity',
-    onMount: (el, close) => UI.bindForm($('form', el), async (f) => {
-      // Send the last day only when it was changed; otherwise the server keeps the same number of days
-      if (f.end_date === Fmt.iso(e)) delete f.end_date;
+    onMount: (el, close) => { const who = bindWho(el); const range = bindRange(el); UI.bindForm($('form', el), async (f) => {
+      // One day: the last day is the first day. A range: To already moved with From (bindRange).
+      if (!range.multi()) f.end_date = f.date;
+      Object.assign(f, who());
       await API.post('activities.php', { action: 'edit', id: a.id, ...f });
       close();
       UI.toast('Activity saved');
       await load();
-    }),
+    }); },
+  });
+}
+
+/* ------------------------------------------------------------------ who can join */
+/** "Invite only" on the card; "You're invited" when the poster chose me. */
+function audienceChip(a) {
+  if (!a.invite_only) return '';
+  return a.me.invited
+    ? `<span class="chip bg-mint-tint text-success">${icon('check', 13)}You’re invited</span>`
+    : `<span class="chip border border-line bg-white">${icon('lock', 13)}Invite only</span>`;
+}
+
+/** Officers: who the poster chose ("Invited: Ana Bautista, Marco Cruz +3"). */
+function invitedLine(a) {
+  if (!a.invite_only || !a.invited) return '';
+  const names = a.invited.map((x) => x.name);
+  const shown = names.slice(0, 4).join(', ') + (names.length > 4 ? ` +${names.length - 4}` : '');
+  return `<p class="mt-2 text-xs"><span class="text-muted">Invited (${names.length}):</span> ${esc(shown)}</p>`;
+}
+
+/** "Who can join": everyone, or only the members the poster picks from a searchable list. */
+function whoField(inviteOnly = false, chosen = []) {
+  const picked = new Set(chosen);
+  return `
+    <fieldset data-who>
+      <legend class="mb-1.5 block text-xs text-muted">Who can join</legend>
+      <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Who can join">
+        <button type="button" role="radio" data-aud="everyone" aria-checked="${!inviteOnly}" class="act-kind bg-canvas">${icon('users', 16, 'inline -mt-0.5 mr-1')}Everyone</button>
+        <button type="button" role="radio" data-aud="invited" aria-checked="${inviteOnly}" class="act-kind bg-canvas">${icon('user', 16, 'inline -mt-0.5 mr-1')}People I choose</button>
+      </div>
+      <div data-picker class="mt-2 rounded-2xl border border-line p-3" ${inviteOnly ? '' : 'hidden'}>
+        <div class="flex items-center gap-2">
+          <span class="field h-10 min-w-0 flex-1">${icon('search', 16)}<input data-who-search type="search" placeholder="Find a classmate" aria-label="Find a classmate" autocomplete="off"></span>
+          <button type="button" data-who-all class="h-10 shrink-0 rounded-full px-3 text-sm font-semibold hover:bg-canvas">Select all</button>
+        </div>
+        <p data-who-count class="mt-2 text-xs text-muted" aria-live="polite"></p>
+        <ul class="mt-1 max-h-56 space-y-0.5 overflow-y-auto" aria-label="Members to invite">
+          ${data.people.map((m) => `
+            <li data-who-row="${esc(m.name.toLowerCase())}">
+              <label class="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-canvas">
+                <input type="checkbox" data-who-id="${m.id}" class="h-5 w-5 accent-charcoal" ${picked.has(m.id) ? 'checked' : ''}>
+                ${UI.avatar(m.name, 'bg-lavender-tint', 'h-8 w-8 text-xs')}
+                <span class="min-w-0 flex-1 truncate text-sm">${esc(m.name)}</span>
+              </label>
+            </li>`).join('')}
+        </ul>
+        <p class="mt-2 text-xs text-muted">Only the people you choose are notified, can RSVP or volunteer, and count for attendance.</p>
+      </div>
+    </fieldset>`;
+}
+
+/** Wires a whoField inside el; returns a function that reads {audience, invited}. */
+function bindWho(el) {
+  const box = $('[data-who]', el);
+  let audience = $('[data-aud="invited"]', box).getAttribute('aria-checked') === 'true' ? 'invited' : 'everyone';
+  const boxes = () => $$('[data-who-id]', box);
+  const count = () => {
+    const n = boxes().filter((c) => c.checked).length;
+    $('[data-who-count]', box).textContent = n ? `${plural(n, 'person', 'people')} chosen` : 'Nobody chosen yet';
+  };
+  $$('[data-aud]', box).forEach((b) => b.onclick = () => {
+    audience = b.dataset.aud;
+    $$('[data-aud]', box).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    $('[data-picker]', box).hidden = audience !== 'invited';
+  });
+  $('[data-who-search]', box).oninput = (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    $$('[data-who-row]', box).forEach((li) => { li.hidden = !!q && !li.dataset.whoRow.includes(q); });
+  };
+  $('[data-who-all]', box).onclick = () => {
+    const visible = boxes().filter((c) => !c.closest('li').hidden);
+    const all = visible.every((c) => c.checked);
+    visible.forEach((c) => { c.checked = !all; });
+    count();
+  };
+  boxes().forEach((c) => c.onchange = count);
+  count();
+  return () => ({
+    audience,
+    invited: audience === 'invited' ? boxes().filter((c) => c.checked).map((c) => Number(c.dataset.whoId)) : [],
   });
 }
 
@@ -861,4 +971,63 @@ async function openAttendance(id) {
   // Refresh the list behind the sheet once it closes
   new MutationObserver((_, obs) => { if (!document.body.contains(sheet.el)) { obs.disconnect(); load(); } })
     .observe(document.body, { childList: true });
+}
+
+/** Officers: a cancelled activity can be removed for good. */
+function removeButton(a) {
+  if (!data.can_manage) return '';
+  return `<span class="act-officer"><button type="button" data-remove-activity="${a.id}" class="btn btn-light h-10 border border-line px-4 text-sm text-danger">${icon('x', 16)}Remove</button></span>`;
+}
+
+/* ------------------------------------------------------------------ date range */
+/**
+ * The date of an activity: one day, or (ticking "Several days") a range From – To.
+ * The start time is on the first day and the end time on the last day.
+ */
+function dateRangeFields(from, to, min) {
+  const multi = !!to && to !== from;
+  return `
+    <div class="col-span-2 space-y-2" data-range>
+      <label class="flex w-fit cursor-pointer items-center gap-2 text-sm"><input type="checkbox" data-multi class="h-5 w-5 accent-charcoal" ${multi ? 'checked' : ''}> Several days (a date range)</label>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="block ${multi ? '' : 'col-span-2'}" data-from-wrap><span class="mb-1.5 block text-xs text-muted" data-from-label>${multi ? 'From' : 'Date'}</span>
+          <span class="field"><input type="date" name="date" min="${min}" value="${from}" required></span></label>
+        <label class="block" data-to-wrap ${multi ? '' : 'hidden'}><span class="mb-1.5 block text-xs text-muted">To</span>
+          <span class="field"><input type="date" name="end_date" min="${from}" value="${multi ? to : ''}" ${multi ? '' : 'disabled'}></span></label>
+      </div>
+      <p class="text-xs text-muted" data-range-hint ${multi ? '' : 'hidden'}>It starts on the first day at the start time and ends on the last day at the end time.</p>
+    </div>`;
+}
+
+/** Wires dateRangeFields inside el. To never goes before From; moving From moves To by the same number of days. */
+function bindRange(el) {
+  const box = $('[data-range]', el);
+  const check = $('[data-multi]', box);
+  const from = $('[name="date"]', box);
+  const to = $('[name="end_date"]', box);
+  const addDays = (iso, n) => { const d = Fmt.date(iso); d.setDate(d.getDate() + n); return Fmt.iso(d); };
+  const days = (a, b) => Math.round((Fmt.date(b) - Fmt.date(a)) / 86400e3);
+  let lastFrom = from.value;
+  const sync = () => {
+    const multi = check.checked;
+    $('[data-to-wrap]', box).hidden = !multi;
+    $('[data-from-wrap]', box).classList.toggle('col-span-2', !multi);
+    $('[data-from-label]', box).textContent = multi ? 'From' : 'Date';
+    $('[data-range-hint]', box).hidden = !multi;
+    to.disabled = !multi;
+    $('[data-start-label]', el).textContent = multi ? 'Starts (first day)' : 'Starts';
+    $('[data-end-label]', el).textContent = multi ? 'Ends (last day)' : 'Ends';
+    to.min = from.value;
+    if (multi && (!to.value || to.value <= from.value)) to.value = addDays(from.value, 1);
+  };
+  check.onchange = sync;
+  from.onchange = () => {
+    if (check.checked && to.value && lastFrom) to.value = addDays(to.value, days(lastFrom, from.value));   // keep the length
+    if (to.value && to.value < from.value) to.value = from.value;
+    lastFrom = from.value;
+    to.min = from.value;
+  };
+  to.onchange = () => { if (to.value && to.value < from.value) to.value = from.value; };
+  sync();
+  return { multi: () => check.checked };
 }

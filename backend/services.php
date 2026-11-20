@@ -171,6 +171,16 @@ function build_undo_stack(int $sectionId, array $taskIndex): UndoStack
     return $stack;
 }
 
+/** The undo stack for the queue screen: its size, the top (latest rejection) and every item, top first. */
+function present_undo(UndoStack $stack, array $ctx): array
+{
+    $items = [];
+    foreach ($stack->toArray() as $i => $t) {
+        $items[] = present_task($t, $ctx['subjectIndex'], $ctx['users']) + ['stack_position' => $i + 1];
+    }
+    return ['size' => $stack->size(), 'top' => $items[0] ?? null, 'items' => $items];
+}
+
 /**
  * [DSA: TREE] — hierarchical data: Section (root) -> Subjects -> active Tasks.
  */
@@ -304,12 +314,16 @@ function undo_pop(int $sectionId): ?UndoAction
 
 /* ------------------------------------------------------------------ activities and member records */
 
-/** The section's activities as Activity objects (Meeting / Seminar / Outreach), by id. */
+/** The section's activities as Activity objects (every kind), by id, with who was invited to invite-only ones. */
 function load_activities(int $sectionId): array
 {
+    $invited = [];
+    foreach (section_rows('activity_invites', $sectionId) as $i) {
+        $invited[(int) $i['activity_id']][] = (int) $i['user_id'];
+    }
     $out = [];
     foreach (section_rows('activities', $sectionId) as $r) {
-        $out[(int) $r['id']] = Activity::fromRow($r);
+        $out[(int) $r['id']] = Activity::fromRow($r + ['invited' => $invited[(int) $r['id']] ?? []]);
     }
     return $out;
 }
@@ -813,7 +827,8 @@ function validate_deadline(array $in, string $today): array
 /**
  * Builds a new activity from form input (used by Activities and by the "Event" announcement).
  * $in: kind, title, description, venue, date (Y-m-d), end_date (Y-m-d, optional: several days),
- * start, end (HH:MM), capacity ('' = no limit), link, signup_deadline (Y-m-d).
+ * start, end (HH:MM), capacity ('' = no limit), link, signup_deadline (Y-m-d),
+ * audience ('everyone' | 'invited') and invited (user ids; the caller checks they are in the section).
  * Throws InvalidArgumentException; [OOP: ENCAPSULATION] the Activity constructor checks the rest.
  */
 function validate_new_activity(array $in, int $createdBy, int $now): Activity
@@ -840,6 +855,9 @@ function validate_new_activity(array $in, int $createdBy, int $now): Activity
         'capacity' => $capacity === null || $capacity === '' ? null : (int) $capacity, 'created_by' => $createdBy,
         'link' => isset($in['link']) ? (string) $in['link'] : null,
         'signup_deadline' => isset($in['signup_deadline']) ? (string) $in['signup_deadline'] : null,
+        // who can join: 'everyone' (default) or 'invited' with the user ids the poster chose
+        'audience' => ($in['audience'] ?? 'everyone') === 'invited' ? 'invited' : 'everyone',
+        'invited' => is_array($in['invited'] ?? null) ? $in['invited'] : [],
     ]);
 }
 

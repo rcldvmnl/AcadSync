@@ -8,9 +8,10 @@
  * GET  /api/activities.php?mine=1              -> only my_signups (for Home)
  * GET  /api/activities.php?id=5&roster=1       -> the attendance sheet (officers who take attendance)
  * POST action=create      {kind, title, date, end_date?, start, end, venue?, capacity?, description?,
- *                          link?, signup_deadline?, parts?: [{name, details?, spots?, together?, roles?, due_date?}]}  officers
+ *                          audience?: everyone|invited, invited?: [user ids], link?, signup_deadline?, parts?: [{name, details?, spots?, together?, roles?, due_date?}]}  officers
  *      action=edit        {id, title?, description?, venue?, date?, end_date?, start?, end?, link?, signup_deadline?}  officers
  *      action=cancel      {id}                                                               officers
+ *      action=delete      {id}            only a cancelled one: removes it with its RSVPs, parts, invites  officers
  *      action=set_result  {id, part_id?, result}               after the activity ends     officers
  *      action=add_part    {id, name, details?, spots?, together?, roles?, due_date?}         officers
  *      action=edit_part   {part_id, …same fields}             never below the people picked officers
@@ -46,6 +47,7 @@ $sectionId = (int) $ctx['section']['id'];
 $uid = $me->id();
 $now = time();
 const CHECK_IN_EARLY = 3600;     // attendance opens 1 hour before the start
+const HIDE_CANCELLED_AFTER = 3 * 86400;   // a cancelled activity stops showing 3 days after it would have ended
 
 $activities = load_activities($sectionId);
 $rosters = activity_rosters($sectionId);
@@ -80,6 +82,46 @@ $findPart = function () use ($parts, $activities, $partRosters): array {
         }
     }
     fail('Part not found.', 404);
+};
+
+/**
+ * The 'invited' list from input, checked against this section's members ([DSA: HASHSET]); fails on anyone else.
+ * Returns null when the input doesn't say who can join, [] for everyone.
+ */
+$invitedInput = function (array $in) use ($ctx): ?array {
+    if (!array_key_exists('audience', $in)) {
+        return null;
+    }
+    if (($in['audience'] ?? 'everyone') !== 'invited') {
+        return [];
+    }
+    $members = new HashSet();
+    foreach ($ctx['members'] as $m) {
+        $members->add((string) (int) $m['id']);
+    }
+    $ids = [];
+    foreach ((array) ($in['invited'] ?? []) as $id) {
+        if (!$members->contains((string) (int) $id)) {
+            fail('Pick people from this section.');
+        }
+        $ids[] = (int) $id;
+    }
+    return $ids;
+};
+
+/** Replaces an activity's invite rows with $ids (inside the caller's transaction). */
+$saveInvites = function (int $activityId, array $ids) use ($sectionId): void {
+    foreach (section_rows('activity_invites', $sectionId) as $row) {
+        if ((int) $row['activity_id'] === $activityId) {
+            Store::delete('activity_invites', (int) $row['id']);
+        }
+    }
+    $seen = new HashSet();                               // [DSA: HASHSET] once each
+    foreach ($ids as $id) {
+        if ($seen->add((string) $id)) {
+            Store::insert('activity_invites', ['section_id' => $sectionId, 'activity_id' => $activityId, 'user_id' => $id]);
+        }
+    }
 };
 
 /** A person in this section (by user_id), or a 404. */
@@ -156,7 +198,7 @@ $presentPart = function (ActivityPart $p) use ($partRosters, $uid, $canManage, $
 };
 
 /** One activity for the list, with seats, the waitlist and this person's own state (or its parts). */
-$present = function (Activity $a) use ($rosters, $uid, $now, $me, $parts, $presentPart, $nameOf): array {
+$present = function (Activity $a) use ($rosters, $uid, $now, $me, $parts, $presentPart, $nameOf, $canManage): array {
     $r = $rosters[$a->id()];
     $row = $a->toArray($now) + [
         'going' => $r->goingCount(), 'waitlist' => $r->waitlistSize(), 'checked_in' => $r->checkedInCount(),
@@ -164,10 +206,17 @@ $present = function (Activity $a) use ($rosters, $uid, $now, $me, $parts, $prese
         'me' => [
             'going' => $r->isGoing($uid), 'waitlist_position' => $r->waitlistPosition($uid), 'checked_in' => $r->isCheckedIn($uid),
             // [OOP: POLYMORPHISM] only the RSVP kinds take RSVPs
-            'can_rsvp' => $a->usesSeats() && $me->status()->canRsvp() && !$a->isCancelled() && !$a->isOver($now),
-            'can_volunteer' => !$a->usesSeats() && $me->status()->canRsvp() && $a->signupOpen($now) && !$a->isOver($now),
+            'can_rsvp' => $a->usesSeats() && $a->isFor($uid) && $me->status()->canRsvp() && !$a->isCancelled() && !$a->isOver($now),
+            'can_volunteer' => !$a->usesSeats() && $a->isFor($uid) && $me->status()->canRsvp() && $a->signupOpen($now) && !$a->isOver($now),
+            'invited' => $a->isInviteOnly() && $a->isFor($uid),        // the poster chose me
         ],
     ];
+    if ($a->isInviteOnly() && $canManage) {               // officers see who was chosen
+        $row['invited'] = [];
+        foreach ($a->invitedIds() as $id) {
+            $row['invited'][] = ['id' => $id, 'name' => $nameOf($id)];
+        }
+    }
     if ($a->joinsBy() === 'parts') {
         $row['parts'] = [];
         $done = 0;
@@ -226,6 +275,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // [ALGORITHM: SELECTION SORT] — the sheet lists members A–Z
         foreach (Algorithms::selectionSortByLastName($ctx['members']) as $m) {
             $id = (int) $m['id'];
+            if (!$a->isFor($id)) {                         // invite-only: the sheet lists the people chosen
+                continue;
+            }
             $p = Person::fromRow($m);
             $people[] = [
                 'id' => $id, 'name' => $p->fullName(), 'student_id' => $p->studentId(), 'role_label' => $p->roleLabel(),
@@ -244,7 +296,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Upcoming (soonest first) and past (latest first), both put in order with Merge Sort
     $upcoming = [];
     $past = [];
+    $hiddenCancelled = 0;
     foreach ($activities as $a) {
+        // Auto-hide: a cancelled activity leaves the lists a few days after its date (nothing is deleted)
+        if ($a->isCancelled() && $a->endTs() < $now - HIDE_CANCELLED_AFTER) {
+            $hiddenCancelled++;
+            continue;
+        }
         $row = $present($a);
         if ($a->isOver($now)) {
             $past[] = $row;
@@ -266,7 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Needs people: parts with open spots on activities still taking sign-ups, soonest deadline first
     $needs = [];
     foreach ($activities as $a) {
-        if ($a->joinsBy() !== 'parts' || !$a->signupOpen($now) || $a->isOver($now)) {
+        if ($a->joinsBy() !== 'parts' || !$a->isFor($uid) || !$a->signupOpen($now) || $a->isOver($now)) {
             continue;
         }
         foreach ($parts[$a->id()] ?? [] as $p) {
@@ -347,7 +405,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'my_status' => $me->status()->toArray(), 'me_id' => $uid,
         'needs_people' => $needs, 'my_signups' => $mySignups(),
         'month' => ['first' => $first, 'days' => $dayList, 'first_activity' => $firstOn, 'today' => $today],
-        'latest_results' => $latest, 'people' => $people,
+        'latest_results' => $latest, 'people' => $people, 'hidden_cancelled' => $hiddenCancelled,
     ]);
 }
 
@@ -364,6 +422,7 @@ switch (param('action')) {
             // [OOP: ENCAPSULATION] the Activity constructor rejects anything invalid (shared helper:
             // announcements' "Event" builds new activities the same way)
             $in = input();
+            $in['invited'] = $invitedInput($in) ?? [];      // only people from this section
             $activity = validate_new_activity($in, $uid, $now);
             if (!$activity->usesSeats()) {                  // [OOP: POLYMORPHISM] parts kinds have no seats
                 $activity = validate_new_activity(['capacity' => null] + $in, $uid, $now);
@@ -389,12 +448,23 @@ switch (param('action')) {
         foreach ($newParts as $p) {
             Store::insert('activity_parts', ['activity_id' => $id] + $p->toRow() + ['section_id' => $sectionId]);
         }
+        if ($activity->isInviteOnly()) {
+            $saveInvites($id, $activity->invitedIds());
+        }
         Store::commit();
         $message = $activity->joinsBy() === 'parts'
             ? "New {$activity->kindLabel()}: “{$activity->title()}” · " . ($activity->signupDeadline() !== null
                 ? 'sign up by ' . date('D, M j', $activity->signupClosesAt()) : 'starts ' . date('D, M j', $activity->startTs()))
             : "New {$activity->kindLabel()}: “{$activity->title()}” on " . date('D, M j · g:i A', $activity->startTs());
-        notify_section($sectionId, $uid, 'schedule', $message, "activities.html#a$id");
+        if ($activity->isInviteOnly()) {                   // only the people the poster chose are told
+            foreach ($activity->invitedIds() as $who) {
+                if ($who !== $uid) {
+                    notify($who, $sectionId, 'schedule', $message . ' · you’re invited', "activities.html#a$id");
+                }
+            }
+        } else {
+            notify_section($sectionId, $uid, 'schedule', $message, "activities.html#a$id");
+        }
         respond(['id' => $id], 201);
     }
 
@@ -438,6 +508,12 @@ switch (param('action')) {
         }
         $row['starts_at'] = "$date $start";
         $row['ends_at'] = "$endDate $end";
+        $row['invited'] = $a->invitedIds();
+        $newInvites = $invitedInput($in);                  // null = who can join stays as it was
+        if ($newInvites !== null) {
+            $row['audience'] = $in['audience'] === 'invited' ? 'invited' : 'everyone';
+            $row['invited'] = $newInvites;
+        }
         try {
             // [OOP: ENCAPSULATION] rebuilt through the constructor, so an edit can't make it invalid
             $edited = Activity::fromRow($row + ['id' => $a->id(), 'status' => 'scheduled']);
@@ -449,7 +525,19 @@ switch (param('action')) {
         }
         $cols = $edited->toRow();
         unset($cols['kind'], $cols['created_by'], $cols['result']);
+        Store::begin();
         Store::update('activities', $a->id(), $cols);
+        if ($newInvites !== null) {
+            $saveInvites($a->id(), $edited->invitedIds());
+        }
+        Store::commit();
+        if ($edited->isInviteOnly()) {                     // tell the people who are newly invited
+            foreach ($edited->invitedIds() as $who) {
+                if ($who !== $uid && !($a->isInviteOnly() && $a->isFor($who))) {
+                    notify($who, $sectionId, 'schedule', "You’re invited to “{$edited->title()}”", "activities.html#a{$a->id()}");
+                }
+            }
+        }
         respond(['id' => $a->id()]);
     }
 
@@ -562,6 +650,9 @@ switch (param('action')) {
     case 'volunteer': {
         [$p, $a, $r] = $findPart();
         // [OOP: POLYMORPHISM] the member's status decides; PartRoster knows who is already on it
+        if (!$a->isFor($uid)) {
+            fail('This activity is only for the people the poster invited.', 403);
+        }
         if (($why = $r->whyCantVolunteer($a, $uid, $me->status()->canRsvp(), $now)) !== null) {
             fail($why, 409);
         }
@@ -608,6 +699,9 @@ switch (param('action')) {
         }
         $member = $findMember();
         $who = (int) $member['id'];
+        if (!$a->isFor($who)) {
+            fail('Pick someone who was invited.', 409);
+        }
         if (!Person::fromRow($member)->status()->canRsvp()) {
             fail('Alumni members can’t be on a part.', 409);
         }
@@ -729,11 +823,49 @@ switch (param('action')) {
         respond();
     }
 
+    case 'delete': {
+        // Remove a CANCELLED activity for good, with everything that hangs off it (foreign keys are on,
+        // so the rows that point at it go first). Announcements that pointed at it then read "No longer available".
+        if (!$canManage) {
+            fail('Only officers can remove activities.', 403);
+        }
+        $a = $find();
+        if (!$a->isCancelled()) {
+            fail('Cancel the activity first, then remove it.', 409);
+        }
+        $id = $a->id();
+        $partIds = new HashSet();                           // [DSA: HASHSET] this activity's parts
+        foreach (section_rows('activity_parts', $sectionId) as $p) {
+            if ((int) $p['activity_id'] === $id) {
+                $partIds->add((string) (int) $p['id']);
+            }
+        }
+        Store::begin();
+        foreach (section_rows('part_members', $sectionId) as $m) {
+            if ($partIds->contains((string) (int) $m['part_id'])) {
+                Store::delete('part_members', (int) $m['id']);
+            }
+        }
+        foreach (['activity_parts', 'activity_rsvps', 'attendance', 'activity_invites'] as $table) {
+            foreach (section_rows($table, $sectionId) as $row) {
+                if ((int) $row['activity_id'] === $id) {
+                    Store::delete($table, (int) $row['id']);
+                }
+            }
+        }
+        Store::delete('activities', $id);
+        Store::commit();
+        respond(['removed' => $id]);
+    }
+
     case 'rsvp': {
         $a = $find();
         $r = $rosters[$a->id()];
         if (!$a->usesSeats()) {                             // [OOP: POLYMORPHISM] competitions and projects
             fail('Volunteer for a part instead.', 409);
+        }
+        if (!$a->isFor($uid)) {                     // invite-only: the poster chose who may join
+            fail('This activity is only for the people the poster invited.', 403);
         }
         if (!$me->status()->canRsvp()) {            // [POLYMORPHISM] the member's status decides
             fail('Alumni members can’t RSVP.', 403);
@@ -805,6 +937,9 @@ switch (param('action')) {
         $isPresent = filter_var(param('present', true), FILTER_VALIDATE_BOOLEAN);
         $name = $member['first_name'] . ' ' . $member['last_name'];
         if ($isPresent) {
+            if (!$a->isFor($who)) {
+                fail("$name isn’t invited to this activity.", 409);
+            }
             if (!$a->canCheckIn($r->isGoing($who))) {   // [POLYMORPHISM] e.g. a Seminar needs a reserved seat
                 fail("$name has no seat for this {$a->kindLabel()}. Seats are reserved by RSVP.", 409);
             }

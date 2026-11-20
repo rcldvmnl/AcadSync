@@ -1,6 +1,7 @@
 // Approval Queue (officers: President, Vice President, Secretary, Treasurer).
 // FIFO: only the request at the front (#1) can be approved or rejected.
-// Reject pushes onto the Undo Stack; Undo pops the latest rejection back into the queue.
+// Reject pushes onto the Undo Stack; Undo pops the latest rejection back into the queue, and
+// "See all" lists every rejection so one in the middle can be restored on its own.
 
 // People who entered the class code wait in a second FIFO queue ("Waiting to join") above the task requests.
 
@@ -197,12 +198,54 @@ function renderUndo() {
   if (!state.undo.size) { bar.innerHTML = ''; return; }
   bar.innerHTML = `
     <div class="fixed inset-x-4 bottom-24 z-30 mx-auto flex max-w-sm items-center gap-3 rounded-full bg-charcoal py-2 pl-2 pr-2 text-white shadow-float lg:bottom-8 lg:left-24">
-      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-charcoal">${icon('undo', 18)}</span>
-      <div class="min-w-0 flex-1"><div class="truncate text-sm font-semibold">Rejected “${esc(state.undo.top.title)}”</div>
-        <div class="text-xs text-white/60">${state.undo.size} item${state.undo.size === 1 ? '' : 's'} in undo stack</div></div>
-      <button id="undo" class="btn btn-yellow h-10 px-5 text-sm">Undo</button>
+      <button type="button" id="undo-list" class="flex min-w-0 flex-1 items-center gap-3 rounded-full text-left hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+        aria-haspopup="dialog" aria-label="See all ${state.undo.size} rejected requests">
+        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-charcoal">${icon('undo', 18)}</span>
+        <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold">Rejected “${esc(state.undo.top.title)}”</span>
+          <span class="flex items-center gap-1 text-xs text-white/70">${state.undo.size} item${state.undo.size === 1 ? '' : 's'} in undo stack · See all ${icon('chevronRight', 13)}</span></span>
+      </button>
+      <button id="undo" class="btn btn-yellow h-10 shrink-0 px-5 text-sm">Undo</button>
     </div>`;
-  $('#undo').onclick = undo;
+  $('#undo').onclick = () => undo();
+  $('#undo-list').onclick = openUndoList;
+}
+
+/**
+ * Every rejected request in the undo stack, latest first. "Undo" on a row restores only that one;
+ * the server takes it out of the stack with stack operations and keeps the others in order.
+ */
+function openUndoList() {
+  const sheet = UI.sheet('<div data-body></div>', { label: 'Rejected requests' });
+  const body = $('[data-body]', sheet.el);
+  let restored = '';   // shown in the sheet itself (a toast would cover the list)
+  const draw = () => {
+    const items = state.undo.items || [];
+    if (!items.length) { sheet.close(); return; }
+    body.innerHTML = `
+      <h2 class="text-2xl font-bold">Rejected requests</h2>
+      <p class="mt-1 text-sm text-muted">Latest first. Undo puts a request back at the end of the queue; the others stay rejected.</p>
+      <p class="mt-3 flex items-center gap-2 rounded-2xl bg-mint-tint px-4 py-2.5 text-sm" role="status" ${restored ? '' : 'hidden'}>${icon('check', 16, 'text-success')}${esc(restored)}</p>
+      <ol class="mt-4 space-y-2">${items.map((t) => `
+        <li class="flex items-center gap-3 rounded-2xl bg-canvas p-3">
+          <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-xs font-semibold text-muted" aria-label="Position ${t.stack_position} in the undo stack">${t.stack_position}</span>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-semibold">${esc(t.title)}</span>
+            <span class="block truncate text-xs text-muted">${esc([t.subject_code, t.category, t.requested_by_name ? `by ${t.requested_by_name}` : ''].filter(Boolean).join(' · '))}</span>
+          </span>
+          <button type="button" data-undo-one="${t.id}" class="btn btn-dark h-10 shrink-0 px-4 text-sm" aria-label="Undo the rejection of ${esc(t.title)}">${icon('undo', 16)}Undo</button>
+        </li>`).join('')}
+      </ol>
+      <button data-close class="btn btn-canvas mt-5 w-full">Close</button>`;
+    $$('[data-undo-one]', body).forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      const res = await undo(Number(b.dataset.undoOne), { quiet: true });
+      if (!res) { b.disabled = false; return; }
+      restored = `Restored “${res.restored.title}”, back in the queue at #${res.queue_size}`;
+      if (!(state.undo.items || []).length) UI.toast(restored, { iconName: 'undo' });
+      draw();
+    });
+  };
+  draw();
 }
 
 async function decide(id, action) {
@@ -221,15 +264,18 @@ async function decide(id, action) {
   }
 }
 
-async function undo() {
-  if (state.busy) return;
+/** Undo the latest rejection, or (with taskId) that one only. Returns true when it worked. */
+async function undo(taskId = null, { quiet = false } = {}) {
+  if (state.busy) return false;
   state.busy = true;
   try {
-    const res = await API.post('admin_undo.php');
-    UI.toast(`Restored “${res.restored.title}”`, { sub: `Back in the queue at #${res.queue_size}`, iconName: 'undo' });
+    const res = await API.post('admin_undo.php', taskId ? { task_id: taskId } : {});
+    if (!quiet) UI.toast(`Restored “${res.restored.title}”`, { sub: `Back in the queue at #${res.queue_size}`, iconName: 'undo' });
     await load();
+    return res;
   } catch (e) {
     UI.toast(e.message, { iconName: 'alert' });
+    return false;
   } finally {
     state.busy = false;
   }

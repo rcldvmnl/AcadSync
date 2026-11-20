@@ -6,17 +6,17 @@ body { background: #F6F3EE; color: #1F1F24; font-family: "Plus Jakarta Sans", sy
 /* Let grid columns shrink below their content's min width (prevents sideways scroll on phones) */
 .grid > * { min-width: 0; }
 
-/* Pastel cards: darker "lip" along the bottom edge + decorative ring */
+/* Pastel cards: soft neutral elevation (like the white cards) + decorative ring */
 .card-pastel { position: relative; overflow: hidden; isolation: isolate; }
-.card-pastel.lavender { background: linear-gradient(135deg, #C2B8FA 0%, #A99CF5 60%); box-shadow: 0 4px 0 #8C7DEB; }
-.card-pastel.lavender-soft { background: #E6E1FD; box-shadow: 0 3px 0 #C9C0F8; }
-.card-pastel.peach { background: linear-gradient(135deg, #F8BD8F 0%, #F6A76B 60%); box-shadow: 0 4px 0 #E08E52; }
-.card-pastel.peach-soft { background: #FCE3CF; box-shadow: 0 3px 0 #F4C9A6; }
-.card-pastel.yellow { background: linear-gradient(135deg, #FBE28A 0%, #F8D65A 60%); box-shadow: 0 4px 0 #E2BC33; }
-.card-pastel.yellow-soft { background: #FDF3C7; box-shadow: 0 3px 0 #F3DF8E; }
-.card-pastel.mint-soft { background: #E5F6EE; box-shadow: 0 3px 0 #BFE8D4; }
+.card-pastel.lavender { background: linear-gradient(135deg, #C2B8FA 0%, #A99CF5 60%); box-shadow: 0 1px 2px rgba(31,31,36,.06), 0 12px 26px -14px rgba(31,31,36,.35); }
+.card-pastel.lavender-soft { background: #E6E1FD; box-shadow: 0 1px 2px rgba(31,31,36,.04), 0 8px 24px -12px rgba(31,31,36,.12); }
+.card-pastel.peach { background: linear-gradient(135deg, #F8BD8F 0%, #F6A76B 60%); box-shadow: 0 1px 2px rgba(31,31,36,.06), 0 12px 26px -14px rgba(31,31,36,.35); }
+.card-pastel.peach-soft { background: #FCE3CF; box-shadow: 0 1px 2px rgba(31,31,36,.04), 0 8px 24px -12px rgba(31,31,36,.12); }
+.card-pastel.yellow { background: linear-gradient(135deg, #FBE28A 0%, #F8D65A 60%); box-shadow: 0 1px 2px rgba(31,31,36,.06), 0 12px 26px -14px rgba(31,31,36,.35); }
+.card-pastel.yellow-soft { background: #FDF3C7; box-shadow: 0 1px 2px rgba(31,31,36,.04), 0 8px 24px -12px rgba(31,31,36,.12); }
+.card-pastel.mint-soft { background: #E5F6EE; box-shadow: 0 1px 2px rgba(31,31,36,.04), 0 8px 24px -12px rgba(31,31,36,.12); }
 .card-pastel.dark { background: linear-gradient(135deg, #34343B 0%, #1F1F24 55%); box-shadow: 0 12px 28px -14px rgba(31,31,36,.6); color: #fff; }
-.card-pastel.danger-soft { background: #FDE4E1; box-shadow: 0 3px 0 #F5C2BC; }
+.card-pastel.danger-soft { background: #FDE4E1; box-shadow: 0 1px 2px rgba(31,31,36,.04), 0 8px 24px -12px rgba(31,31,36,.12); }
 
 .card-pastel .ring-deco {
   position: absolute; z-index: -1; pointer-events: none;

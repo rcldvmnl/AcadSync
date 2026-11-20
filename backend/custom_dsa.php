@@ -638,6 +638,29 @@ class UndoStack
         return $this->top === null;
     }
 
+    /**
+     * Takes out the first item (from the top) that $match accepts, using only stack operations:
+     * POP the items above it onto a holding stack, POP the item itself, then PUSH the held items
+     * back so they keep their order. Returns the item, or null when none matches (stack unchanged).
+     */
+    public function removeWhere(callable $match): mixed
+    {
+        $held = new UndoStack();
+        $found = null;
+        while (!$this->isEmpty()) {
+            $value = $this->pop();
+            if ($match($value)) {
+                $found = $value;
+                break;
+            }
+            $held->push($value);
+        }
+        while (!$held->isEmpty()) {
+            $this->push($held->pop());
+        }
+        return $found;
+    }
+
     public function size(): int
     {
         return $this->size;

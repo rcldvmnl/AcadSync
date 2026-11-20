@@ -41,7 +41,8 @@ final class MemberRecord
             $hasSeat = $roster->isGoing($person->id());
             $came = $roster->isCheckedIn($person->id());
             // [POLYMORPHISM] the activity decides who is expected; the member's status decides if absences count
-            $isExpected = $came || ($joined <= $a->startTs() && $person->status()->countsInAttendance() && $a->expectsAttendanceFrom($hasSeat));
+            // (an invite-only activity only expects the people the poster chose)
+            $isExpected = $came || ($joined <= $a->startTs() && $a->isFor($person->id()) && $person->status()->countsInAttendance() && $a->expectsAttendanceFrom($hasSeat));
             if (!$isExpected) {
                 continue;
             }

@@ -274,7 +274,7 @@ in the same step, so the app never says two different things:
 - The Treasurer sees, per due, who has paid, how much was collected, and every payment, and can
   remove a payment entered by mistake.
 
-### 📅 Activities (meetings, seminars, outreach)
+### 📅 Activities (meetings, seminars, outreach, events)
 
 - Officers add activities with a date, time, venue and an optional seat limit.
 - **RSVP** reserves a seat. When an activity is full you join its **waitlist**; when someone cancels,
@@ -286,12 +286,21 @@ in the same step, so the app never says two different things:
 | **Meeting** | Expects every active member |
 | **Seminar** | Only people with a reserved seat can check in |
 | **Outreach** | Counts volunteers who signed up, and still accepts walk-in helpers |
+| **Event** | Open to everyone (a fair, a party, college week): RSVP if you’re coming, anyone can be checked in, and it never counts against anyone |
 | **Competition** | No attendance: volunteer for a part, officers pick who represents the section |
 | **Section project** | No attendance: each part has its people and a due date |
 
+- **Who can join:** whoever posts an activity picks *Everyone* or *People I choose* (a searchable member list).
+  Invite-only activities notify only the people chosen; only they can RSVP, volunteer or be picked, and
+  only they are expected for attendance. Others see the card marked *Invite only*; officers see the list.
 - Every activity can carry a **link to the original post** (only `http://` / `https://`, shown by its
   site name, e.g. *facebook.com ↗*, opened in a new tab) and can last **several days** (Nov 25–26).
 - Officers can **edit** an activity, and enter a plain-text **result** after it ends ("2nd place").
+- **Several days:** tick *Several days* to give a date range (**From** – **To**). It starts on the first day at the
+  start time and ends on the last day at the end time; moving *From* moves *To* with it.
+- **Cancelled activities** are hidden from the lists (a *Show cancelled* toggle brings them back), stop showing
+  at all 3 days after their date (nothing is deleted), and an officer can **Remove** one for good, with its
+  RSVPs, parts, volunteers and invites.
 
 ### 🏆 Competitions and section projects
 
@@ -353,7 +362,7 @@ The domain model lives in [`backend/domain/`](backend/domain/). Full UML diagram
 | Pillar | Where | In practice |
 | --- | --- | --- |
 | **Abstraction** | `abstract class Person`, `Officer`, `Task`, `GroupRule`, `Activity`, `RsvpActivity`, `PartsActivity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`, `Announcement`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
-| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `RsvpActivity` → `Activity`<br>`Competition` / `SectionProject` → `PartsActivity` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`GeneralNotice` / `PaymentNotice` / `NoClassNotice` / `DeadlineChangeNotice` / `TaskNotice` / `EventNotice` → `Announcement`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
+| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` / `SectionEvent` → `RsvpActivity` → `Activity`<br>`Competition` / `SectionProject` → `PartsActivity` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`GeneralNotice` / `PaymentNotice` / `NoClassNotice` / `DeadlineChangeNotice` / `TaskNotice` / `EventNotice` → `Announcement`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
 | **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$activity->joinsBy()` / `canAssignDirectly()` / `partsNeedDueDates()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()`, `$announcement->apply()` / `facts()` | No `role === 'admin'`, payment-method or announcement-kind checks in the endpoints; each object answers for itself |
 | **Encapsulation** | Private fields + getters everywhere; `Activity` (incl. the link and sign-up deadline), `ActivityPart`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
 
@@ -373,8 +382,8 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 | --- | --- | --- |
 | **Array** — storing and accessing records | `FixedArray`, `SubjectArray`; 2D `WeekGrid` | A section's subjects (`load_subjects`); the week as 6 days × 288 five-minute cells to catch clashing class times (`subjects.php`) |
 | **Linked List** — insertion and deletion | `TaskLinkedList` (doubly linked) | The task timeline in date order, with expired tasks dropped from the head; previous / next task (`tasks.php`) |
-| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; unique group names per task; **who is going and who checked in** at an activity; **who is picked for a part** (`PartRoster`); one "cancelled" notification per person; **one office per person** (`records.php`); **a GCash reference used once** and who has paid a due in full (`dues.php`); **classes cancelled on a date** by a No class announcement (`schedule.php`) |
-| **Stack** — undo, history | `UndoStack` | The queue's "undo reject"; students' Undo (`undo.php`), holding `UndoAction` objects |
+| **HashSet** — unique records | `HashSet`, `StudentHashSet` | Unique e-mails, IDs, usernames, section names, class codes and subject codes; one group per task; unique group names per task; **who is going and who checked in** at an activity; **who is picked for a part** (`PartRoster`); one "cancelled" notification per person; **one office per person** (`records.php`); **a GCash reference used once** and who has paid a due in full (`dues.php`); **classes cancelled on a date** by a No class announcement (`schedule.php`); **who is invited** to an invite-only activity (`Activity::isFor`) |
+| **Stack** — undo, history | `UndoStack` | The queue's "undo reject": **Undo** pops the latest rejection, and **See all** lists every rejection so one can be restored on its own (`removeWhere`: pop the ones above it onto a holding stack, then push them back); students' Undo (`undo.php`), holding `UndoAction` objects |
 | **Queue** — waiting lists | `ApprovalQueue` | Task requests and **join requests** reviewed first-come, first-served (only the front can be decided); **activity waitlists** (the front gets the next seat); **volunteers for a competition part** (officers see the earliest first); auto-grouping |
 | **Tree** — hierarchy, tree search | `SubjectTree`, `ChecklistTree` | Section › Subjects › Tasks searched depth-first; checklists rolled up post-order |
 | **Graph** — relationships | `DependencyGraph` | Study-group links: My groupmates (BFS), shortest path between classmates, suggested groupmates |

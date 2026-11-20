@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS subtasks (
 CREATE TABLE IF NOT EXISTS activities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     section_id INTEGER NOT NULL,
-    kind TEXT NOT NULL,                 -- 'meeting' | 'seminar' | 'outreach' | 'competition' | 'project'
+    kind TEXT NOT NULL,                 -- 'meeting' | 'seminar' | 'outreach' | 'event' | 'competition' | 'project'
     title TEXT NOT NULL,
     description TEXT,
     venue TEXT,
@@ -228,6 +228,7 @@ CREATE TABLE IF NOT EXISTS activities (
     link TEXT,                          -- the original post (http/https only)
     signup_deadline TEXT,               -- 'YYYY-MM-DD': volunteering closes at the end of that day
     result TEXT,                        -- e.g. '2nd place', entered after it ends
+    audience TEXT NOT NULL DEFAULT 'everyone', -- 'everyone' | 'invited' (only the people in activity_invites)
     created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     FOREIGN KEY(section_id) REFERENCES sections(id),
     FOREIGN KEY(created_by) REFERENCES users(id)
@@ -255,6 +256,18 @@ CREATE TABLE IF NOT EXISTS attendance (
     user_id INTEGER NOT NULL,
     checked_in_by INTEGER NOT NULL,
     checked_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    UNIQUE (activity_id, user_id),
+    FOREIGN KEY(activity_id) REFERENCES activities(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+-- 10f-1. ACTIVITY_INVITES — who the poster chose, for an activity whose audience is 'invited' (once each: HashSet + UNIQUE).
+CREATE TABLE IF NOT EXISTS activity_invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    activity_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
     UNIQUE (activity_id, user_id),
     FOREIGN KEY(activity_id) REFERENCES activities(id),
     FOREIGN KEY(user_id) REFERENCES users(id)

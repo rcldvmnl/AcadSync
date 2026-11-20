@@ -53,12 +53,8 @@ foreach ($queue->toArray() as $q) {
     $items[] = $item;
 }
 
-$top = $stack->peek();
 respond([
     'queue' => $items,
     'size' => $queue->size(),
-    'undo' => [
-        'size' => $stack->size(),
-        'top' => $top ? present_task($top, $ctx['subjectIndex'], $ctx['users']) : null,
-    ],
+    'undo' => present_undo($stack, $ctx),   // size, top and every rejected request (top first)
 ]);
