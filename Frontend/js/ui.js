@@ -199,24 +199,39 @@ const UI = {
 
   chip(text, cls = 'bg-white') { return `<span class="chip ${cls}">${esc(text)}</span>`; },
 
-  /** "Group · 3–4" badge for group work (nothing for individual tasks). */
-  groupSize(t) { return t.group_min === t.group_max ? `${t.group_min}` : `${t.group_min}–${t.group_max}`; },
-  /** "3 per group · 5 groups" — includes the prof's exact number of groups when set. */
-  groupRule(t) { return `${UI.groupSize(t)} per group${t.group_count ? ` · ${t.group_count} group${t.group_count === 1 ? '' : 's'}` : ''}`; },
-  /** Spots a group really has: its max, or max + 1 when leftovers may join as an extra. */
+  /**
+   * How the prof set the groups up, in a few words: "5 groups", "4 per group", "8 groups of 4",
+   * "Assigned · 6 groups". The server's GroupRule subclass writes it (group_label).
+   */
+  groupRule(t) {
+    if (t.group_label) return t.group_label;
+    if (t.group_count && t.group_max) return `${t.group_count} groups of ${t.group_max}`;
+    return t.group_count ? `${t.group_count} groups` : `${t.group_max ?? '?'} per group`;
+  },
+  /** The four setups, for the task form and the explanations. */
+  GROUP_SETUPS: {
+    count: { title: 'Number of groups', hint: 'The prof said “make 5 groups”. Classmates form them.', icon: 'groups' },
+    size: { title: 'Members per group', hint: 'The prof said “4 per group”. Classmates form them.', icon: 'users' },
+    size_count: { title: 'Both', hint: 'The prof said “8 groups of 4”. Classmates form them.', icon: 'hash' },
+    assigned: { title: 'Prof assigned the groups', hint: 'The prof gave the groups and their members.', icon: 'clipboard' },
+  },
+  /** Spots a group really has right now: its normal size, or +1 while an extra seat is free. */
   groupCap(g) { return g.capacity ?? g.max_members; },
-  /** Size label: "2/3", "3/3 · full", "3/3 · +1 ok" (a leftover may still join), "4/3 · +1 extra". */
-  groupBadge(g) {
+  /** "4 of 6 members", "7 members (6 + 1 extra)", or "3 members" when there's no set size. */
+  groupCount(g) {
     const n = g.members.length;
-    if (g.max_members === null) return `${n}`;
-    const label = `${n}/${g.max_members}`;
-    if (n > g.max_members) return `${label} · +1 extra`;
-    if (n >= UI.groupCap(g)) return `${label} · full`;
-    return UI.groupCap(g) > g.max_members ? `${label} · +1 ok` : label;
+    const target = g.target ?? g.max_members;
+    if (target === null || target === undefined) return plural(n, 'member');
+    if (n > target) return `${n} members (${target} + ${n - target} extra)`;
+    return `${n} of ${target} members`;
+  },
+  /** Chip colour for a group's status line (server: state / state_label). */
+  groupStateTone(g) {
+    return { empty: 'bg-white text-muted', open: 'bg-mint-tint', full: 'bg-white text-muted', extra_seat: 'bg-sun-tint', extra: 'bg-white text-muted' }[g.state] || 'bg-white';
   },
   workBadge(t) {
     return t.work_mode === 'group'
-      ? `<span class="chip gap-1 bg-charcoal px-2 text-white">${icon('users', 12)}Group · ${UI.groupSize(t)}</span>`
+      ? `<span class="chip gap-1 bg-charcoal px-2 text-white">${icon('users', 12)}Group · ${esc(UI.groupRule(t))}</span>`
       : '';
   },
 
@@ -468,20 +483,22 @@ const Shell = {
 
   /**
    * Nav for this person. The phone bar is always 3 | + | 3:
-   *   member:  Home, Schedule, Groups | + | Classmates, Activities, My account
-   *   officer: Home, Schedule, Queue  | + | Members/Classmates, Activities, My account
-   * Officers still get Groups on the desktop rail (a 4th phone icon would make one side longer).
+   *   member:  Home, Schedule, Classmates | + | Groups, Activities, My account
+   *   officer: Home, Schedule, Queue      | + | Members/Classmates, Activities, My account
+   * Classmates always comes before Groups. Officers still get Groups on the desktop rail
+   * (a 4th phone icon would make one side longer).
    */
   navItems() {
     const president = Shell.can('manage_section');
     const officer = Shell.can('review_requests');
+    const classmates = { key: 'classmates', href: 'classmates.html', icon: 'users', label: president ? 'Members' : 'Classmates' };
     const groups = { key: 'groups', href: 'classmates.html#groups', icon: 'groups', label: 'Groups' };
     return [
       { key: 'home', href: 'home.html', icon: 'home', label: 'Home' },
       { key: 'schedule', href: 'schedule.html', icon: 'calendar', label: 'Schedule' },
-      officer ? { key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true } : groups,
+      officer ? { key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true } : classmates,
       { key: 'add', href: 'task-form.html', icon: 'plus', label: president ? 'Add task' : 'Request a task', fab: true },
-      { key: 'classmates', href: 'classmates.html', icon: 'users', label: president ? 'Members' : 'Classmates' },
+      officer ? classmates : groups,
       ...(officer ? [{ ...groups, desktopOnly: true }] : []),
       { key: 'activities', href: 'activities.html', icon: 'flag', label: 'Activities' },
       { key: 'account', href: 'account.html', icon: 'user', label: 'My account' },

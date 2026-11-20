@@ -15,7 +15,10 @@ const OTHER_SUGGESTIONS = ['Seatwork', 'Recitation', 'Laboratory', 'Film viewing
 let picker, times, mode, task = null, sectionSize = 0;
 let category = 'Reporting';
 let otherLabel = '';
-let work = { mode: 'individual', min: 3, max: 4, count: 0 };   // count 0 = any number of groups
+// Group work: how the prof set it up (UI.GROUP_SETUPS) — number of groups, members per group, both,
+// or the prof's own list of groups (plan = [{ name, member_ids }]).
+let work = { mode: 'individual', setup: 'count', size: 4, count: 5, plan: [], planLocked: false };
+let roster = null;   // classmates, loaded when the prof's own list is being entered
 let submit = { modes: [], detail: '' };   // how the task is passed (see SUBMIT_MODES in ui.js)
 
 (async () => {
@@ -90,7 +93,15 @@ function render(subjects, markers, mine) {
   if (task) {
     if (CATEGORIES.includes(task.category)) category = task.category;
     else { category = 'Other'; otherLabel = task.category; }
-    if (task.work_mode === 'group') work = { mode: 'group', min: task.group_min, max: task.group_max, count: task.group_count || 0 };
+    if (task.work_mode === 'group') {
+      work = {
+        mode: 'group', setup: task.group_mode || (task.group_count ? 'count' : 'size'),
+        size: task.group_size || task.group_max || 4, count: task.group_count || 5,
+        plan: (task.group_plan || []).map((g) => ({ name: g.name, member_ids: [...(g.member_ids || [])] })),
+        // A published task's assigned groups already exist: officers change them in Groups, not here
+        planLocked: task.status === 'approved' && task.group_mode === 'assigned',
+      };
+    }
     submit = Submission.parse(task.location);
   }
   const full = mine && mine.pending >= mine.limit && mode !== 'fix';
@@ -114,11 +125,6 @@ function render(subjects, markers, mine) {
               <input name="other_label" list="other-suggestions" maxlength="30" placeholder="What kind of task? e.g. Seatwork" value="${esc(otherLabel)}"></span>
               <datalist id="other-suggestions">${OTHER_SUGGESTIONS.map((o) => `<option>${o}</option>`).join('')}</datalist></label>
           </div>
-          <div>
-            <div class="mb-1.5 text-xs text-muted">Individual or group work?</div>
-            <div class="grid grid-cols-2 rounded-full bg-canvas p-1 text-sm" role="radiogroup" id="work-mode"></div>
-            <div id="group-size" class="mt-3"></div>
-          </div>
           <div class="flex items-center justify-between"><span class="text-xs text-muted">Deadline</span>${task && mode !== 'fix' ? `<span class="chip bg-sun-tint">${esc(nowLabel)}</span>` : ''}</div>
           <div id="picker"></div>
           <div id="time-wrap"><div class="mb-1.5 text-xs text-muted">Due time</div><div id="times"></div></div>
@@ -139,6 +145,11 @@ function render(subjects, markers, mine) {
               <datalist id="submit-suggestions"></datalist></label>
           </div>
           <div id="dupes" aria-live="polite"></div>
+        </div>
+        <div class="rounded-[1.75rem] bg-white p-5 shadow-card">
+          <h2 class="mb-3 text-base font-semibold">Individual or group work?</h2>
+          <div class="grid grid-cols-2 rounded-full bg-canvas p-1 text-sm" role="radiogroup" aria-label="Individual or group work" id="work-mode"></div>
+          <div id="group-size" class="mt-4"></div>
         </div>
         <p data-error class="rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
         <div class="grid grid-cols-2 gap-3">
@@ -186,9 +197,7 @@ function render(subjects, markers, mine) {
       description: d.description,
       location: Submission.format(submit.modes, d.location),
       work_mode: work.mode,
-      group_min: work.mode === 'group' ? work.min : null,
-      group_max: work.mode === 'group' ? work.max : null,
-      group_count: work.mode === 'group' ? (work.count || null) : null,
+      ...groupFields(),
       deadline_type: when.type,
       deadline: when.start,
       deadline_end: when.type === 'range' ? when.end : null,
@@ -245,13 +254,56 @@ function renderCats() {
   });
 }
 
-/** Mirrors Algorithms::planGroupSizes: the prof's exact count if given, else the fewest groups; leftovers become +1s. */
-function planGroups(n, min, max, count = 0) {
-  if (n <= 0) return [];
-  let g = count || Math.ceil(n / max);
-  if (!count && Math.floor(n / g) < min) g = Math.max(1, Math.floor(n / min));
-  const base = Math.floor(n / g);
-  return Array.from({ length: g }, (_, i) => base + (i < n % g ? 1 : 0));
+/** The group fields sent to the server for the chosen setup (see GroupRule on the server). */
+function groupFields() {
+  if (work.mode !== 'group') return {};
+  const f = { group_mode: work.setup };
+  if (work.setup === 'count' || work.setup === 'size_count') f.group_count = work.count;
+  if (work.setup === 'size' || work.setup === 'size_count') f.group_size = work.size;
+  if (work.setup === 'assigned' && !work.planLocked) {
+    f.group_plan = work.plan.map((g, i) => ({ name: g.name.trim() || `Group ${i + 1}`, member_ids: g.member_ids }));
+  }
+  return f;
+}
+
+/**
+ * The same arithmetic as the server's GroupRule subclasses, as a preview for this section's size.
+ * Returns { text, warn } in plain words.
+ */
+function groupPreview(n) {
+  const p = (k, one, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+  if (work.setup === 'count') {
+    const N = work.count;
+    if (n < N) return { text: `Only ${p(n, 'classmate')} for ${N} groups, so some groups will stay empty.`, warn: true };
+    const base = Math.floor(n / N);
+    const extra = n % N;
+    const parts = [extra ? `${p(extra, 'group')} of ${base + 1}` : '', N - extra ? `${p(N - extra, 'group')} of ${base}` : ''].filter(Boolean);
+    return {
+      text: `${n} classmates in ${N} groups → <b>${parts.join(' and ')}</b>. All ${N} groups appear as soon as it’s posted, and classmates join one.${base < 2 ? ' Some groups would have just 1 person: check the number of groups.' : ''}`,
+      warn: base < 2,
+    };
+  }
+  if (work.setup === 'size') {
+    const S = work.size;
+    const full = Math.floor(n / S);
+    const left = n % S;
+    return {
+      text: `${n} classmates, ${S} per group → <b>${p(full, 'full group')}</b>${left ? `, and ${p(left, 'classmate')} left over: they can join a group as its ${S + 1}${S + 1 === 2 ? 'nd' : S + 1 === 3 ? 'rd' : 'th'} member, or make a smaller group` : ''}. Classmates make the groups themselves.`,
+    };
+  }
+  if (work.setup === 'size_count') {
+    const S = work.size;
+    const N = work.count;
+    const seats = S * N;
+    const over = n - seats;
+    let text = `${N} groups of ${S} = <b>${seats} seats</b> for ${n} classmates.`;
+    let warn = false;
+    if (over > N) { text += ` Even with 1 extra in every group, ${p(over - N, 'classmate')} won’t fit. Add groups or members per group.`; warn = true; }
+    else if (over > 0) text += ` So <b>${p(over, 'group')}</b> can take 1 extra member (${S + 1}).`;
+    else if (over < 0) text += ` Some groups will have fewer than ${S}.`;
+    return { text: `${text} All ${N} groups appear as soon as it’s posted.`, warn };
+  }
+  return { text: '' };
 }
 
 function renderWork() {
@@ -261,48 +313,124 @@ function renderWork() {
 
   const box = $('#group-size');
   if (work.mode !== 'group') { box.innerHTML = ''; return; }
-  const stepper = (key, label) => `
+
+  const stepper = (key, label, min, max) => `
     <div class="flex-1 rounded-2xl bg-canvas p-3">
       <div class="text-[11px] text-muted">${label}</div>
       <div class="mt-1 flex items-center justify-between">
-        <button type="button" data-step="${key}" data-d="-1" class="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" aria-label="Fewer">−</button>
+        <button type="button" data-step="${key}" data-d="-1" data-min="${min}" data-max="${max}" class="grid h-9 w-9 place-items-center rounded-full bg-white text-lg" aria-label="Fewer: ${label}">−</button>
         <span class="text-xl font-bold" aria-live="polite">${work[key]}</span>
-        <button type="button" data-step="${key}" data-d="1" class="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" aria-label="More">+</button>
+        <button type="button" data-step="${key}" data-d="1" data-min="${min}" data-max="${max}" class="grid h-9 w-9 place-items-center rounded-full bg-white text-lg" aria-label="More: ${label}">+</button>
       </div>
     </div>`;
-  const sizes = planGroups(sectionSize, work.min, work.max, work.count);
-  const small = sizes.filter((s) => s < work.min).length;
-  const plusOne = sizes.filter((s) => s === work.max + 1).length;
-  const tooBig = sizes.filter((s) => s > work.max + 1).length;
-  const summary = {};
-  sizes.forEach((s) => { summary[s] = (summary[s] || 0) + 1; });
+  const options = Object.entries(UI.GROUP_SETUPS).map(([k, s]) => `
+    <button type="button" role="radio" data-setup="${k}" aria-checked="${work.setup === k}"
+      class="flex items-start gap-2.5 rounded-2xl p-3 text-left transition ${work.setup === k ? 'bg-charcoal text-white' : 'bg-canvas hover:bg-line'}">
+      <span class="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full ${work.setup === k ? 'bg-white/15' : 'bg-white'}">${icon(s.icon, 16)}</span>
+      <span class="min-w-0"><span class="block text-sm font-semibold leading-tight">${s.title}</span>
+        <span class="mt-0.5 block text-[11px] leading-snug ${work.setup === k ? 'text-white/70' : 'text-muted'}">${s.hint}</span></span>
+    </button>`).join('');
+
+  let inputs = '';
+  if (work.setup === 'count') inputs = stepper('count', 'Number of groups', 1, 50);
+  if (work.setup === 'size') inputs = stepper('size', 'Members per group', 2, 20);
+  if (work.setup === 'size_count') inputs = `<div class="flex gap-2">${stepper('count', 'Number of groups', 1, 50)}${stepper('size', 'Members per group', 2, 20)}</div>`;
+  const preview = work.setup === 'assigned' ? null : groupPreview(sectionSize);
+
   box.innerHTML = `
-    <div class="mb-1.5 text-xs text-muted">Members per group (same number twice = strict size, e.g. 3 to 3)</div>
-    <div class="flex items-center gap-2">${stepper('min', 'At least')}<span class="text-muted">to</span>${stepper('max', 'At most')}</div>
-    <div class="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-canvas p-3">
-      <div class="min-w-0"><div class="text-[11px] text-muted">Number of groups</div>
-        <div class="text-xs text-muted">Set it if the prof said “make 5 groups”</div></div>
-      <div class="flex shrink-0 items-center gap-2">
-        <button type="button" data-count="-1" class="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" aria-label="Fewer groups">−</button>
-        <span class="min-w-[2.75rem] text-center text-xl font-bold" aria-live="polite">${work.count || 'Any'}</span>
-        <button type="button" data-count="1" class="grid h-8 w-8 place-items-center rounded-full bg-white text-lg" aria-label="More groups">+</button>
-      </div>
-    </div>
-    <p class="mt-2 rounded-2xl ${tooBig ? 'bg-danger-tint' : 'bg-lavender-tint'} px-3 py-2 text-xs">
-      ${sectionSize} members → ${work.count ? 'exactly' : 'about'} <b>${sizes.length} group${sizes.length === 1 ? '' : 's'}</b>
-      (${Object.entries(summary).sort((a, b) => b[0] - a[0]).map(([s, n]) => `${n} of ${s}`).join(', ')})${small ? ` · ${small} group${small === 1 ? '' : 's'} would be under ${work.min}` : ''}
-      ${plusOne && !tooBig ? `<br>Not enough classmates left for another group, so ${plusOne} group${plusOne === 1 ? '' : 's'} get${plusOne === 1 ? 's' : ''} <b>1 extra member</b>.` : ''}
-      ${tooBig ? '<br>Too few groups for this class: some would need more than 1 extra member. Add groups or allow bigger groups.' : ''}
-    </p>`;
-  $$('[data-count]', box).forEach((b) => b.onclick = () => {
-    work.count = Math.min(50, Math.max(0, work.count + Number(b.dataset.count)));
-    renderWork();
-  });
+    <div class="mb-1.5 text-xs text-muted">How did the prof set up the groups?</div>
+    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="How the groups are formed">${options}</div>
+    ${inputs ? `<div class="mt-3">${inputs}</div>` : ''}
+    ${preview ? `<p class="mt-3 rounded-2xl ${preview.warn ? 'bg-danger-tint' : 'bg-lavender-tint'} px-3 py-2.5 text-xs leading-relaxed">${preview.text}</p>` : ''}
+    ${work.setup === 'assigned' ? '<div id="plan-builder" class="mt-3"></div>' : ''}`;
+
+  $$('[data-setup]', box).forEach((b) => b.onclick = () => { work.setup = b.dataset.setup; renderWork(); });
   $$('[data-step]', box).forEach((b) => b.onclick = () => {
     const key = b.dataset.step;
-    work[key] = Math.min(20, Math.max(2, work[key] + Number(b.dataset.d)));
-    if (work.min > work.max) { if (key === 'min') work.max = work.min; else work.min = work.max; }
+    work[key] = Math.min(Number(b.dataset.max), Math.max(Number(b.dataset.min), work[key] + Number(b.dataset.d)));
     renderWork();
+  });
+  if (work.setup === 'assigned') renderPlan();
+}
+
+/** The prof's own list: each group with its members. Every classmate goes in one group. */
+async function renderPlan() {
+  const box = $('#plan-builder');
+  if (!box) return;
+  if (work.planLocked) {
+    box.innerHTML = `<p class="rounded-2xl bg-sun-tint px-3 py-2.5 text-xs">These groups are already made. Officers move people from the task’s <b>Groups</b> section.</p>`;
+    return;
+  }
+  if (!roster) {
+    box.innerHTML = UI.skeleton(1, 'h-24');
+    try {
+      roster = (await API.get('classmates.php')).members.map((m) => ({ id: m.id, name: m.name, student_id: m.student_id }));
+    } catch (e) { box.innerHTML = UI.errorBox(e); return; }
+  }
+  if (!work.plan.length) work.plan = [{ name: 'Group 1', member_ids: [] }, { name: 'Group 2', member_ids: [] }];
+  const nameOf = (id) => roster.find((m) => m.id === id)?.name || 'Former member';
+  const placed = new Set(work.plan.flatMap((g) => g.member_ids));
+  const left = roster.filter((m) => !placed.has(m.id));
+
+  box.innerHTML = `
+    <div class="space-y-2">
+      ${work.plan.map((g, i) => `
+        <div class="rounded-2xl bg-canvas p-3">
+          <div class="flex items-center gap-2">
+            <span class="field h-10 flex-1 bg-white"><input data-plan-name="${i}" value="${esc(g.name)}" maxlength="40" aria-label="Name of group ${i + 1}" placeholder="Group ${i + 1}"></span>
+            <button type="button" data-plan-remove="${i}" class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white" aria-label="Remove ${esc(g.name || `group ${i + 1}`)}">${icon('x', 16)}</button>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            ${g.member_ids.map((id) => `<span class="chip bg-white">${esc(nameOf(id))}<button type="button" data-plan-out="${i}:${id}" class="-mr-1 ml-0.5 text-muted" aria-label="Take ${esc(nameOf(id))} out">${icon('x', 12)}</button></span>`).join('')}
+            <button type="button" data-plan-add="${i}" class="chip bg-charcoal text-white" ${left.length ? '' : 'disabled'}>${icon('plus', 12)}Add members</button>
+          </div>
+        </div>`).join('')}
+      <button type="button" data-plan-new class="btn btn-light h-11 w-full border border-line text-sm">${icon('plus', 16)}Add a group</button>
+      <p class="rounded-2xl ${left.length ? 'bg-sun-tint' : 'bg-mint-tint'} px-3 py-2 text-xs">${left.length
+        ? `<b>${left.length} of ${roster.length}</b> classmates aren’t in a group yet. You can post anyway; officers can add them later.`
+        : `Everyone is in one of the ${work.plan.length} groups.`}</p>
+    </div>`;
+
+  $$('[data-plan-name]', box).forEach((inp) => inp.oninput = () => { work.plan[Number(inp.dataset.planName)].name = inp.value; });
+  $$('[data-plan-remove]', box).forEach((b) => b.onclick = () => { work.plan.splice(Number(b.dataset.planRemove), 1); renderPlan(); });
+  $$('[data-plan-out]', box).forEach((b) => b.onclick = () => {
+    const [i, id] = b.dataset.planOut.split(':').map(Number);
+    work.plan[i].member_ids = work.plan[i].member_ids.filter((x) => x !== id);
+    renderPlan();
+  });
+  $('[data-plan-new]', box).onclick = () => { work.plan.push({ name: `Group ${work.plan.length + 1}`, member_ids: [] }); renderPlan(); };
+  $$('[data-plan-add]', box).forEach((b) => b.onclick = () => pickForPlan(Number(b.dataset.planAdd), left));
+}
+
+/** Pick classmates (not yet in any group) for group i of the prof's list. */
+function pickForPlan(i, left) {
+  UI.sheet(`
+    <form>
+      <h2 class="text-2xl font-bold">Add to ${esc(work.plan[i].name || `Group ${i + 1}`)}</h2>
+      <p class="mt-1 text-sm text-muted">Only classmates who aren’t in another group are listed.</p>
+      <label class="mt-3 block"><span class="field">${icon('search', 16)}<input data-filter placeholder="Search name or student ID" aria-label="Search classmates"></span></label>
+      <div class="mt-3 max-h-72 space-y-1 overflow-y-auto">
+        ${left.map((m) => `<label data-row="${esc(`${m.name} ${m.student_id}`.toLowerCase())}" class="flex items-center gap-3 rounded-2xl px-2 py-2 hover:bg-canvas">
+          <input type="checkbox" name="m" value="${m.id}" class="h-5 w-5 shrink-0 accent-charcoal">
+          <span class="min-w-0 flex-1"><span class="block text-sm font-medium">${esc(m.name)}</span><span class="block text-xs text-muted">${esc(m.student_id)}</span></span></label>`).join('')}
+      </div>
+      <button type="submit" class="btn btn-dark mt-5 w-full">Add to group</button>
+    </form>`, {
+    label: 'Add members',
+    onMount(el, close) {
+      const form = $('form', el);
+      $('[data-filter]', el).oninput = (e) => {
+        const q = e.target.value.trim().toLowerCase();
+        $$('[data-row]', el).forEach((r) => { r.hidden = q && !r.dataset.row.includes(q); });
+      };
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const ids = $$('input[name=m]:checked', form).map((c) => Number(c.value));
+        work.plan[i].member_ids.push(...ids);
+        close();
+        renderPlan();
+      };
+    },
   });
 }
 

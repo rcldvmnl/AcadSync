@@ -80,7 +80,7 @@ function pendingRow(r) {
       <div class="flex items-start gap-3">
         <div class="min-w-0 flex-1">
           <div class="truncate text-[15px] font-semibold">${esc(r.title)}${r.kind === 'change' ? ' <span class="text-xs font-normal text-muted">(edit request)</span>' : ''}</div>
-          <div class="mt-0.5 text-xs text-muted">${esc(r.subject_code)} · ${esc(r.category)}${r.work_mode === 'group' ? ` · group of ${UI.groupSize(r)}` : ''}</div>
+          <div class="mt-0.5 text-xs text-muted">${esc(r.subject_code)} · ${esc(r.category)}${r.work_mode === 'group' ? ` · group work, ${UI.groupRule(r)}` : ''}</div>
           <div class="mt-0.5 text-xs text-muted">${esc(Fmt.due(r))} · sent ${esc(Fmt.ago(r.created_ts))}</div>
         </div>
         <span class="chip shrink-0 bg-sun-tint">${r.queue_position ? `#${r.queue_position} in queue` : 'Waiting'}</span>

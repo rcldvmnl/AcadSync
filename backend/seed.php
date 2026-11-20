@@ -152,9 +152,26 @@ function seed_database(): void
     }
 
     // --- Approved tasks (inserted out of order on purpose: the Linked List sorts them)
-    // $group = [min, max] for group work, null for individual work
+    // $group = [setup, members per group, number of groups, assigned list] for group work (a GroupRule
+    // subclass), null for individual work. Setups: count | size | size_count | assigned.
     $task = function (int $sectionId, int $subjectId, int $by, string $cat, string $title, string $desc, ?string $date, ?string $time, string $where, string $status, string $created, ?array $group = null) use ($u) {
-        return Store::insert('tasks', [
+        $columns = [];
+        if ($group) {
+            $plan = null;
+            if (isset($group[3])) {
+                $plan = [];
+                foreach ($group[3] as $name => $people) {
+                    $ids = [];
+                    foreach ($people as $username) {
+                        $ids[] = $u[$username];
+                    }
+                    $plan[] = ['name' => $name, 'member_ids' => $ids];
+                }
+            }
+            $columns = GroupRule::create($group[0], $group[1] ?? null, $plan !== null ? count($plan) : ($group[2] ?? null))->toColumns()
+                + ['group_plan' => $plan !== null ? json_encode($plan) : null];
+        }
+        return Store::insert('tasks', $columns + [
             'section_id' => $sectionId,
             'subject_id' => $subjectId,
             'requested_by' => $by,
@@ -166,8 +183,6 @@ function seed_database(): void
             'deadline_type' => $date === null ? 'unset' : 'exact',
             'location' => $where,
             'work_mode' => $group ? 'group' : 'individual',
-            'group_min' => $group[0] ?? null,
-            'group_max' => $group[1] ?? null,
             'status' => $status,
             'reviewed_by' => $status === 'approved' ? $u['juan.delacruz'] : null,
             'created_at' => $created,
@@ -176,8 +191,11 @@ function seed_database(): void
     $A = $sec['BSINFO-2A'];
     $admin = $u['juan.delacruz'];
     $task($A, $s['GEC 107'], $admin, 'Exam', 'Final Exam — Chapters 1–6', 'Coverage: all chapters discussed after the midterm. Bring a blue pen.', $day(30), '08:00', 'Room 204', 'approved', $stamp('-2 days'));
-    $finalProject = $task($A, $s['ITEC 204'], $admin, 'Project', 'Final Project — AcadSync', "Build a working web app that uses 7 data structures and 5 algorithms.\n- Source code pushed to the class repo\n- Live demo during system checking\n- Printed documentation", null, null, 'Live demo + class drive', 'approved', $stamp('-10 days'), [3, 4]);
-    $reporting = $task($A, $s['GEC 107'], $admin, 'Reporting', 'Reporting — Ch. 3', "Each group presents Chapter 3 — The Scientific Revolution — for 15 minutes, then answers questions for 5 minutes.\n- Slides uploaded to the class drive\n- One printed handout per group", date('Y-m-d', $inHours), date('H:00', $inHours), 'In class · Room 204', 'approved', $stamp('-2 days'), [2, 3]);
+    $finalProject = $task($A, $s['ITEC 204'], $admin, 'Project', 'Final Project — AcadSync', "Build a working web app that uses 7 data structures and 5 algorithms.\n- Source code pushed to the class repo\n- Live demo during system checking\n- Printed documentation", null, null, 'Live demo + class drive', 'approved', $stamp('-10 days'), ['size', 4]);
+    $reporting = $task($A, $s['GEC 107'], $admin, 'Reporting', 'Reporting — Ch. 3', "Each group presents Chapter 3 — The Scientific Revolution — for 15 minutes, then answers questions for 5 minutes.\n- Slides uploaded to the class drive\n- One printed handout per group", date('Y-m-d', $inHours), date('H:00', $inHours), 'In class · Room 204', 'approved', $stamp('-2 days'), ['count', null, 3]);
+    // The prof gave the groups and their members (AssignedGroups): made at posting, only officers change them
+    $task($A, $s['ITEC 205'], $admin, 'Project', 'Case Study — Library Database', "Design and normalize a database for the campus library.\n- ERD and data dictionary\n- SQL script", $day(12), '17:00', 'Room 301', 'approved', $stamp('-1 day'),
+        ['assigned', null, null, ['Team Dewey' => ['juan.delacruz', 'maria.santos', 'paolo.reyes'], 'Team Turing' => ['ana.bautista', 'kyla.lim', 'marco.cruz', 'carlo.domingo']]]);
     $task($A, $s['ITEL 202'], $admin, 'Activity', 'Web Mockup Draft', 'Submit a low-fidelity mockup of your landing page as a PDF.', $day(1), '17:00', 'Google Classroom', 'approved', $stamp('-3 days'));
     $task($A, $s['SOSLIT'], $admin, 'Film viewing', 'Film Reflection Paper', 'Watch the assigned film and write a 2-page reflection.', $day(9), '23:59', 'Google Classroom', 'approved', $stamp('-1 day'));
     $task($A, $s['ITEC 204'], $admin, 'Activity', 'Lab Activity 3', 'Implement a singly linked list with insert, delete and traverse.', $day(0), '23:59', 'Comp Lab 2', 'approved', $stamp('-4 days'));
@@ -188,9 +206,9 @@ function seed_database(): void
     $pending = [
         ['ITEL 201', 'Quiz', 'OOP Quiz', '20-item quiz covering classes, objects and inheritance. Closed notes, 30 minutes.', $day(2), '08:00', 'maria.santos', '-3 days'],
         ['ITEC 204', 'Activity', 'Array Exercise', 'Solve 5 array manipulation problems and submit the .php file.', $day(4), '23:59', 'paolo.reyes', '-2 days'],
-        ['GEC 107', 'Reporting', 'Group Reporting — Ch. 4', 'Groups 4–6 report on Chapter 4 — Technology and Society.', $day(6), '13:00', 'ana.bautista', '-2 days', [3, 4]],
+        ['GEC 107', 'Reporting', 'Group Reporting — Ch. 4', 'Groups 4–6 report on Chapter 4 — Technology and Society.', $day(6), '13:00', 'ana.bautista', '-2 days', ['size_count', 3, 2]],
         ['ITEC 205', 'Activity', 'Lab Activity 4', 'Normalize the given table up to 3NF.', $day(7), '10:00', 'carlo.domingo', '-1 day'],
-        ['ITEL 202', 'Activity', 'Web Mockup', 'High-fidelity mockup of the landing page in Figma.', $day(8), '17:00', 'kyla.lim', '-2 hours', [2, 3]],
+        ['ITEL 202', 'Activity', 'Web Mockup', 'High-fidelity mockup of the landing page in Figma.', $day(8), '17:00', 'kyla.lim', '-2 hours', ['size', 3]],
     ];
     foreach ($pending as $p) {
         [$code, $cat, $title, $desc, $date, $time, $by, $ago] = $p;
@@ -201,7 +219,7 @@ function seed_database(): void
     // BSINFO-2B has its own, separate tasks
     $B = $sec['BSINFO-2B'];
     $task($B, $s2['ITEC 204'], $u['bea.garcia'], 'Quiz', 'Stacks & Queues Quiz', 'Short quiz on stack and queue operations.', $day(2), '13:00', 'Comp Lab 4', 'approved', $stamp('-1 day'));
-    $reporting2B = $task($B, $s2['GEC 107'], $u['bea.garcia'], 'Reporting', 'Reporting — Ch. 2', 'Group 1 and 2 report on Chapter 2.', $day(4), '08:00', 'Room 205', 'approved', $stamp('-1 day'), [2, 3]);
+    $reporting2B = $task($B, $s2['GEC 107'], $u['bea.garcia'], 'Reporting', 'Reporting — Ch. 2', 'Group 1 and 2 report on Chapter 2.', $day(4), '08:00', 'Room 205', 'approved', $stamp('-1 day'), ['size_count', 2, 2]);
     $id = $task($B, $s2['ITEL 201'], $u['leo.navarro'], 'Activity', 'Inheritance Lab', 'Build a class hierarchy for a school system.', $day(6), '11:30', 'Comp Lab 3', 'pending', $stamp('-5 hours'));
     Store::insert('approval_queue', ['section_id' => $B, 'task_id' => $id, 'queued_at' => $stamp('-5 hours')]);
 
@@ -300,6 +318,14 @@ function seed_database(): void
             'user_id' => $u[$who], 'section_id' => $sectionId, 'type' => $type, 'message' => $msg,
             'link' => $link, 'is_read' => $read, 'created_at' => $stamp($ago),
         ]);
+    }
+
+    // --- Make each published group task's groups, as posting a task does (empty groups when the
+    //     number of groups is set; the prof's own list for an assigned task)
+    foreach (Store::all('tasks') as $t) {
+        if ($t['status'] === 'approved' && $t['work_mode'] === 'group') {
+            sync_task_groups((int) $t['section_id'], (int) $t['id'], (int) $t['requested_by']);
+        }
     }
 
     Store::commit();

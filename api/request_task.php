@@ -4,7 +4,9 @@
  *   action=check     {subject_id, title, description, ignore_id?}  -> Linear Search for similar tasks
  *   action=submit    {subject_id, category, title, description, location,
  *                     deadline_type: exact|range|unset, deadline, deadline_end, deadline_time,
- *                     work_mode: individual|group, group_min, group_max, target_task_id?}
+ *                     work_mode: individual|group, target_task_id?,
+ *                     group work: group_mode: assigned|count|size|size_count, group_size, group_count,
+ *                                 group_plan [{name, member_ids[]}] (assigned only)}
  *   action=update_request {request_id, ...same fields}   student edits their own pending request
  *   action=withdraw  {request_id}                         student cancels their own pending request
  *   action=delete    {task_id}                            admin removes a published task
@@ -98,21 +100,27 @@ function task_fields(array $ctx, ?array $base): array
         fail('Pick a valid due time.');
     }
 
-    // Individual or group work (group size can be a range, e.g. 3–4)
+    // Individual or group work, and for group work how the prof set the groups up
     $mode = (string) param('work_mode', $base['work_mode'] ?? 'individual');
-    $min = $max = $count = null;
+    $group = ['group_mode' => null, 'group_min' => null, 'group_max' => null, 'group_count' => null, 'group_plan' => null];
     if ($mode === 'group') {
-        $min = (int) param('group_min', $base['group_min'] ?? 0);
-        $max = (int) param('group_max', $base['group_max'] ?? $min);
-        // Optional exact number of groups (e.g. the prof says “make 5 groups”)
-        $count = (int) (array_key_exists('group_count', input()) ? param('group_count') : ($base['group_count'] ?? 0)) ?: null;
-        // [OOP: ENCAPSULATION] — GroupRule checks its own numbers; an invalid rule can't be built
+        $baseRule = $base ? GroupRule::fromRow($base) : null;
+        $groupMode = (string) param('group_mode', $baseRule?->mode() ?? '');
+        $size = (int) param('group_size', $baseRule?->size() ?? 0) ?: null;
+        $count = (int) param('group_count', $baseRule?->count() ?? 0) ?: null;
+        $plan = null;
+        if ($groupMode === GroupRule::ASSIGNED) {
+            $plan = assigned_plan($ctx, input()['group_plan'] ?? null, $base);
+            $count = count($plan);
+        }
+        // [OOP: ENCAPSULATION + POLYMORPHISM] — GroupRule::create builds the right subclass and
+        // checks its own numbers; an invalid setup can't be built
         try {
-            $rule = new GroupRule($min, $max, $count);
+            $rule = GroupRule::create($groupMode, $size, $count);
         } catch (InvalidArgumentException $e) {
             fail($e->getMessage());
         }
-        [$min, $max, $count] = [$rule->min(), $rule->max(), $rule->count()];
+        $group = $rule->toColumns() + ['group_plan' => $plan !== null ? json_encode($plan) : null];
     } else {
         $mode = 'individual';
     }
@@ -133,10 +141,61 @@ function task_fields(array $ctx, ?array $base): array
         'deadline_type' => $type,
         'location' => (string) param('location', $base['location'] ?? ''),
         'work_mode' => $mode,
-        'group_min' => $min,
-        'group_max' => $max,
-        'group_count' => $count,
-    ];
+    ] + $group;
+}
+
+/**
+ * The groups the prof assigned, checked: 1–50 groups, each named once and with at least one member,
+ * members from this section only and each in one group. An edit without a new list keeps the old one.
+ * [DSA: HASHSET] — names and students are kept unique.
+ */
+function assigned_plan(array $ctx, mixed $raw, ?array $base): array
+{
+    if ($raw === null && $base && !empty($base['group_plan'])) {
+        return json_decode((string) $base['group_plan'], true) ?: [];
+    }
+    if ($raw === null && $base && ($base['group_mode'] ?? null) === GroupRule::ASSIGNED) {
+        return array_fill(0, max(1, (int) $base['group_count']), ['name' => '', 'member_ids' => []]);   // already made: officers edit the groups
+    }
+    if (!is_array($raw) || !$raw) {
+        fail('Add the groups your prof assigned, with their members.');
+    }
+    if (count($raw) > GroupRule::MAX_GROUPS) {
+        fail('At most ' . GroupRule::MAX_GROUPS . ' groups.');
+    }
+    $members = new HashSet();
+    foreach ($ctx['members'] as $m) {
+        $members->add((string) $m['id']);
+    }
+    $names = new HashSet();
+    $placed = new HashSet();
+    $plan = [];
+    foreach ($raw as $i => $entry) {
+        $name = preg_replace('/\s+/', ' ', trim((string) ($entry['name'] ?? ''))) ?: 'Group ' . ($i + 1);
+        if (strlen($name) > 40) {
+            fail('Group names can have at most 40 characters.');
+        }
+        if (!$names->add($name)) {
+            fail("Two groups are called “{$name}”. Give each group its own name.");
+        }
+        $ids = [];
+        foreach ((array) ($entry['member_ids'] ?? []) as $id) {
+            $id = (int) $id;
+            if (!$members->contains((string) $id)) {
+                fail('Pick members from this section only.');
+            }
+            if (!$placed->add((string) $id)) {
+                $u = $ctx['users'][$id];
+                fail("{$u['first_name']} {$u['last_name']} is in two groups. Each classmate goes in one group.");
+            }
+            $ids[] = $id;
+        }
+        if (!$ids) {
+            fail("“{$name}” has no members yet. Add its members, or remove the group.");
+        }
+        $plan[] = ['name' => $name, 'member_ids' => $ids];
+    }
+    return $plan;
 }
 
 /** The student's own pending request, or a 404. */
@@ -245,13 +304,17 @@ if ($publishesDirectly) {
     if ($target) {
         // Admin "Edit Task" — everyone sees the change right away
         Store::update('tasks', (int) $target['id'], $row);
+        $made = sync_task_groups($sectionId, (int) $target['id'], $uid);   // e.g. raised from 5 to 6 groups
         notify_section($sectionId, $uid, 'moved', "“{$row['title']}” was updated", "task.html?id={$target['id']}");
-        respond(['id' => (int) $target['id'], 'status' => 'approved', 'similar' => []]);
+        respond(['id' => (int) $target['id'], 'status' => 'approved', 'similar' => [], 'groups_made' => $made]);
     }
     // Admin "Add Task" — skips the queue; the Linked List places it by date
+    Store::begin();
     $id = Store::insert('tasks', $row + ['requested_by' => $uid, 'status' => 'approved', 'kind' => 'new', 'reviewed_by' => $uid]);
+    $made = sync_task_groups($sectionId, $id, $uid);   // every group appears right away when their number is known
+    Store::commit();
     notify_section($sectionId, $uid, 'schedule', "New {$row['category']}: “{$row['title']}” ({$subjectCode})", "task.html?id=$id");
-    respond(['id' => $id, 'status' => 'approved', 'similar' => $similar], 201);
+    respond(['id' => $id, 'status' => 'approved', 'similar' => $similar, 'groups_made' => $made], 201);
 }
 
 // [DSA: QUEUE] — student request is ENQUEUED at the rear of the approval queue

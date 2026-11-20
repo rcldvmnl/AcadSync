@@ -54,6 +54,8 @@ if ($action === 'approve') {
             'group_min' => $task['group_min'],
             'group_max' => $task['group_max'],
             'group_count' => $task['group_count'] ?? null,
+            'group_mode' => $task['group_mode'] ?? null,
+            'group_plan' => $task['group_plan'] ?? null,
             'category' => $task['category'],
             'title' => $task['title'],
             'description' => $task['description'],
@@ -66,6 +68,8 @@ if ($action === 'approve') {
         $linkId = (int) $original['id'];
     }
     Store::update('tasks', (int) $task['id'], ['status' => 'approved', 'reviewed_by' => $adminId]);
+    // A fixed number of groups (or the prof's own list) appears as groups right away
+    sync_task_groups($sectionId, $linkId, $adminId);
     Store::commit();
 
     // [DSA: LINKED LIST] — rebuild the timeline; Insertion Sort places the task by date

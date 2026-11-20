@@ -253,14 +253,43 @@ classDiagram
     Deadlines ..> Deadline : creates
 
     class GroupRule {
-        <<final>>
-        -int min
-        -int max
-        -int count
-        +__construct(min, max, count)
-        +evaluate(groups, memberCount) array
-        +capacityOf(group, extraSlots) int
+        <<abstract>>
+        +fromRow(row)$ GroupRule
+        +create(mode, size, count)$ GroupRule
+        +mode()* string
+        +label()* string
+        +seats(classSize)* array
+        +explain(classSize)* string
+        +size() int
+        +count() int
+        +studentsOrganize() bool
+        +makesEmptyGroups() bool
+        +sizes(classSize) array
+        +evaluate(groups, classSize) array
+        +capacityOf(group, state) int
+        +autoPlan(sizes, left, classSize) array
+        +toColumns() array
     }
+    class AssignedGroups {
+        -int groups
+        +studentsOrganize() bool
+    }
+    class FixedGroupCount {
+        -int groups
+        +makesEmptyGroups() bool
+    }
+    class FixedGroupSize {
+        -int members
+    }
+    class FixedSizeAndCount {
+        -int members
+        -int groups
+        +makesEmptyGroups() bool
+    }
+    GroupRule <|-- AssignedGroups
+    GroupRule <|-- FixedGroupCount
+    GroupRule <|-- FixedGroupSize
+    GroupRule <|-- FixedSizeAndCount
     class StudyGroup {
         <<final>>
         -int id
@@ -499,9 +528,9 @@ classDiagram
 | Pillar | Where in the code | What it does in AcadSync |
 | --- | --- | --- |
 | **Encapsulation** | Private fields + getters in every domain class; `Activity`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
-| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `CashPayment`/`GcashPayment` → `Payment`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
-| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type` or the payment method: each object answers for itself |
-| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `DatedDeadline`, `UndoAction`, `Payment` | Callers use what an object can do, not how it does it |
+| **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
+| **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()`; `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$rule->seats()` / `explain()` / `studentsOrganize()` (one class per way a prof sets up groups); `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type` or the payment method: each object answers for itself |
+| **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `Task`, `GroupRule`, `DatedDeadline`, `UndoAction`, `Payment` | Callers use what an object can do, not how it does it |
 
 ## Relationships
 
@@ -512,7 +541,7 @@ classDiagram
 | `ActivityRoster` ◆— `HashSet`, `ApprovalQueue` | composition | going / checked-in sets and the waitlist queue of one activity |
 | `MemberRecord` ◇— `Person`, uses `Activity` | aggregation / dependency | a record is built from a person and asks each activity who was expected |
 | `UndoStack` ◇— `UndoAction` | aggregation | the DSA stack holds OOP objects that know how to reverse themselves |
-| `GroupRule` → `StudyGroup` | association | the rule evaluates a task's groups |
+| `GroupRule` → `StudyGroup` | association | the rule evaluates a task's groups (seats left, +1 extra seats, who may join) |
 | `Payment` → `Due` | association | many payments (part-payments too) settle one due |
 | `ApprovalQueue` ◆— `QueueNode`, `UndoStack` ◆— `StackNode`, `TreeNode` ◇— `TreeNode` | composition / aggregation | each structure links its own node objects |
 | `Algorithms` → `DsaUtil` | dependency | the sorts and searches use the hand-written text helpers |

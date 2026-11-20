@@ -84,7 +84,9 @@ const GroupsTab = {
     if (!Data.groups) return;
     const panel = $('#groups-panel');
     const tasks = Data.assignments;
-    const forTask = (id) => Data.allGroups.filter((g) => g.task && g.task.id === id);
+    // A task's groups: yours first, then in name order (Group 1, Group 2 … Group 10)
+    const forTask = (id) => Data.allGroups.filter((g) => g.task && g.task.id === id)
+      .sort((a, b) => Number(b.is_member) - Number(a.is_member) || a.label.localeCompare(b.label, undefined, { numeric: true }));
     const ungrouped = (id) => Data.people.filter((p) => !Data.groupOf(p.id, id));
     const needs = (t) => (Data.admin ? ungrouped(t.id).length > 0 : !t.in_group);
     // What needs doing comes first, then the rest in due-date order
@@ -197,20 +199,27 @@ const GroupsTab = {
     const asked = groups.filter((g) => g.my_request);
     const meLeft = left.some((p) => p.id === Data.me);
     const arrow = (name) => `<span class="cm-arrow">${icon(name, 18)}</span>`;
+    const r = t.rules || {};
     let status;
-    if (Data.admin) {
+    if (Data.admin && Shell.can('auto_group') && r.students_organize !== false) {
       status = left.length
         ? `<button type="button" data-auto="${t.id}" class="cm-cta">Auto-group the ${left.length} left${arrow('users')}</button>`
         : `<span class="cm-pill cm-pill-white">${icon('check', 14)}Everyone has a group</span>`;
+    } else if (Data.admin) {
+      status = left.length ? `<span class="cm-pill cm-pill-white">${plural(left.length, 'classmate')} without a group</span>`
+        : `<span class="cm-pill cm-pill-white">${icon('check', 14)}Everyone has a group</span>`;
     } else if (mine) {
-      const short = mine.min_members !== null && mine.members.length < mine.min_members ? mine.min_members - mine.members.length : 0;
-      status = `<span class="cm-pill cm-pill-dark">${icon('check', 14)}You’re in ${esc(mine.label)}</span>${short ? `<span class="cm-pill cm-pill-white">Needs ${short} more</span>` : ''}`;
+      status = `<span class="cm-pill cm-pill-dark">${icon('check', 14)}You’re in ${esc(mine.label)}</span>${mine.state === 'open' ? `<span class="cm-pill cm-pill-white">${esc(mine.state_label)}</span>` : ''}`;
+    } else if (r.students_organize === false) {
+      status = '<span class="cm-pill cm-pill-white">An officer will add you to a group</span>';
     } else if (asked.length) {
       status = `<span class="cm-pill cm-pill-white">${icon('clock', 14)}Waiting on ${asked.map((g) => esc(g.label)).join(', ')}</span>`;
+    } else if (groups.some((g) => g.can_join)) {
+      status = '<span class="cm-pill cm-pill-white">Join an empty group or ask one with space</span>';
     } else if (t.can_create) {
-      status = `<button type="button" data-create="${t.id}" class="cm-cta">Create a group${arrow('plus')}</button>`;
+      status = `<button type="button" data-create="${t.id}" class="cm-cta">Make a group${arrow('plus')}</button>`;
     } else {
-      status = '<span class="cm-pill cm-pill-white">All groups are made, ask to join one below</span>';
+      status = '<span class="cm-pill cm-pill-white">Ask to join a group with space below</span>';
     }
 
     // The class as a cluster of seats: filled bubbles have a group, dashed ones don't. You are ringed.
@@ -231,19 +240,18 @@ const GroupsTab = {
             <h2 id="task-${t.id}-h" class="cm-hero-title">${esc(t.title)}</h2>
             <div class="cm-hero-stats">
               <span class="cm-pill cm-pill-dark cm-num">${grouped} of ${total} grouped</span>
-              <span class="cm-pill cm-pill-soft cm-num">${t.group_count ? `${groups.length} of exactly ${t.group_count} groups` : plural(groups.length, 'group')}</span>
-              <span class="cm-pill cm-pill-soft">${esc(UI.groupSize(t))} per group</span>
-              ${t.extra_slots ? `<span class="cm-pill cm-pill-white">${t.extra_slots === 1 ? 'One full group' : `${t.extra_slots} full groups`} can take +1</span>` : ''}
+              <span class="cm-pill cm-pill-soft cm-num">${r.count ? `${groups.length} of ${r.count} groups made` : plural(groups.length, 'group')}</span>
+              <span class="cm-pill cm-pill-soft">${esc(UI.groupRule(t))}</span>
             </div>
-            ${t.group_count && t.extra_slots ? `<p class="cm-hero-rule">Only ${t.group_count} groups are allowed and ${plural(t.group_count * t.group_max, 'seat')} don’t fit all ${total} classmates, so ${t.extra_slots === 1 ? 'one full group' : `${t.extra_slots} full groups`} may add one extra member (${t.group_max + 1} instead of ${t.group_max}).</p>` : ''}
-            ${Data.admin && t.unplaceable ? `<p class="cm-hero-rule"><b>${plural(t.unplaceable, 'classmate')} can’t fit</b> even with +1 in every group. Raise the group size or the number of groups in Task details.</p>` : ''}
+            ${r.summary ? `<p class="cm-hero-rule">${esc(r.summary)}</p>` : ''}
+            ${Data.admin && t.unplaceable ? `<p class="cm-hero-rule"><b>${plural(t.unplaceable, 'classmate')} won’t fit</b>, even with 1 extra in every group. Add a group in Task details or move people.</p>` : ''}
             <div class="cm-hero-actions">${status}<a href="task.html?id=${t.id}" class="cm-link-btn">Task details</a></div>
           </div>
           <div class="cm-cluster" role="img" aria-label="${grouped} of ${total} classmates have a group">${bubbles}</div>
         </div>
         <div class="cm-board">
           ${groups.map((g) => GroupsTab.tile(g, t)).join('')}
-          ${GroupsTab.pile(left, meLeft, groups.length)}
+          ${GroupsTab.pile(left, meLeft, groups.length, t.id)}
         </div>
       </section>`;
   },
@@ -252,21 +260,23 @@ const GroupsTab = {
   tile(g, t, { past = false } = {}) {
     const me = Data.me;
     const cap = UI.groupCap(g);
-    const open = cap === null ? 0 : Math.max(0, cap - g.members.length);
-    const extraSeat = cap !== null && g.max_members !== null && cap > g.max_members;
-    const full = cap !== null && g.members.length >= cap;
-    const canManage = Data.admin || g.created_by === me;
-    const inOther = t ? t.in_group && !g.is_member : false;
+    const target = g.target ?? g.max_members;
+    const full = g.is_full ?? (cap !== null && g.members.length >= cap);
     const others = GroupsTab.addable(g).length;
+    // Open seats up to the normal size, then one "+1" seat while an extra seat is free
+    const open = target === null || target === undefined ? 0 : Math.max(0, target - g.members.length);
+    const extraSeat = target !== null && target !== undefined && cap > target && g.members.length < cap;
 
     const seats = [
       ...g.members.map((m) => `
         <li class="cm-seat">
           ${avatar(m)}
           <span class="cm-seat-name">${esc(m.name)}${m.id === me ? ' <span class="cm-you">you</span>' : ''}</span>
-          ${m.id === g.created_by ? '<span class="cm-seat-note">made it</span>' : ''}
+          ${m.id === g.created_by && !g.assigned ? '<span class="cm-seat-note">leader</span>' : ''}
+          ${g.can_move && !past ? `<button type="button" data-move="${g.id}:${m.id}" class="cm-btn cm-btn-ghost cm-btn-sm" aria-label="Move ${esc(m.name)}">Move</button>` : ''}
         </li>`),
-      ...Array.from({ length: open }, (_, i) => `<li class="cm-seat is-open"><span class="cm-avatar cm-avatar-open" aria-hidden="true">${icon('plus', 14)}</span><span class="cm-seat-name">${extraSeat && i === open - 1 ? '+1 seat for the extra classmate' : 'Open seat'}</span></li>`),
+      ...Array.from({ length: open }, () => `<li class="cm-seat is-open"><span class="cm-avatar cm-avatar-open" aria-hidden="true">${icon('plus', 14)}</span><span class="cm-seat-name">Open seat</span></li>`),
+      ...(extraSeat ? [`<li class="cm-seat is-open"><span class="cm-avatar cm-avatar-open" aria-hidden="true">${icon('plus', 14)}</span><span class="cm-seat-name">Room for 1 extra</span></li>`] : []),
     ].join('');
 
     const reqs = g.requests?.length ? `
@@ -282,33 +292,35 @@ const GroupsTab = {
       </div>` : '';
 
     const actions = past ? '' : [
-      g.is_member ? `<button type="button" data-leave="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">Leave</button>` : '',
+      g.can_join ? `<button type="button" data-take="${g.id}" class="cm-cta cm-cta-sm">Join this group<span class="cm-arrow">${icon('arrowRight', 16)}</span></button>` : '',
+      g.can_request ? `<button type="button" data-join="${g.id}" class="cm-cta cm-cta-sm">Ask to join<span class="cm-arrow">${icon('arrowRight', 16)}</span></button>` : '',
       !g.is_member && g.my_request ? `<span class="cm-tag cm-tag-warn">${icon('clock', 12)}Request sent</span><button type="button" data-cancel="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">Cancel</button>` : '',
-      !g.is_member && !g.my_request && !full && !inOther && !Data.admin ? `<button type="button" data-join="${g.id}" class="cm-cta cm-cta-sm">Ask to join<span class="cm-arrow">${icon('arrowRight', 16)}</span></button>` : '',
-      canManage && !full && others ? `<button type="button" data-add="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">${icon('plus', 14)}Add</button>` : '',
-      canManage ? `<button type="button" data-rename="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">Rename</button>` : '',
-      canManage ? `<button type="button" data-delete="${g.id}" class="cm-btn cm-btn-text cm-btn-sm">Delete</button>` : '',
+      g.can_manage && (!full || g.can_move) && others ? `<button type="button" data-add="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">${icon('plus', 14)}Add</button>` : '',
+      g.can_manage ? `<button type="button" data-rename="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">Rename</button>` : '',
+      g.can_leave ? `<button type="button" data-leave="${g.id}" class="cm-btn cm-btn-ghost cm-btn-sm">Leave</button>` : '',
+      g.can_manage && !g.assigned ? `<button type="button" data-delete="${g.id}" class="cm-btn cm-btn-text cm-btn-sm">Delete</button>` : '',
     ].join('');
 
-    const sizeLabel = cap === null ? `${g.members.length}` : `${g.members.length}/${g.max_members ?? cap}${extraSeat ? ' +1' : ''}`;
-    const under = g.min_members !== null && g.members.length < g.min_members;
+    // "4/6", "7 (6+1)" — the normal size, plus the extra member when there is one
+    const n = g.members.length;
+    const sizeLabel = target === null || target === undefined ? `${n}` : n > target ? `${target}+${n - target}` : `${n}/${target}`;
     return `
       <article class="cm-group ${g.is_member ? 'is-mine' : ''}" id="group-${g.id}" tabindex="-1" aria-labelledby="group-${g.id}-h">
         <header class="cm-group-head">
           <h3 id="group-${g.id}-h" class="cm-group-name">${esc(g.label)}</h3>
-          <span class="cm-group-size cm-num" aria-label="${g.members.length} members${cap !== null ? ` of ${cap} seats` : ''}">${sizeLabel}</span>
+          <span class="cm-group-size cm-num" aria-label="${esc(UI.groupCount(g))}">${sizeLabel}</span>
         </header>
         ${!t ? `<p class="cm-group-meta">${g.subject ? esc(g.subject.code) : 'Any subject'}${g.task ? `, for ${esc(g.task.title)}` : ''}</p>` : ''}
-        ${g.purpose ? `<p class="cm-group-meta">${esc(g.purpose)}</p>` : ''}
+        ${!t && g.purpose ? `<p class="cm-group-meta">${esc(g.purpose)}</p>` : ''}
+        ${g.state_label && !past ? `<p class="cm-group-meta ${g.state === 'open' && n ? 'cm-warn-ink' : ''}">${esc(g.state_label)}${g.assigned ? ' · assigned by your prof' : ''}</p>` : ''}
         <ul class="cm-seats">${seats}</ul>
-        ${under && !past ? `<p class="cm-group-meta cm-warn-ink">Needs ${g.min_members - g.members.length} more to reach ${g.min_members}</p>` : ''}
         ${reqs}
         ${actions.trim() ? `<div class="cm-group-actions">${actions}</div>` : ''}
       </article>`;
   },
 
   /** The classmates with no group yet for this assignment. */
-  pile(left, meLeft, groupCount) {
+  pile(left, meLeft, groupCount, taskId = null) {
     if (!left.length) {
       return `<div class="cm-pile is-done"><div class="cm-group-head"><h3 class="cm-group-name">No group yet</h3><span class="cm-group-size cm-num">0</span></div>
         <p class="cm-group-meta">Everyone is in one of the ${plural(groupCount, 'group')}.</p></div>`;
@@ -317,10 +329,23 @@ const GroupsTab = {
       <div class="cm-pile">
         <div class="cm-group-head"><h3 class="cm-group-name">No group yet</h3><span class="cm-group-size cm-num">${left.length}</span></div>
         <ul class="cm-seats">${left.map((p) => `
-          <li class="cm-seat">${avatar(p)}<span class="cm-seat-name">${esc(p.first_name)} ${esc(p.last_name)}${p.id === Data.me ? ' <span class="cm-you">you</span>' : ''}</span></li>`).join('')}
+          <li class="cm-seat">${avatar(p)}<span class="cm-seat-name">${esc(p.first_name)} ${esc(p.last_name)}${p.id === Data.me ? ' <span class="cm-you">you</span>' : ''}</span>
+            ${Shell.can('manage_any_group') && taskId ? `<button type="button" data-place="${taskId}:${p.id}" class="cm-btn cm-btn-ghost cm-btn-sm" aria-label="Put ${esc(p.first_name)} in a group">Place</button>` : ''}</li>`).join('')}
         </ul>
-        ${meLeft && !Data.admin ? '<p class="cm-group-meta">Grouped with someone in person? Create the group and add them, or ask to join a group with an open seat.</p>' : ''}
+        ${meLeft && !Data.admin ? '<p class="cm-group-meta">Grouped with someone in person? Make the group and add them, join an empty group, or ask a group with an open seat.</p>' : ''}
       </div>`;
+  },
+
+  /** The shared group panel's data for one assignment (so its Move / Place sheet can be reused here). */
+  panelData(taskId) {
+    const t = Data.assignments.find((x) => x.id === taskId) || { id: taskId };
+    return {
+      task: t,
+      rules: t.rules,
+      groups: Data.allGroups.filter((x) => x.task?.id === taskId),
+      ungrouped: Data.people.filter((p) => !Data.groupOf(p.id, taskId))
+        .map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`, student_id: p.student_id })),
+    };
   },
 
   /** Classmates who could still be added to g (not in it, and without a group for its assignment). */
@@ -355,19 +380,32 @@ const GroupsTab = {
     on('data-auto', (id, b) => {
       const t = Data.assignments.find((x) => x.id === id);
       const n = Data.people.filter((p) => !Data.groupOf(p.id, id)).length;
-      GroupsTab.confirm(`Auto-group the ${n} left?`, `They’re shuffled into groups of ${UI.groupSize(t)} for “${t.title}”, filling open seats first.`, 'Auto-group',
+      GroupsTab.confirm(`Auto-group the ${n} left?`, `They’re shuffled into the groups for “${t.title}” (${UI.groupRule(t)}), filling open seats first.`, 'Auto-group',
         () => act(b, { action: 'auto_assign', task_id: id }, 'Remaining classmates were grouped'));
     });
     on('data-rename', (id) => GroupWork.rename(find(id), () => GroupsTab.reload()));
+    // Join an empty group directly (you become its leader)
+    on('data-take', (id, b) => act(b, { action: 'join', group_id: id }, 'You joined the group'));
+    // Officers: move someone between groups, or place someone who has no group (shared sheet)
+    $$('[data-move]', root).forEach((b) => b.onclick = () => {
+      const [gid, uid] = b.dataset.move.split(':').map(Number);
+      const g = find(gid);
+      GroupWork.moveSheet(GroupsTab.panelData(g.task?.id), uid, gid, () => GroupsTab.reload());
+    });
+    $$('[data-place]', root).forEach((b) => b.onclick = () => {
+      const [taskId, uid] = b.dataset.place.split(':').map(Number);
+      GroupWork.moveSheet(GroupsTab.panelData(taskId), uid, null, () => GroupsTab.reload());
+    });
     on('data-create', (id) => GroupsTab.pick(id, null));
     on('data-add', (id) => { const g = find(id); GroupsTab.pick(g.task?.id ?? null, g); });
   },
 
   /** Create a group for assignment taskId, or add classmates to group g. Uses the shared picker. */
   async pick(taskId, g) {
-    const t = Data.assignments.find((x) => x.id === taskId) || { id: taskId, group_max: UI.groupCap(g) ?? 99 };
+    const t = Data.assignments.find((x) => x.id === taskId) || { id: taskId };
     const d = {
       task: t,
+      rules: t.rules,
       groups: Data.allGroups.filter((x) => (taskId ? x.task?.id === taskId : x.id === g?.id)),
       ungrouped: (g ? GroupsTab.addable(g) : Data.people.filter((p) => !Data.groupOf(p.id, taskId)))
         .map((p) => ({ id: p.id, name: `${p.first_name} ${p.last_name}`, student_id: p.student_id })),

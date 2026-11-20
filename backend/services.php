@@ -84,6 +84,11 @@ function present_task(array $t, array $subjectIndex, array $users): array
         'group_min' => isset($t['group_min']) ? (int) $t['group_min'] : null,
         'group_max' => isset($t['group_max']) ? (int) $t['group_max'] : null,
         'group_count' => isset($t['group_count']) ? (int) $t['group_count'] : null,
+        // [OOP: POLYMORPHISM] the task's GroupRule subclass names its own setup and wording
+        'group_mode' => ($rule = Task::fromRow($t)->rule())?->mode(),
+        'group_size' => $rule?->size(),
+        'group_label' => $rule?->label(),
+        'group_plan' => !empty($t['group_plan']) ? json_decode((string) $t['group_plan'], true) : null,
         'status' => $t['status'],
         'kind' => $t['kind'],
         'target_task_id' => $t['target_task_id'] !== null ? (int) $t['target_task_id'] : null,
@@ -418,6 +423,94 @@ function member_records(array $ctx): array
         $out[] = MemberRecord::fromActivities(Person::fromRow($m), (string) $m['joined_at'], $finished, $rosters, $groupCount[$id] ?? 0, $terms[$id] ?? []);
     }
     return $out;
+}
+
+/** [DSA: HASHSET] — the lowest "Group N" not in $used (deleting a group never makes two "Group 3"s). */
+function free_group_name(HashSet $used): string
+{
+    $n = 1;
+    while ($used->contains("Group $n")) {
+        $n++;
+    }
+    return "Group $n";
+}
+
+/**
+ * Makes a published group task's groups, so classmates can see and join them right away:
+ *   - AssignedGroups: the groups and members the prof gave (stored in tasks.group_plan)
+ *   - FixedGroupCount / FixedSizeAndCount: empty groups up to the number the prof set
+ *   - FixedGroupSize: nothing; students make the groups they need
+ * Never deletes: groups already there stay (an edit that raises the count only adds the missing ones).
+ * [OOP: POLYMORPHISM] the rule says whether it makes empty groups; [DSA: HASHSET] names and students stay unique.
+ * Returns how many groups were made.
+ */
+function sync_task_groups(int $sectionId, int $taskId, int $byUserId): int
+{
+    $taskRow = null;
+    foreach (section_rows('tasks', $sectionId) as $t) {
+        if ((int) $t['id'] === $taskId) {
+            $taskRow = $t;
+        }
+    }
+    $rule = $taskRow ? Task::fromRow($taskRow)->rule() : null;
+    if ($rule === null || $taskRow['status'] !== 'approved') {
+        return 0;
+    }
+    $names = new HashSet();
+    $grouped = new HashSet();
+    $formed = 0;
+    foreach (load_groups($sectionId) as $g) {
+        if ((int) $g['task_id'] === $taskId) {
+            $names->add((string) $g['name']);
+            foreach ($g['members'] as $id) {
+                $grouped->add((string) $id);
+            }
+            $formed++;
+        }
+    }
+    $members = new HashSet();
+    foreach (section_members($sectionId) as $m) {
+        $members->add((string) $m['id']);
+    }
+    $base = $rule->seats(count(section_members($sectionId)))['base'];
+    $made = 0;
+    $new = function (string $name) use ($sectionId, $taskRow, $taskId, $byUserId, $base, $names): int {
+        $names->add($name);
+        return Store::insert('study_groups', [
+            'section_id' => $sectionId, 'name' => $name, 'subject_id' => (int) $taskRow['subject_id'], 'task_id' => $taskId,
+            'purpose' => $taskRow['title'], 'max_members' => $base, 'created_by' => $byUserId,
+        ]);
+    };
+
+    if (!$rule->studentsOrganize()) {                    // assigned by the prof: make them as listed
+        if ($formed > 0) {
+            return 0;                                     // already made (officers edit them from here on)
+        }
+        $plan = !empty($taskRow['group_plan']) ? json_decode((string) $taskRow['group_plan'], true) : [];
+        foreach (is_array($plan) ? $plan : [] as $entry) {
+            $name = preg_replace('/\s+/', ' ', trim((string) ($entry['name'] ?? '')));
+            if ($name === '' || $names->contains($name)) {
+                $name = free_group_name($names);
+            }
+            $gid = $new($name);
+            $made++;
+            foreach ((array) ($entry['member_ids'] ?? []) as $id) {
+                $id = (int) $id;
+                if ($members->contains((string) $id) && $grouped->add((string) $id)) {
+                    Store::insert('group_members', ['section_id' => $sectionId, 'group_id' => $gid, 'user_id' => $id]);
+                    notify($id, $sectionId, 'group', "You’re in “{$name}” for “{$taskRow['title']}” (assigned by your prof)", "task.html?id=$taskId");
+                }
+            }
+        }
+        return $made;
+    }
+    if ($rule->makesEmptyGroups()) {                     // the number of groups is known: make the empty ones
+        for ($k = $formed; $k < (int) $rule->count(); $k++) {
+            $new(free_group_name($names));
+            $made++;
+        }
+    }
+    return $made;
 }
 
 /**

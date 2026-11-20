@@ -174,7 +174,7 @@ function similarBox(q, compact = false) {
 
 function detail(q) {
   const cells = [
-    ['Type', `${q.category} · ${q.work_mode === 'group' ? `group of ${UI.groupSize(q)}` : 'individual'}`],
+    ['Type', `${q.category} · ${q.work_mode === 'group' ? `group work, ${UI.groupRule(q)}` : 'individual'}`],
     ['Due', dueText(q).replace(/^Due /, '')],
     ['Requested by', `${q.requested_by_name} · ${Fmt.monthDay(q.created_at.slice(0, 10))}`],
   ];

@@ -193,7 +193,7 @@ const People = {
     const line = (label, sub, g) => `
       <div class="cm-sheet-row">
         <div class="min-w-0 flex-1"><div class="cm-name">${esc(label)}</div><div class="cm-sub">${esc(sub)}</div></div>
-        ${g ? `<button type="button" data-sheet-group="${g.id}" class="cm-grouplink ${g.is_member ? 'is-mine' : ''}">${esc(g.label)} ·${g.members.length}/${UI.groupCap(g) ?? g.members.length}</button>`
+        ${g ? `<button type="button" data-sheet-group="${g.id}" class="cm-grouplink ${g.is_member ? 'is-mine' : ''}">${esc(g.label)} · ${g.members.length}/${g.target ?? g.max_members ?? g.members.length}</button>`
             : '<span class="cm-tag cm-tag-warn">No group yet</span>'}
       </div>`;
     UI.sheet(`

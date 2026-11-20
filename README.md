@@ -217,6 +217,7 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 | --- | :-: | :-: | :-: | :-: | :-: |
 | Request tasks, join groups, RSVP, see their own dues | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Review the approval queue, let new members in | | ✓ | ✓ | ✓ | ✓ |
+| Fix any group: add, move or remove members, answer any join request | | ✓ | ✓ | ✓ | ✓ |
 | Add / cancel activities, post announcements, see all member records | | ✓ | ✓ | ✓ | ✓ |
 | Take attendance, change a member's status | | | ✓ | | ✓ |
 | Set dues, record cash and GCash payments | | | | ✓ | ✓ |
@@ -269,10 +270,22 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 
 - **Tasks:** Reporting, Quiz, Exam, Activity, Project or a custom label, as individual or group work.
   Members' requests wait in the **approval queue** (at most 3 per person at a time).
-- **Group work:** a size range (e.g. 3–4), an optional exact number of groups, and a strict "+1" seat
-  only when classmates can't fit otherwise. Groups are shown as seats, and suggested groupmates are
-  people you've never worked with. A group's creator (or the President) can rename it; two groups
-  of the same task can't share a name.
+- **Group work**, set up the way the prof said it (example: 33 classmates):
+
+  | The prof said… | Setup | What AcadSync does |
+  | --- | --- | --- |
+  | "Here are the groups and members" | **Prof assigned the groups** | The poster enters each group and its members; the groups are made when the task is posted. Students can't leave or switch; officers can move people |
+  | "Make 5 groups" | **Number of groups** | 33 ÷ 5 → **3 groups of 7 and 2 groups of 6**. All 5 groups appear empty at posting; classmates join one |
+  | "4 per group" | **Members per group** | **8 groups of 4**; the 1 left over can join a group as its 5th member or make a smaller group. Classmates make the groups |
+  | "8 groups of 4" | **Both** | 32 seats for 33 classmates, so **1 group can take a 5th**. All 8 groups appear empty at posting |
+
+  Groups are shown as seats (members, open spots, and "room for 1 extra" while an extra seat is free).
+  An **empty group is joined directly** and you become its leader; a group with members is asked to
+  join, and any member can accept. When the number of groups is fixed, a group that empties stays as
+  an open slot. **Every officer can move or remove anyone** (Move on each member, Place for someone
+  without a group); the President can auto-group whoever is left. Suggested groupmates are people
+  you've never worked with. A group's leader (or an officer) can rename it; two groups of the same
+  task can't share a name.
 - **Checklists** on a task, with sub-steps, shared by the whole group.
 - **Undo** for leaving a group, cancelling a join request and ticking off a task.
 - **Schedule:** a class grid per day, plus Today / Urgent / This week / Due by Fri / Due soon views.
@@ -288,8 +301,8 @@ The domain model lives in [`backend/domain/`](backend/domain/). Full UML diagram
 
 | Pillar | Where | In practice |
 | --- | --- | --- |
-| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `Activity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
-| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
+| **Abstraction** | `abstract class Person`, `Officer`, `Task`, `GroupRule`, `Activity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
+| **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
 | **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()` | No `role === 'admin'` or payment-method checks in the endpoints; each object answers for itself |
 | **Encapsulation** | Private fields + getters everywhere; `Activity`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
 

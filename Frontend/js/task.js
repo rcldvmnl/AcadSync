@@ -160,6 +160,7 @@ function render(t, admin) {
       <div class="space-y-4">
         ${unset ? `<div class="flex gap-3 rounded-[1.5rem] bg-sun-tint p-4">${icon('bell', 18, 'mt-0.5 shrink-0')}
           <div><div class="text-sm font-semibold">We’ll notify you when the date is set</div><div class="text-xs text-muted">The professor hasn’t announced the exact date yet.</div></div></div>` : ''}
+        ${t.work_mode === 'group' && t.status === 'approved' ? `<div id="groups" class="scroll-mt-6">${UI.skeleton(1, 'h-40')}</div>` : ''}
         <div class="rounded-[1.75rem] bg-white p-5 shadow-card">
           <h3 class="text-lg font-semibold">Instructions</h3>
           ${prose.length ? prose.map((p) => `<p class="mt-2 text-[15px] leading-relaxed">${esc(p)}</p>`).join('') : '<p class="mt-2 text-sm text-muted">No instructions yet.</p>'}
@@ -168,7 +169,6 @@ function render(t, admin) {
         </div>
         ${t.status === 'approved' ? '<div id="checklist"></div>' : ''}
         ${t.status === 'approved' ? doneCard(t) : ''}
-        ${t.work_mode === 'group' && t.status === 'approved' ? `<div id="groups">${UI.skeleton(1, 'h-40')}</div>` : ''}
         ${t.status === 'approved' ? (admin
           ? `<div class="grid grid-cols-2 gap-3">
               <button type="button" id="delete-task" class="btn btn-danger">Remove</button>

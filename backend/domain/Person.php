@@ -37,7 +37,7 @@ final class Permission
     public const PUBLISH_TASK = 'publish_task';             // post or edit a task directly (skips the queue)
     public const REMOVE_TASK = 'remove_task';
     public const MANAGE_SECTION = 'manage_section';         // subjects, class times, class code
-    public const MANAGE_ANY_GROUP = 'manage_any_group';     // add to / delete any group, not only your own
+    public const MANAGE_ANY_GROUP = 'manage_any_group';     // add, move or remove members of any group; delete any group
     public const ANSWER_ANY_REQUEST = 'answer_any_request'; // accept or decline join requests for any group
     public const JOIN_DIRECTLY = 'join_directly';           // join a group without a request
     public const AUTO_GROUP = 'auto_group';                 // put everyone left into groups
@@ -230,13 +230,14 @@ abstract class Officer extends Member
 
     /**
      * What every officer may do on top of a member: review the queue and new members, run activities,
-     * post announcements, read records.
+     * post announcements, read records, and fix any group (add, move or remove members).
      */
     protected function permissions(): array
     {
         return [...parent::permissions(),
             Permission::REVIEW_REQUESTS, Permission::MANAGE_ACTIVITIES, Permission::VIEW_MEMBER_RECORDS,
             Permission::REVIEW_MEMBERS, Permission::POST_ANNOUNCEMENTS,
+            Permission::MANAGE_ANY_GROUP, Permission::ANSWER_ANY_REQUEST,   // officers can fix any group
         ];
     }
 }
@@ -315,7 +316,7 @@ final class President extends Officer
         return [...parent::permissions(),
             Permission::RECORD_ATTENDANCE, Permission::UPDATE_MEMBER_RECORDS, Permission::ASSIGN_OFFICERS,
             Permission::PUBLISH_TASK, Permission::REMOVE_TASK, Permission::MANAGE_SECTION,
-            Permission::MANAGE_ANY_GROUP, Permission::ANSWER_ANY_REQUEST, Permission::JOIN_DIRECTLY, Permission::AUTO_GROUP,
+            Permission::JOIN_DIRECTLY, Permission::AUTO_GROUP,
             Permission::MANAGE_DUES,
         ];
     }

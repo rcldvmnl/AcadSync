@@ -154,7 +154,18 @@ final class RejoinGroupAction extends UndoAction
 
         if ($g) {
             // Still there: take your seat back if there is one
-            $max = $task?->rule()?->max() ?? ($g['max_members'] !== null ? (int) $g['max_members'] : null);
+            $max = $g['max_members'] !== null ? (int) $g['max_members'] : null;
+            if ($task?->rule() !== null) {
+                // [OOP: POLYMORPHISM] — the task's rule says how many this group may hold right now
+                $siblings = [];
+                foreach ($c->groups as $x) {
+                    if ((int) $x['task_id'] === $taskId) {
+                        $siblings[] = StudyGroup::fromRow($x);
+                    }
+                }
+                $state = $task->rule()->evaluate($siblings, count(section_members($c->sectionId)));
+                $max = $task->rule()->capacityOf(StudyGroup::fromRow($g), $state);
+            }
             if ($max !== null && count($g['members']) >= $max) {
                 throw new UndoNotPossible("“{$g['name']}” is full now, so you can’t rejoin.");
             }

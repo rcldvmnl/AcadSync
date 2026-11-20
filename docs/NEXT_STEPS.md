@@ -29,6 +29,15 @@ New tables reach an existing database automatically (`CREATE TABLE IF NOT EXISTS
 The seed (new databases only) now has Marco as Treasurer, two dues with payments, two announcements
 and a pending join request from Leo.
 
+### Later the same day
+
+| Change | Files |
+| --- | --- |
+| Date ranges count as today/urgent from their first day (`Deadline::attentionAt`); range badge "20–23 NOV" | `Deadline.php`, `schedule.php`, `ui.js`, `schedule.js`, `task.js` |
+| Nav: Classmates before Groups for members (desktop and phone) | `ui.js` |
+| Classmates › Groups subject headers fit on phones | `classmates.css` |
+| **Group setups**: `GroupRule` is abstract with `AssignedGroups`, `FixedGroupCount`, `FixedGroupSize`, `FixedSizeAndCount`. Groups appear at posting when their number is known; empty groups are joined directly; every officer can move/remove members; the task form has a setup picker with a live preview and a builder for the prof's own list; Task Details shows Groups first | `Task.php`, `groups.php`, `request_task.php`, `admin_action.php`, `services.php`, `seed.php`, `task-form.js`, `group-work.js`, `groups.js`, `task.js` |
+
 ---
 
 ## Still to do

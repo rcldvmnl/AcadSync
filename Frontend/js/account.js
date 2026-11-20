@@ -33,7 +33,7 @@ async function loadRequests() {
       return `<div class="rounded-2xl p-3 ${link ? 'hover:bg-canvas' : ''}">
         <div class="flex items-center gap-3">
           <${link ? `a href="${link}"` : 'span'} class="min-w-0 flex-1"><span class="block truncate text-[15px] font-medium">${esc(r.title)}${r.kind === 'change' ? ' <span class="text-xs text-muted">(edit request)</span>' : ''}</span>
-            <span class="block text-xs text-muted">${esc(r.subject_code)} · ${esc(r.category)}${r.work_mode === 'group' ? ` · group of ${UI.groupSize(r)}` : ''} · sent ${esc(Fmt.ago(r.created_ts))}${where}</span></${link ? 'a' : 'span'}>
+            <span class="block text-xs text-muted">${esc(r.subject_code)} · ${esc(r.category)}${r.work_mode === 'group' ? ` · group work, ${UI.groupRule(r)}` : ''} · sent ${esc(Fmt.ago(r.created_ts))}${where}</span></${link ? 'a' : 'span'}>
           ${UI.chip(label, cls)}
         </div>
         ${r.status === 'pending' ? `<div class="mt-2 flex gap-2">

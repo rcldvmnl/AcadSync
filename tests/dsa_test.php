@@ -20,6 +20,7 @@ if (PHP_SAPI !== 'cli') {   // never runnable from a browser
 date_default_timezone_set('Asia/Manila');
 require_once __DIR__ . '/../backend/domain/Deadline.php';
 require_once __DIR__ . '/../backend/custom_dsa.php';
+require_once __DIR__ . '/../backend/domain/Task.php';
 
 $passed = 0;
 $failed = 0;
@@ -225,6 +226,47 @@ check('range opening later counts from its first day', date('Y-m-d H:i', $later-
 $exact = Deadlines::fromRow(['deadline' => '2026-11-24', 'deadline_end' => null, 'deadline_time' => '08:00']);
 check('exact date counts at its deadline', date('Y-m-d H:i', $exact->attentionAt($friNoon)), '2026-11-24 08:00');
 check('no date has no place', Deadlines::fromRow(['deadline' => null])->attentionAt($friNoon), null);
+
+// ---------------------------------------------------------------------------
+section('Group setups (GroupRule subclasses)');
+$sg = fn (int $id, int $size) => new StudyGroup($id, "Group $id", 1, 1, null, $size ? range(1, $size) : []);
+
+// 2. "Make 5 groups", 33 classmates -> 3 groups of 7 and 2 groups of 6
+$byCount = GroupRule::create(GroupRule::BY_COUNT, null, 5);
+check('count: 33 in 5 groups -> 7,7,7,6,6', $byCount->sizes(33), [7, 7, 7, 6, 6]);
+check('count: makes all groups at posting', $byCount->makesEmptyGroups(), true);
+$state = $byCount->evaluate([$sg(1, 6), $sg(2, 6), $sg(3, 6), $sg(4, 6), $sg(5, 6)], 33);
+check('count: 3 groups may still take a 7th', [$state['base'], $state['extras_left'], $state['can_create']], [6, 3, false]);
+check('count: a full group of 6 has room for 1 extra', $byCount->capacityOf($sg(1, 6), $state), 7);
+$state = $byCount->evaluate([$sg(1, 7), $sg(2, 7), $sg(3, 7), $sg(4, 6), $sg(5, 5)], 33);
+check('count: once 3 groups have 7, the rest stay at 6', [$byCount->capacityOf($sg(4, 6), $state), $byCount->capacityOf($sg(5, 5), $state)], [6, 6]);
+
+// 3. "4 per group", 33 classmates -> 8 groups of 4, 1 left (joins as 5th or makes a smaller group)
+$bySize = GroupRule::create(GroupRule::BY_SIZE, 4, null);
+check('size: 33 by 4 -> 8 groups, one may have 5', $bySize->sizes(33), [5, 4, 4, 4, 4, 4, 4, 4]);
+check('size: groups are made by students', [$bySize->makesEmptyGroups(), $bySize->evaluate([], 33)['can_create']], [false, true]);
+check('size: explains the leftover', str_contains($bySize->explain(33), '1 classmate left') && str_contains($bySize->explain(33), '5th member'), true);
+$plan = $bySize->autoPlan([4, 4, 4, 4, 4, 4, 4, 4], 1, 33);
+check('size: auto-group puts the 1 left into a group as +1', [$plan['add'][0], $plan['new'], $plan['left']], [1, [], 0]);
+$plan = $bySize->autoPlan([], 7, 7);
+check('size: 7 left by 4 -> a group of 4 and a smaller group of 3', $plan['new'], [4, 3]);
+
+// 4. "8 groups of 4", 33 classmates -> 32 seats, 1 group may take a 5th
+$both = GroupRule::create(GroupRule::BY_SIZE_AND_COUNT, 4, 8);
+check('both: 33 in 8 groups of 4 -> one 5', $both->sizes(33), [5, 4, 4, 4, 4, 4, 4, 4]);
+check('both: 30 classmates -> some groups under 4', str_contains($both->explain(30), 'fewer than 4'), true);
+check('both: 42 classmates -> 2 can\'t fit', $both->seats(42)['unplaceable'], 2);
+$plan = $both->autoPlan([4, 4, 4, 4, 4, 4, 4, 0], 5, 33);
+check('both: auto-group fills the empty group, then 1 extra', [$plan['add'][7], array_sum($plan['add']), $plan['left']], [4, 5, 0]);
+
+// 1. Assigned by the prof: students can't organize, no auto-grouping
+$assigned = GroupRule::create(GroupRule::ASSIGNED, null, 3);
+check('assigned: students don\'t organize', [$assigned->studentsOrganize(), $assigned->evaluate([], 10)['can_create']], [false, false]);
+check('assigned: auto-group leaves people to the officers', $assigned->autoPlan([3, 3], 4, 10)['left'], 4);
+
+check('invalid rule is refused', (function () { try { GroupRule::create(GroupRule::BY_SIZE, 1, null); return 'built'; } catch (InvalidArgumentException) { return 'refused'; } })(), 'refused');
+check('old rows: count + strict size -> both', GroupRule::fromRow(['group_min' => 3, 'group_max' => 3, 'group_count' => 5])->mode(), 'size_count');
+check('old rows: a size range only -> per group', GroupRule::fromRow(['group_min' => 2, 'group_max' => 3, 'group_count' => null])->mode(), 'size');
 
 // ---------------------------------------------------------------------------
 section('Group planning');

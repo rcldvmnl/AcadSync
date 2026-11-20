@@ -52,7 +52,7 @@ final class Store
     private static function addMissingColumns(): void
     {
         $added = [
-            'tasks' => ['group_count' => 'INTEGER'],
+            'tasks' => ['group_count' => 'INTEGER', 'group_mode' => 'TEXT', 'group_plan' => 'TEXT'],
             'password_resets' => ['attempts' => 'INTEGER NOT NULL DEFAULT 0'],
             // officer positions (vice_president | secretary | treasurer) and member status (active | inactive | alumni)
             'memberships' => ['position' => 'TEXT', 'status' => "TEXT NOT NULL DEFAULT 'active'"],

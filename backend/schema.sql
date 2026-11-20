@@ -91,9 +91,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     deadline_type TEXT NOT NULL DEFAULT 'exact', -- exact | range | unset
     location TEXT,
     work_mode TEXT NOT NULL DEFAULT 'individual', -- individual | group
-    group_min INTEGER,                  -- group work: smallest allowed group (e.g. 3)
-    group_max INTEGER,                  -- group work: largest allowed group (e.g. 4)
-    group_count INTEGER,                -- group work: exact number of groups the prof wants (NULL = any)
+    group_min INTEGER,                  -- group work: members per group (same as group_max)
+    group_max INTEGER,                  -- group work: members per group the prof set (NULL = not set)
+    group_count INTEGER,                -- group work: number of groups the prof set (NULL = not set)
+    group_mode TEXT,                    -- group work: assigned | count | size | size_count (GroupRule subclass)
+    group_plan TEXT,                    -- assigned groups as JSON [{name, member_ids}] until they are made
     status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected | removed | withdrawn
     kind TEXT NOT NULL DEFAULT 'new',   -- new | change (edit request for target_task_id)
     target_task_id INTEGER,

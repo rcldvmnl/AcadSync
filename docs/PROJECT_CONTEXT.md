@@ -83,18 +83,30 @@ router.php, .htaccess, .env.example, .gitignore
   `Person::fromRow` picks the class from `memberships.role` ('admin' = President) and `memberships.position`
   (`vice_president` | `secretary` | `treasurer`; `Person::OFFICES` lists them with labels).
   Permissions: Member = request_task, join_group. Officer adds review_requests, review_members,
-  post_announcements, manage_activities, view_member_records. Secretary adds record_attendance,
-  update_member_records. Treasurer adds manage_dues. President adds record_attendance,
-  update_member_records, manage_dues plus assign_officers, publish_task, remove_task, manage_section,
-  manage_any_group, answer_any_request, join_directly, auto_group. `can()` is final and also asks the status.
+  post_announcements, manage_activities, view_member_records, manage_any_group, answer_any_request
+  (every officer can fix groups). Secretary adds record_attendance, update_member_records. Treasurer
+  adds manage_dues. President adds record_attendance, update_member_records, manage_dues plus
+  assign_officers, publish_task, remove_task, manage_section, join_directly, auto_group.
+  `can()` is final and also asks the status.
 - `MemberStatus` (abstract) → `ActiveStatus`, `InactiveStatus` (absences don't count, can't hold office,
   no dues), `AlumniStatus` (can't RSVP, request tasks or join groups; no dues). `owesDues()` decides who
   is charged. Stored in `memberships.status`.
 - `Payment` (abstract) → `CashPayment` (receipt no. optional), `GcashPayment` (13-digit ref, must be
   unique: `referenceIsUnique()`); built by `Payment::create($method, …)`. `Due` (final) holds a fee,
   `balance()` and `standing()` (paid / partial / overdue / unpaid). Money is stored as centavos.
-- `Task` → `IndividualTask`, `GroupTask` (has `GroupRule`: min/max/exact count, strict "+1" seat);
-  `StudyGroup`. `Deadline` interface → `DatedDeadline` → `ExactDeadline`/`RangeDeadline`, plus `NoDeadline`.
+- `Task` → `IndividualTask`, `GroupTask` (has a `GroupRule`); `StudyGroup`.
+  `GroupRule` (abstract) is how the prof set the groups up, one subclass each (`tasks.group_mode`):
+  `AssignedGroups` (`assigned`: the prof's list in `tasks.group_plan` JSON; students can't change it),
+  `FixedGroupCount` (`count`: 33 in 5 → 3×7 + 2×6), `FixedGroupSize` (`size`: 4 per group, leftovers
+  join as +1 or make a smaller group), `FixedSizeAndCount` (`size_count`: 8×4, extras take +1).
+  `seats()` gives base size / extra seats / fixed count; `explain()` the sentence shown on the page;
+  `evaluate()`, `capacityOf()`, `autoPlan()` are shared. Members per group is stored in group_max
+  (= group_min); tasks saved before group_mode existed are read by `GroupRule::fromRow` (count+strict
+  size → both, count → number of groups, size → per group). `sync_task_groups()` (services.php) makes
+  the groups when a task is published or approved (empty slots when the count is known); emptied
+  groups stay when the count is fixed. Empty groups are joined directly (first in = leader).
+- `Deadline` interface → `DatedDeadline` → `ExactDeadline`/`RangeDeadline`, plus `NoDeadline`
+  (`opensAt()` / `attentionAt()`: an open date range counts as today on the schedule).
 - `Activity` (abstract) → `Meeting` (everyone expected, anyone checked in), `Seminar` (seat needed),
   `Outreach` (volunteers expected, walk-ins allowed). `ActivityRoster` = HashSets (going, checked-in)
   + `ApprovalQueue` waitlist. `MemberRecord` computes attendance from finished activities.
