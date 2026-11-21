@@ -45,7 +45,7 @@ function algoCard(name, how, body) {
     </section>`;
 }
 
-const TINT = { lavender: '#E6E1FD', peach: '#FCE3CF', yellow: '#FDF3C7', mint: '#E5F6EE' };
+const TINT = { lavender: '#ECEBFE', peach: '#FDE7D6', yellow: '#FFF3C4', mint: '#EDEDF2' };
 
 /** The 2D week grid, 7 AM to 9 PM: each filled run of cells is one class meeting. */
 function weekGridView(g) {
@@ -113,7 +113,7 @@ function sortView(s) {
 function binaryView(b) {
   const day = Fmt.short(b.date);
   return `<div class="grid grid-cols-2 gap-3">
-      <div class="rounded-2xl bg-mint-tint p-4"><div class="text-3xl font-extrabold">${b.steps}</div><div class="text-xs text-muted">checks by Binary Search</div></div>
+      <div class="rounded-2xl bg-lavender-tint p-4"><div class="text-3xl font-extrabold">${b.steps}</div><div class="text-xs text-muted">checks by Binary Search</div></div>
       <div class="rounded-2xl bg-canvas p-4"><div class="text-3xl font-extrabold">${b.searched}</div><div class="text-xs text-muted">checks scanning one by one (worst case)</div></div>
     </div>
     <p class="mt-3 text-sm">${plural(b.found, 'task')} due by ${esc(day)}, 11:59 PM.</p>`;
@@ -144,7 +144,7 @@ function hashView(h) {
   if (!rows.length) return none('The set is empty.');
   return `<div class="space-y-1.5 text-xs">
     ${rows.map(([i, keys]) => `<div class="flex items-start gap-2"><span class="w-12 shrink-0 rounded-lg bg-charcoal py-1 text-center font-mono text-white">${i}</span>
-      <span class="flex flex-wrap gap-1">${keys.map((k) => `<span class="rounded-lg bg-mint-tint px-2 py-1 font-mono">${esc(k)}</span>`).join('')}</span></div>`).join('')}
+      <span class="flex flex-wrap gap-1">${keys.map((k) => `<span class="rounded-lg bg-sun-tint px-2 py-1 font-mono">${esc(k)}</span>`).join('')}</span></div>`).join('')}
   </div><p class="mt-2 text-xs text-muted">${h.size} unique e-mails · a bucket with 2+ entries is a collision handled by chaining</p>`;
 }
 
@@ -191,7 +191,7 @@ function paidSetView(p) {
   if (!p) return `<div class="mt-4">${none('No open dues, so the “paid in full” set is empty.')}</div>`;
   const buckets = p.buckets ? `<div class="mt-2 space-y-1.5 text-xs">${Object.entries(p.buckets).map(([i, keys]) => `<div class="flex items-start gap-2">
       <span class="w-12 shrink-0 rounded-lg bg-charcoal py-1 text-center font-mono text-white">${i}</span>
-      <span class="flex flex-wrap gap-1">${keys.map((k) => `<span class="rounded-lg bg-mint-tint px-2 py-1">${esc(k)}</span>`).join('')}</span></div>`).join('')}</div>` : '';
+      <span class="flex flex-wrap gap-1">${keys.map((k) => `<span class="rounded-lg bg-sun-tint px-2 py-1">${esc(k)}</span>`).join('')}</span></div>`).join('')}</div>` : '';
   return `<div class="mt-4">
     <div class="mb-1.5 text-xs font-semibold">Paid “${esc(p.due)}” in full</div>
     <p class="rounded-2xl bg-canvas p-3 text-sm">${p.size} of ${plural(p.charged, 'member')} · ${p.me ? 'you’re in the set' : 'you’re not in the set yet'}</p>

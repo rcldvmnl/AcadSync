@@ -106,6 +106,23 @@ Verified after these: `tests/dsa_test.php` 220/0, `tests/mailer_test.php` 12/0; 
 (reset e-mail) + 11 (CSV) + 7 (live examples); browser checks 12 + 11 (nav) + 2 (reset) + 4 (dues) + 3 (dsa page),
 no JS errors, clean server log; DSA grep empty; `npm run build:css` unchanged.
 
+## Done on 2026-11-21, last: app-wide restyle to the owner's reference (layouts unchanged)
+
+| Change | Files |
+| --- | --- |
+| New look from the owner's reference education app, academic theme: cool grey ground `#F4F4F7`, white hairline cards, periwinkle `#A8A3F7` / orange `#F58D42` / yellow `#FFD34E` cards, charcoal cards and nav (active item a periwinkle rounded square, + a white disc), SVG sparkle stars and doodle lines on hero and dark cards. Text colours re-checked for WCAG AA (`muted` `#5E5E68`, `success` `#23774F`, `danger` `#C8402F`) | `tailwind.config.js`, `css/app.css`, `css/org.css`, `css/task.css`, `css/classmates.css` |
+| Hand-drawn SVG illustrations (trophy, books, pencil, diploma) on the login / sign-up heroes, the officer Home hero and every empty state; login hero orange, sign-up periwinkle | `assets/illus/*.svg`, `index.html`, `signup.html`, `js/home.js`, `js/ui.js` |
+| Mint now only marks success; decorative mint (activity kinds, the Members quick action, Treasurer tint, chips) moved to the reference tints; a subject stored as `mint` shows as grey (picker label "Grey") | `js/*.js`, `classmates.css` |
+| Plus Jakarta Sans self-hosted (`Frontend/fonts/`, OFL); Google Fonts removed from all 20 pages, so the app works fully offline | `css/app.css`, all `Frontend/*.html` |
+| README screenshots retaken in the new design | `docs/screenshots/*.png` |
+| Design records: `PRODUCT.md` (product truth), `DESIGN.md` + `.impeccable/design.json` (visual system), `.impeccable/surfaces/frontend-home-html.md` (direction contract). Small uppercase labels above headings were kept by the owner's decision | root, `.impeccable/` |
+
+Checked: all 23 page views at 390 and 1280 px (font loads with Google blocked, no sideways scroll, no JS errors);
+`impeccable detect --changed` 0 findings; independent finish review: ship (7 material fixes, all resolved);
+`tests/dsa_test.php` 220/0 and the five browser checks still pass.
+Not changed (frozen layout, pre-existing): at 390 px the Dues member rows cut long names short and the Activities
+part rows wrap narrowly.
+
 ---
 
 ## Still to do

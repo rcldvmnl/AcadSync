@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Pencil">
+  <!-- AcadSync illustration: a yellow pencil with an orange eraser. Hand-drawn SVG, 2026-11-21. -->
+  <defs>
+    <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F1F1F5"/><stop offset=".5" stop-color="#B4B4BF"/><stop offset="1" stop-color="#8E8E9A"/></linearGradient>
+    <linearGradient id="eraser" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9B886"/><stop offset="1" stop-color="#E5772D"/></linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCE2C2"/><stop offset="1" stop-color="#E8B985"/></linearGradient>
+  </defs>
+  <g transform="rotate(-38 48 48)">
+    <rect x="8" y="39" width="12" height="18" rx="5" fill="url(#eraser)"/>
+    <rect x="17" y="39" width="10" height="18" fill="url(#metal)"/>
+    <path d="M20 39v18M24 39v18" stroke="#8E8E9A" stroke-width="1"/>
+    <rect x="27" y="39" width="44" height="6" fill="#FFE48A"/>
+    <rect x="27" y="45" width="44" height="6" fill="#FFD34E"/>
+    <rect x="27" y="51" width="44" height="6" fill="#EDB52A"/>
+    <path d="M71 39l18 9-18 9z" fill="url(#wood)"/>
+    <path d="M83 45l6 3-6 3z" fill="#1C1C21"/>
+    <path d="M30 41.5h36" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".7"/>
+  </g>
+</svg>

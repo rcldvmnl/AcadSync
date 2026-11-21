@@ -49,7 +49,7 @@ function joinsCard() {
       </li>`;
   };
   return `
-    <section id="members" class="scroll-mt-6 rounded-[1.75rem] bg-mint-tint p-4" aria-labelledby="members-h">
+    <section id="members" class="scroll-mt-6 rounded-[1.75rem] bg-lavender-tint p-4" aria-labelledby="members-h">
       <div class="flex items-baseline justify-between gap-2 px-1">
         <h2 id="members-h" class="text-lg font-bold">Waiting to join <span class="font-normal text-muted">(${state.joins.length})</span></h2>
         <span class="text-xs text-muted">Oldest first</span>
@@ -91,7 +91,7 @@ function render() {
     <div class="grid gap-5 lg:grid-cols-[23rem_1fr] lg:items-start lg:gap-6">
       <div class="space-y-4">
         <div class="card-pastel dark flex items-center justify-between rounded-[1.75rem] p-5">
-          <span class="sparkle">✦</span><span class="ring-deco"></span>
+          <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
           <div>
             <div class="text-[10px] font-semibold uppercase tracking-wider text-white/60">Pending requests</div>
             <div class="text-4xl font-extrabold">${n}</div>

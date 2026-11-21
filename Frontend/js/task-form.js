@@ -9,7 +9,7 @@ const params = new URLSearchParams(location.search);
 const editId = params.get('id');
 const requestId = params.get('request');
 const CATEGORIES = ['Reporting', 'Quiz', 'Exam', 'Activity', 'Project'];
-const CAT_ON = { Reporting: 'bg-lavender-tint', Quiz: 'bg-lavender-tint', Exam: 'bg-peach-tint', Activity: 'bg-mint-tint', Project: 'bg-sun-tint' };
+const CAT_ON = { Reporting: 'bg-lavender-tint', Quiz: 'bg-lavender-tint', Exam: 'bg-peach-tint', Activity: 'bg-[#EDEDF2]', Project: 'bg-sun-tint' };
 const OTHER_SUGGESTIONS = ['Seatwork', 'Recitation', 'Laboratory', 'Film viewing', 'Field trip', 'Presentation', 'Research'];
 
 let picker, times, mode, task = null, sectionSize = 0;
@@ -71,7 +71,7 @@ function banner() {
   }[mode];
   return `
     <div class="card-pastel ${cls} flex items-center gap-4 rounded-[1.75rem] p-4">
-      <span class="sparkle">✦</span><span class="ring-deco" style="width:90px;height:90px;right:-20px;bottom:-50px;border-width:12px"></span>
+      <span class="sparkle" aria-hidden="true"></span>
       <span class="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white">${icon(mode === 'edit' ? 'edit' : 'plus', 22)}</span>
       <div><div class="font-semibold">${title}</div><div class="text-xs">${sub}</div></div>
     </div>`;

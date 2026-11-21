@@ -2,7 +2,8 @@
 
 const form = $('#subject-form');
 const editId = new URLSearchParams(location.search).get('id');
-const SWATCH = { lavender: 'bg-lavender', peach: 'bg-peach', yellow: 'bg-sun', mint: 'bg-mint' };
+const SWATCH = { lavender: 'bg-lavender', peach: 'bg-peach', yellow: 'bg-sun', mint: 'bg-[#C9C9D3]' };   // 'mint' is the stored name; it shows as the reference's grey
+const SWATCH_LABEL = { lavender: 'Periwinkle', peach: 'Orange', yellow: 'Yellow', mint: 'Grey' };
 const LENGTHS = [[60, '1 hr'], [90, '1.5 hrs'], [120, '2 hrs'], [180, '3 hrs']];
 let color = 'lavender';
 /** day (1–6) -> { start: 'HH:MM', end: 'HH:MM' } */
@@ -43,7 +44,7 @@ const toHHMM = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:$
 
 function renderColors() {
   $('#colors').innerHTML = Object.entries(SWATCH).map(([k, cls]) => `
-    <button type="button" data-color="${k}" aria-label="${k}" aria-pressed="${k === color}" class="h-10 w-10 rounded-full ${cls} ${k === color ? 'ring-2 ring-charcoal ring-offset-2' : ''}"></button>`).join('');
+    <button type="button" data-color="${k}" aria-label="${SWATCH_LABEL[k]}" aria-pressed="${k === color}" class="h-10 w-10 rounded-full ${cls} ${k === color ? 'ring-2 ring-charcoal ring-offset-2' : ''}"></button>`).join('');
   $$('[data-color]').forEach((b) => b.onclick = () => { color = b.dataset.color; renderColors(); });
 }
 

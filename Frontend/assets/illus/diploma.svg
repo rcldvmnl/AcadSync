@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Rolled diploma">
+  <!-- AcadSync illustration: a rolled diploma tied with an orange ribbon and a gold seal. Hand-drawn SVG, 2026-11-21. -->
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#F4F4F7"/><stop offset="1" stop-color="#D9D9E2"/></linearGradient>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F9A060"/><stop offset="1" stop-color="#D9661E"/></linearGradient>
+    <radialGradient id="seal" cx=".35" cy=".35" r=".8"><stop offset="0" stop-color="#FFE48A"/><stop offset="1" stop-color="#E29A0F"/></radialGradient>
+  </defs>
+  <g transform="rotate(-14 48 48)">
+    <rect x="12" y="36" width="72" height="22" rx="11" fill="url(#paper)"/>
+    <ellipse cx="80" cy="47" rx="5.5" ry="11" fill="#E2E2E9"/>
+    <ellipse cx="80" cy="47" rx="2.6" ry="6" fill="#C4C4CE"/>
+    <path d="M20 41h40" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+    <rect x="42" y="35" width="11" height="24" rx="2" fill="url(#ribbon)"/>
+    <path d="M44 58l-6 16 6-3 3 5 2-17z" fill="#E5772D"/>
+    <path d="M51 58l6 16-6-3-3 5-2-17z" fill="#D9661E"/>
+    <circle cx="47.5" cy="60" r="8" fill="url(#seal)"/>
+    <path d="M47.5 55c.4 2.6 1.8 4 4.4 4.4-2.6.4-4 1.8-4.4 4.4-.4-2.6-1.8-4-4.4-4.4 2.6-.4 4-1.8 4.4-4.4Z" fill="#fff"/>
+  </g>
+</svg>

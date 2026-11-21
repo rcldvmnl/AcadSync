@@ -28,12 +28,12 @@ function scheduleLine(slots) {
 
 function render(d, admin) {
   const s = d.subject;
-  const strong = s.color_tag === 'mint' ? 'mint-soft' : tone(s.color_tag).strong;
+  const strong = tone(s.color_tag).strong;
   return `
     <div class="grid gap-5 lg:grid-cols-[1.1fr_1fr] lg:items-start lg:gap-6">
       <div class="space-y-4">
         <div class="card-pastel ${strong} rounded-[1.75rem] p-5 lg:p-7">
-          <span class="ring-deco" style="width:200px;height:200px;right:-50px;bottom:-90px;border-width:22px"></span>
+          <span class="ring-deco" style="width:200px;height:200px;right:-20px;bottom:-50px"></span>
           <div class="flex items-start justify-between">
             ${UI.chip(s.code, 'bg-white text-sm')}
             ${d.tasks.length ? `<span class="chip bg-white text-[11px]">${icon('clock', 12)}${d.tasks.length} due<span class="h-1.5 w-1.5 rounded-full bg-danger"></span></span>` : ''}
@@ -51,12 +51,10 @@ function render(d, admin) {
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div class="relative overflow-hidden rounded-[1.75rem] bg-white p-4 shadow-card">
-            <span class="absolute -right-5 -top-5 h-20 w-20 rounded-full bg-lavender-tint"></span>
             <div class="relative text-4xl font-extrabold">${d.tasks.length}</div>
             <div class="relative mt-1 text-xs text-muted">Upcoming tasks</div>
           </div>
           <a href="${admin ? 'queue.html' : 'task-form.html?subject=' + s.id}" class="card-pastel yellow rounded-[1.75rem] p-4">
-            <span class="absolute -right-5 -top-5 h-20 w-20 rounded-full bg-white/30"></span>
             <div class="relative text-4xl font-extrabold">${d.pending}</div>
             <div class="relative mt-1 text-xs">${admin ? 'Request' : 'Pending request'}${d.pending === 1 ? '' : 's'}${admin ? ' to review' : ''}</div>
           </a>

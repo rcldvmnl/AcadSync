@@ -489,7 +489,8 @@ tests/dsa_test.php        tests for every data structure and algorithm (command 
 tests/mailer_test.php     tests for the mailer, with tests/fake_smtp.php as a fake mail server
 docs/CLASS_DIAGRAM.md     UML class diagram (Mermaid)
 docs/screenshots/         screenshots used in this README
-Frontend/                 *.html pages (incl. dues.html), js/, css/ (tailwind.css is built), assets/
+Frontend/                 *.html pages (incl. dues.html), js/, css/ (tailwind.css is built), fonts/ (self-hosted Plus Jakarta Sans),
+                          assets/ (icons, the 3D cap badge, illus/ hand-drawn SVG trophy, books, pencil, diploma)
 tailwind.config.js        Tailwind theme + which files are scanned (npm run build:css)
 package.json              build tools only (the Tailwind CLI); the app itself doesn't need Node
 ```

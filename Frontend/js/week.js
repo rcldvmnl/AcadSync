@@ -87,7 +87,7 @@ function weekCalendar(days) {
               ${hours.map((h, i) => `<span class="absolute right-2 -translate-y-1/2 text-[10px] font-medium text-muted" style="top:${i * HOUR_PX}px">${i ? hourLabel(h) : ''}</span>`).join('')}
             </div>
             ${days.map((d) => `
-              <div class="relative border-l border-line ${d.date === today ? 'bg-lavender-tint/30' : ''}" style="height:${height}px;background-image:linear-gradient(to bottom,#ECE8E2 1px,transparent 1px);background-size:100% ${HOUR_PX}px">
+              <div class="relative border-l border-line ${d.date === today ? 'bg-lavender-tint/30' : ''}" style="height:${height}px;background-image:linear-gradient(to bottom,#E9E9EF 1px,transparent 1px);background-size:100% ${HOUR_PX}px">
                 ${layout(d.classes).map(({ c, lane, lanes }) => classBlock(c, startH, lane, lanes)).join('')}
                 ${d.date === today && showNow ? `<div class="pointer-events-none absolute inset-x-0 z-10 flex items-center" style="top:${nowTop}px"><span class="-ml-1 h-2 w-2 rounded-full bg-danger"></span><span class="h-0.5 flex-1 bg-danger"></span></div>` : ''}
               </div>`).join('')}

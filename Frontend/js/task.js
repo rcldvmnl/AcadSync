@@ -103,7 +103,7 @@ function render(t, admin) {
   const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
   const openRange = !unset && Fmt.isOpenRange(t);   // "any day Nov 20 – 23" and Nov 20 has come
   const dueToday = !unset && !openRange && t.deadline_ts * 1000 <= endOfToday;
-  const strong = t.color === 'mint' ? 'mint-soft' : tone(t.color).strong;
+  const strong = tone(t.color).strong;
 
   const status = t.status !== 'approved'
     ? UI.chip(t.status === 'pending' ? 'Pending review' : 'Not approved', 'bg-charcoal text-white')
@@ -138,12 +138,12 @@ function render(t, admin) {
     <div class="grid gap-4 lg:grid-cols-2 lg:items-start lg:gap-6">
       <div class="space-y-4">
         <div class="card-pastel ${strong} rounded-[1.75rem] p-5 lg:p-7">
-          <span class="sparkle">✦</span><span class="ring-deco"></span>
+          <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
           <div class="flex flex-wrap gap-2">${UI.chip(t.category, 'bg-white')}${UI.workBadge(t)}${status}</div>
           <h2 class="mt-3 text-[28px] font-extrabold leading-tight tracking-tight lg:text-4xl">${esc(t.title)}</h2>
         </div>
         <div class="card-pastel dark flex items-center gap-4 rounded-[1.75rem] p-5">
-          <span class="sparkle">✦</span><span class="ring-deco"></span>
+          <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
           <span class="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-sun text-charcoal">${icon(unset ? 'calendar' : 'clock', 22)}</span>
           <div>
             <div class="text-[10px] font-semibold uppercase tracking-wider text-white/60">Deadline</div>

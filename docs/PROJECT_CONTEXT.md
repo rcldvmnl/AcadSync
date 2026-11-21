@@ -86,8 +86,11 @@ router.php, .htaccess, .env.example, .gitignore
   `role === 'admin'`. The frontend uses `Shell.can('permission')` (list sent by `auth.php`).
 - Every endpoint is section-scoped (`section_rows`, `load_context`); never trust ids across sections.
 - Foreign keys are ON. Delete a group with `delete_group()` (removes requests/members first).
-- Copy and UI: plain sentence-case language; match the existing design (white rounded cards on the
-  sand ground `#F6F3EE`, pastel tints lavender/peach/sun/mint, charcoal buttons, Plus Jakarta Sans).
+- Copy and UI: plain sentence-case language; match the design in `DESIGN.md` (since 2026-11-21: the owner's
+  reference education app in an academic theme: white cards on the cool grey ground `#F4F4F7`, periwinkle
+  `#A8A3F7`, orange `#F58D42` and yellow `#FFD34E` cards, charcoal cards and nav, SVG sparkle stars and doodle
+  lines, hand-drawn SVG academic illustrations in `Frontend/assets/illus/`, Plus Jakarta Sans self-hosted).
+  Mint is only for success states. Layouts were not changed by the restyle.
 
 ## OOP model (backend/domain)
 
@@ -227,10 +230,15 @@ The current to-do list (fixes and features, checked against the README) is in
 - Phone nav: members Home, Schedule, Classmates | + | Groups, Activities, Account; officers Home, Schedule,
   Queue | + | Members, Groups, Activities, with My account from the avatar in the phone header
   (`Shell.accountInHeader()`; the desktop rail has the avatar for everyone).
-- The yellow glow on the active nav item (`app.css`) and the sand ground `#F6F3EE` come from the Figma
-  components page; both have a recorded exception for every page in `.impeccable/config.json`.
-- Text colours meet WCAG AA: `muted` `#62626B` (secondary text, ≥ 4.5:1 on white, sand and every tint),
-  `hint` `#6B6B74` (placeholders). `subtle` `#A9A9B2` is only for icons and borders, never text.
-  `impeccable detect Frontend/*.html` reports 0 issues.
+- 2026-11-21 restyle: the sand ground and the yellow nav glow are gone (the old `cream-palette` / `dark-glow`
+  exceptions in `.impeccable/config.json` no longer match anything). The active nav item is a periwinkle
+  rounded square; the + is a white disc. `PRODUCT.md` holds the product record, `DESIGN.md` the visual system,
+  `.impeccable/surfaces/frontend-home-html.md` the direction contract.
+- Text colours meet WCAG AA: `muted` `#5E5E68` (secondary text, ≥ 4.5:1 on white, the grey ground and every
+  tint, never on the strong periwinkle/orange/yellow fills), `hint` `#666670` (placeholders), `success`
+  `#23774F`, `danger` `#C8402F`. `subtle` `#A9A9B4` is only for icons and borders, never text.
+  `impeccable detect --changed` reported 0 findings after the restyle.
+- Fonts: Plus Jakarta Sans is self-hosted (`Frontend/fonts/`, OFL licence beside it, `@font-face` in `app.css`);
+  no page loads Google Fonts any more, so the app works fully offline.
 - Dues/payments, the join approval queue and announcements were added on 2026-11-20.
 - README still needs the team members and the YouTube / Canva links (placeholders are there).

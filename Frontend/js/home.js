@@ -29,7 +29,7 @@ async function signupsReminder() {
     const mine = list.filter((s) => s.status === 'picked' && !s.done);
     if (!mine.length) return;
     $('#main').insertAdjacentHTML('afterbegin', `
-      <section class="mb-5 rounded-[1.5rem] bg-mint-tint p-4" aria-labelledby="home-signups-h">
+      <section class="mb-5 rounded-[1.5rem] bg-lavender-tint p-4" aria-labelledby="home-signups-h">
         <div class="flex items-center gap-3">
           <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white">${icon('flag', 18)}</span>
           <h2 id="home-signups-h" class="text-sm font-semibold">Your sign-ups</h2>
@@ -68,7 +68,7 @@ async function duesReminder() {
  */
 const ANN_TONE = {
   general: 'bg-canvas', payment: 'bg-peach-tint', no_class: 'bg-danger-tint',
-  deadline_change: 'bg-lavender-tint', task: 'bg-sun-tint', event: 'bg-mint-tint',
+  deadline_change: 'bg-lavender-tint', task: 'bg-sun-tint', event: 'bg-[#EDEDF2]',
 };
 
 const Announcements = {
@@ -121,7 +121,7 @@ const Announcements = {
             </div>
             <h3 class="mt-1 text-[15px] font-semibold leading-snug">${esc(a.title)}</h3>
             ${(a.lines || []).map((l) => `<p class="mt-0.5 text-sm ${l === 'No longer available' ? 'italic text-muted' : 'text-[#45454D]'}">${esc(l)}</p>`).join('')}
-            ${a.body ? `<p data-body class="mt-2 whitespace-pre-line text-sm text-[#5C5C66] ${long ? 'line-clamp-3' : ''}">${esc(a.body)}</p>
+            ${a.body ? `<p data-body class="mt-2 whitespace-pre-line text-sm text-[#5E5E68] ${long ? 'line-clamp-3' : ''}">${esc(a.body)}</p>
               ${long && !preview ? '<button type="button" data-more class="mt-1 text-xs font-semibold">Read more</button>' : ''}` : ''}
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <span class="text-xs text-muted">${esc(a.by || '')}${a.created_at ? ` · posted ${esc(Fmt.monthDay(a.created_at.slice(0, 10)))}` : ''}</span>
@@ -497,8 +497,8 @@ function studentView(d) {
   return `
     <div class="grid gap-5 lg:grid-cols-[1fr_20rem] lg:gap-6">
       <a href="schedule.html" class="card-pastel lavender block min-h-[11rem] rounded-[1.75rem] p-5 lg:min-h-[13rem] lg:p-8">
-        <span class="sparkle">✦</span>
-        <span class="pointer-events-none absolute -right-10 top-4 h-72 w-72 rounded-full border border-white/40"></span>
+        <span class="sparkle" aria-hidden="true"></span>
+        <span class="ring-deco" style="width:260px;height:260px;right:-30px;bottom:-80px"></span>
         <img src="assets/badge-cap-yellow.png" alt="" width="110" height="110" class="absolute right-4 top-6 h-[6.5rem] w-[6.5rem] rounded-full lg:right-10 lg:top-8 lg:h-36 lg:w-36">
         <div class="relative max-w-[60%]">
           <div class="text-[11px] font-semibold uppercase tracking-wider">This week</div>
@@ -512,9 +512,8 @@ function studentView(d) {
       </a>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-1">
-        <a href="my-tasks.html#pending" class="relative overflow-hidden rounded-[1.75rem] border-2 border-lavender-light bg-white p-4 shadow-card">
-          <span class="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-lavender-tint"></span>
-          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white text-lavender-dark shadow-card">${icon('inbox', 18)}</span>
+        <a href="my-tasks.html#pending" class="relative overflow-hidden rounded-[1.75rem] bg-white p-4 shadow-card">
+          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-xl bg-lavender-tint text-lavender-dark">${icon('inbox', 18)}</span>
           <div class="text-xs text-muted">Pending</div>
           <div class="mt-1 text-4xl font-extrabold">${d.stats.my_pending}</div>
           <div class="mt-1 text-xs text-muted">request${d.stats.my_pending === 1 ? '' : 's'}<span class="hidden lg:inline"> waiting for admin review</span></div>
@@ -562,7 +561,6 @@ function subjectCard(s) {
     : `<span class="chip bg-white text-[11px] text-success">${icon('check', 12)}All clear</span>`;
   return `
     <a href="subject.html?id=${s.id}" class="card-pastel ${t.soft} flex min-h-[8.5rem] flex-col rounded-[1.5rem] p-4 transition hover:-translate-y-0.5">
-      <span class="ring-deco" style="width:90px;height:90px;right:-26px;bottom:-40px;border-width:12px"></span>
       <div class="flex items-start justify-between gap-1">
         <span class="grid h-9 w-9 place-items-center rounded-full bg-white ${t.icon}">${icon('notebook', 18)}</span>
         ${badge}
@@ -584,32 +582,32 @@ function adminView(d) {
   const quick = [
     ['add-subject.html', 'lavender-soft', 'bookOpen', 'Add subject', 'Set days & class time'],
     ['task-form.html', 'peach-soft', 'plus', 'Add task', 'Pick a deadline date'],
-    ['classmates.html', 'mint-soft', 'users', 'Members', `${d.section.members} in ${d.section.name}`],
+    ['classmates.html', 'grey-soft', 'users', 'Members', `${d.section.members} in ${d.section.name}`],
     ['week.html', 'yellow-soft', 'calendar', 'Week schedule', `${d.subjects.length} subjects`],
   ];
 
   return `
     <div class="grid gap-5 lg:grid-cols-[1fr_20rem] lg:gap-6">
       <a href="queue.html" class="card-pastel dark flex min-h-[9rem] items-center justify-between rounded-[1.75rem] p-5 lg:p-8">
-        <span class="sparkle">✦</span>
-        <span class="pointer-events-none absolute right-6 top-1/2 h-40 w-40 -translate-y-1/2 rounded-full border border-white/10"></span>
+        <span class="sparkle" aria-hidden="true"></span>
+        <span class="ring-deco" style="width:220px;height:220px;right:140px;bottom:-70px"></span>
+        <img src="assets/illus/diploma.svg" alt="" width="120" height="120" class="illus absolute right-14 top-2 h-10 w-10 -rotate-12 lg:right-48 lg:top-1/2 lg:h-[120px] lg:w-[120px] lg:-translate-y-1/2 lg:rotate-0">
         <div class="relative">
-          <div class="text-[11px] font-semibold uppercase tracking-wider text-white/60">Waiting for you</div>
+          <div class="text-[11px] font-bold uppercase tracking-wider text-peach-light">Waiting for you</div>
           <div class="mt-1 text-[28px] font-extrabold leading-tight lg:text-4xl">${d.stats.queue_size} request${d.stats.queue_size === 1 ? '' : 's'}</div>
           <div class="mt-1 text-xs text-white/60">${esc(oldest)}${d.stats.join_requests ? ` · ${plural(d.stats.join_requests, 'person', 'people')} waiting to join` : ''}</div>
         </div>
-        <span class="btn btn-yellow relative h-14 px-7">Review</span>
+        <span class="btn btn-light relative h-14 px-7">Review${icon('arrowRight', 18)}</span>
       </a>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-1">
-        <a href="schedule.html#urgent" class="card-pastel danger-soft rounded-[1.75rem] border-2 border-[#F5C2BC] p-4">
+        <a href="schedule.html#urgent" class="card-pastel danger-soft rounded-[1.75rem] p-4">
           <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white">${icon('clock', 18)}${urgentToday ? '<span class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-danger"></span>' : ''}</span>
           <div class="mt-1 text-4xl font-extrabold">${urgentToday}</div>
           <div class="mt-1 flex items-center justify-between gap-1 text-xs text-muted"><span>urgent today</span>${urgentToday ? `<span class="chip bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">${inLabel(d.stats.next_due_ts)}</span>` : ''}</div>
         </a>
-        <a href="schedule.html#week" class="relative overflow-hidden rounded-[1.75rem] border-2 border-lavender-light bg-white p-4 shadow-card">
-          <span class="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-lavender-tint"></span>
-          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white text-lavender-dark shadow-card">${icon('inbox', 18)}</span>
+        <a href="schedule.html#week" class="card-pastel lavender-soft rounded-[1.75rem] p-4">
+          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-xl bg-white text-lavender-dark">${icon('inbox', 18)}</span>
           <div class="mt-1 text-4xl font-extrabold">${d.stats.due_week}</div>
           <div class="mt-1 text-xs text-muted">due this week</div>
         </a>
@@ -622,7 +620,6 @@ function adminView(d) {
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           ${quick.map(([href, cls, ic, title, sub]) => `
             <a href="${href}" class="card-pastel ${cls} flex min-h-[8.5rem] flex-col rounded-[1.5rem] p-4 transition hover:-translate-y-0.5">
-              <span class="ring-deco" style="width:90px;height:90px;right:-26px;bottom:-40px;border-width:12px"></span>
               <span class="grid h-10 w-10 place-items-center rounded-full bg-white">${icon(ic, 20)}</span>
               <div class="mt-auto pt-3 text-lg font-semibold">${title}</div>
               <div class="text-xs text-muted">${esc(sub)}</div>

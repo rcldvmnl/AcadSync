@@ -158,13 +158,13 @@ const Fmt = {
 
 /* Subject colour tokens */
 const TONES = {
-  lavender: { soft: 'lavender-soft', strong: 'lavender', chip: 'bg-lavender-tint', bar: '#A99CF5', dot: 'bg-lavender', icon: 'text-lavender-dark' },
-  peach: { soft: 'peach-soft', strong: 'peach', chip: 'bg-peach-tint', bar: '#F6A76B', dot: 'bg-peach', icon: 'text-peach-dark' },
-  yellow: { soft: 'yellow-soft', strong: 'yellow', chip: 'bg-sun-tint', bar: '#F8D65A', dot: 'bg-sun', icon: 'text-[#C9A21F]' },
-  mint: { soft: 'mint-soft', strong: 'mint-soft', chip: 'bg-mint-tint', bar: '#BFE8D4', dot: 'bg-mint', icon: 'text-success' },
+  lavender: { soft: 'lavender-soft', strong: 'lavender', chip: 'bg-lavender-tint', bar: '#A8A3F7', dot: 'bg-lavender', icon: 'text-lavender-dark' },
+  peach: { soft: 'peach-soft', strong: 'peach', chip: 'bg-peach-tint', bar: '#F58D42', dot: 'bg-peach', icon: 'text-peach-dark' },
+  yellow: { soft: 'yellow-soft', strong: 'yellow', chip: 'bg-sun-tint', bar: '#FFD34E', dot: 'bg-sun', icon: 'text-[#8A6A00]' },
+  mint: { soft: 'grey-soft', strong: 'grey-soft', chip: 'bg-[#EDEDF2]', bar: '#1C1C21', dot: 'bg-charcoal', icon: 'text-charcoal' },   // stored as 'mint'; shown as the reference grey (mint marks success only)
 };
 const tone = (c) => TONES[c] || TONES.lavender;
-const CATEGORY_CHIP = { Reporting: 'bg-lavender-tint', Quiz: 'bg-peach-tint', Exam: 'bg-peach-tint', Activity: 'bg-mint-tint', Project: 'bg-sun-tint' };
+const CATEGORY_CHIP = { Reporting: 'bg-lavender-tint', Quiz: 'bg-peach-tint', Exam: 'bg-peach-tint', Activity: 'bg-[#EDEDF2]', Project: 'bg-sun-tint' };
 
 /*
  * How a task is passed. Stored in the task's `location` text as
@@ -173,7 +173,7 @@ const CATEGORY_CHIP = { Reporting: 'bg-lavender-tint', Quiz: 'bg-peach-tint', Ex
 const SUBMIT_MODES = {
   'In class': { icon: 'mapPin', hint: 'e.g. Room 204', chip: 'bg-lavender-tint' },
   Hardcopy: { icon: 'file', hint: 'e.g. Pass to the instructor’s table · Room 204', chip: 'bg-sun-tint' },
-  'Softcopy / Online': { icon: 'laptop', hint: 'e.g. Google Classroom, or PDF to prof@lspu.edu.ph', chip: 'bg-mint-tint' },
+  'Softcopy / Online': { icon: 'laptop', hint: 'e.g. Google Classroom, or PDF to prof@lspu.edu.ph', chip: 'bg-[#EDEDF2]' },
 };
 /** Older saved names that now mean the combined option. */
 const SUBMIT_ALIASES = { Softcopy: 'Softcopy / Online', Online: 'Softcopy / Online' };
@@ -197,6 +197,8 @@ const Submission = {
 /* ------------------------------------------------------------------ pieces */
 const UI = {
   icon, esc,
+  /** Icon name → hand-drawn academic illustration (assets/illus/*.svg) used by empty states. */
+  ILLUS: { check: 'trophy', flag: 'trophy', bookOpen: 'books', notebook: 'books', calendar: 'books', clipboard: 'diploma', inbox: 'diploma', users: 'pencil' },
 
   chip(text, cls = 'bg-white') { return `<span class="chip ${cls}">${esc(text)}</span>`; },
 
@@ -377,8 +379,11 @@ const UI = {
   },
 
   empty(title, text = '', iconName = 'check') {
+    // An academic illustration stands in for the icon where one fits the subject; otherwise a periwinkle icon tile
+    const art = UI.ILLUS[iconName];
     return `<div class="rounded-3xl bg-white p-8 text-center shadow-card">
-      <div class="mx-auto grid h-12 w-12 place-items-center rounded-full bg-mint-tint text-success">${icon(iconName, 22)}</div>
+      ${art ? `<img src="assets/illus/${art}.svg" alt="" width="56" height="56" class="illus mx-auto h-14 w-14">`
+        : `<div class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-lavender-tint text-lavender-dark">${icon(iconName, 22)}</div>`}
       <div class="mt-3 font-semibold">${esc(title)}</div>
       ${text ? `<p class="mt-1 text-sm text-muted">${esc(text)}</p>` : ''}
     </div>`;
@@ -686,7 +691,7 @@ const Shell = {
     const roleLabel = `${user.role_label || (admin ? 'President' : 'Member')} · ${section.name}`;
     return `
       <div class="card-pastel ${admin ? 'yellow' : 'peach'} rounded-[1.75rem] p-5">
-        <span class="sparkle">✦</span><span class="ring-deco"></span>
+        <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
         <div class="${compact ? 'flex items-center gap-4' : ''}">
           <span class="grid ${compact ? 'h-14 w-14' : 'h-14 w-14 mb-3'} place-items-center rounded-full bg-white text-lg font-semibold">${esc(Fmt.initials(user.name))}</span>
           <div class="min-w-0">

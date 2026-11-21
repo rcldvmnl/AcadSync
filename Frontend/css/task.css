@@ -1,54 +1,54 @@
 /* Task Details: the checklist tree and the previous / next steppers.
-   Same language as the rest of the app: white cards on the sand ground, charcoal for actions,
+   Same language as the rest of the app: white cards on the cool grey ground, charcoal for actions,
    mint for "done", pill controls. */
 
 /* ---------------------------------------------------------------- checklist */
-.cl-card { border-radius: 1.75rem; background: #fff; padding: 1.25rem; box-shadow: 0 1px 2px rgba(31,31,36,.04); }
-.cl-bar { height: 8px; border-radius: 999px; background: #F6F3EE; overflow: hidden; }
-.cl-bar span { display: block; height: 100%; border-radius: 999px; background: #4FB386; transition: width .3s ease; }
+.cl-card { border-radius: 1.75rem; background: #fff; padding: 1.25rem; box-shadow: 0 1px 2px rgba(28, 28, 33,.04); }
+.cl-bar { height: 8px; border-radius: 999px; background: #F4F4F7; overflow: hidden; }
+.cl-bar span { display: block; height: 100%; border-radius: 999px; background: #23774F; transition: width .3s ease; }
 
 .cl-list { display: grid; gap: 2px; }
-.cl-sub { margin: 2px 0 4px 15px; padding-left: 14px; border-left: 2px solid #ECE8E2; }
+.cl-sub { margin: 2px 0 4px 15px; padding-left: 14px; border-left: 2px solid #E9E9EF; }
 .cl-row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 4px 4px 2px; border-radius: 14px; }
-.cl-row:hover { background: #FAF8F5; }
+.cl-row:hover { background: #F8F8FA; }
 
 .cl-check {
   flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 999px;
-  border: 2px solid #D3CDC4; background: #fff; color: #fff; transition: background .15s, border-color .15s;
+  border: 2px solid #CFCFD8; background: #fff; color: #fff; transition: background .15s, border-color .15s;
 }
-.cl-check:hover { border-color: #4FB386; }
-.cl-check[aria-pressed="true"] { background: #4FB386; border-color: #4FB386; }
-.cl-check:focus-visible, .cl-icon:focus-visible, .cl-who select:focus-visible { outline: 3px solid #1F1F24; outline-offset: 2px; }
+.cl-check:hover { border-color: #23774F; }
+.cl-check[aria-pressed="true"] { background: #23774F; border-color: #23774F; }
+.cl-check:focus-visible, .cl-icon:focus-visible, .cl-who select:focus-visible { outline: 3px solid #1C1C21; outline-offset: 2px; }
 
 .cl-title { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; overflow-wrap: anywhere; }
-.cl-item.is-done > .cl-row .cl-title { color: #6B6B73; text-decoration: line-through; text-decoration-thickness: 1px; }
-.cl-count { flex: none; font-size: 12px; font-weight: 700; color: #5C5C66; font-variant-numeric: tabular-nums; }
+.cl-item.is-done > .cl-row .cl-title { color: #666670; text-decoration: line-through; text-decoration-thickness: 1px; }
+.cl-count { flex: none; font-size: 12px; font-weight: 700; color: #5E5E68; font-variant-numeric: tabular-nums; }
 
 .cl-who select {
-  appearance: none; height: 30px; padding: 0 12px; border-radius: 999px; background: #F2EFEA;
-  font-size: 12px; font-weight: 700; color: #1F1F24; cursor: pointer; max-width: 110px;
+  appearance: none; height: 30px; padding: 0 12px; border-radius: 999px; background: #EFEFF3;
+  font-size: 12px; font-weight: 700; color: #1C1C21; cursor: pointer; max-width: 110px;
 }
-.cl-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; color: #5C5C66; }
-.cl-icon:hover { background: #F2EFEA; color: #1F1F24; }
+.cl-icon { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; color: #5E5E68; }
+.cl-icon:hover { background: #EFEFF3; color: #1C1C21; }
 .cl-icon[data-del]:hover { color: #9B2C22; }
 
 .cl-add { display: flex; gap: 8px; align-items: center; }
 .cl-add input {
-  flex: 1; min-width: 0; height: 40px; padding: 0 14px; border-radius: 999px; background: #F6F3EE;
+  flex: 1; min-width: 0; height: 40px; padding: 0 14px; border-radius: 999px; background: #F4F4F7;
   border: 1.5px solid transparent; font-size: 14px; outline: none;
 }
-.cl-add input:focus { border-color: #1F1F24; background: #fff; }
+.cl-add input:focus { border-color: #1C1C21; background: #fff; }
 
 /* ---------------------------------------------------------------- previous / next task */
 .task-step {
   display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 14px; border-radius: 1.5rem;
-  background: #fff; box-shadow: 0 1px 2px rgba(31,31,36,.04); transition: transform .12s, background .15s;
+  background: #fff; box-shadow: 0 1px 2px rgba(28, 28, 33,.04); transition: transform .12s, background .15s;
 }
-.task-step:hover { background: #FAF8F5; }
+.task-step:hover { background: #F8F8FA; }
 .task-step:active { transform: scale(.99); }
-.task-step:focus-visible { outline: 3px solid #1F1F24; outline-offset: 2px; }
+.task-step:focus-visible { outline: 3px solid #1C1C21; outline-offset: 2px; }
 .task-step.is-next { text-align: right; }
-.task-step-arrow { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #1F1F24; color: #fff; }
+.task-step-arrow { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; background: #1C1C21; color: #fff; }
 
 @media (max-width: 1023px) {
   .cl-who select { max-width: 90px; }

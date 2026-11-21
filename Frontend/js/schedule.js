@@ -282,7 +282,7 @@ function tasksSection() {
 
   return `
     ${today.length ? `
-      <div class="rounded-[1.75rem] border-2 border-[#F5C2BC] bg-danger-tint p-4">
+      <div class="rounded-[1.75rem] border-2 border-[#F6CFC9] bg-danger-tint p-4">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="flex items-center gap-2 text-xl font-bold"><span class="h-2.5 w-2.5 rounded-full bg-danger"></span>Due today</h2>
           <span class="chip bg-white">${count(today)}</span>

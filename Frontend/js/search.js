@@ -44,7 +44,7 @@ async function run() {
       blocks.push(`<section><h2 class="mb-2 text-lg font-bold">Activities <span class="text-sm font-medium text-muted">${r.activities.length}</span></h2>
         <div class="space-y-2">${r.activities.map((a) => `
           <a href="activities.html#a${a.id}" class="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-card">
-            <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-mint-tint">${icon('flag', 18)}</span>
+            <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-peach-tint">${icon('flag', 18)}</span>
             <span class="min-w-0 flex-1"><span class="block truncate font-semibold">${esc(a.title)}</span>
               <span class="block truncate text-xs text-muted">${esc(a.kind_label)} · ${esc(Fmt.short(a.start_ts))}${a.is_over ? ' · finished' : ''}${a.parts.length ? ` · ${a.parts.map(esc).join(', ')}` : ''}</span></span>
             ${icon('chevronRight', 18, 'text-muted')}

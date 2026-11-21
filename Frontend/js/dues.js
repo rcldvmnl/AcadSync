@@ -46,7 +46,7 @@ function summaryCard() {
   const owe = data.my_balance > 0;
   return `
     <section class="card-pastel ${owe ? 'peach' : 'mint-soft'} rounded-[1.75rem] p-5" aria-label="Your dues">
-      <span class="sparkle">✦</span><span class="ring-deco"></span>
+      <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
       <div class="text-[11px] font-semibold uppercase tracking-wider">Your dues</div>
       <div class="mt-1 text-4xl font-extrabold tracking-tight">${owe ? esc(data.my_balance_label) : 'All paid'}</div>
       <p class="mt-1 text-sm">${!data.my_charged ? 'Dues are charged to active members only.' : owe ? 'Pay the Treasurer in cash or by GCash. They record it here.' : 'Nothing left to pay. Thank you!'}</p>
@@ -89,7 +89,7 @@ function manageHead() {
   const collected = data.dues.reduce((n, d) => n + d.collected, 0);
   return `
     <section class="card-pastel dark flex flex-wrap items-center justify-between gap-4 rounded-[1.75rem] p-5">
-      <span class="sparkle">✦</span><span class="ring-deco"></span>
+      <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
       <div class="relative">
         <div class="text-[11px] font-semibold uppercase tracking-wider text-white/60">Collected so far</div>
         <div class="mt-1 text-4xl font-extrabold">₱${(collected / 100).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>

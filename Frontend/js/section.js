@@ -138,7 +138,7 @@ function lookup() {
       const meta = [section.program, section.year_level, section.semester].filter(Boolean).join(' · ');
       $('#found').innerHTML = `
         <div class="card-pastel mint-soft rounded-[1.75rem] p-5">
-          <span class="sparkle">✦</span><span class="ring-deco"></span>
+          <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
           <div class="flex items-center gap-2 text-sm font-medium"><span class="grid h-6 w-6 place-items-center rounded-full bg-success text-white">${icon('check', 14)}</span>Section found</div>
           <div class="mt-2 text-3xl font-extrabold tracking-tight">${esc(section.name)}</div>
           <div class="mt-1 text-sm text-muted">${esc(meta)} · ${section.members} members</div>
@@ -158,7 +158,7 @@ UI.bindForm($('#join-form'), async () => {
   // [Queue] the request waits for an officer; you're told when they decide
   $('#found').innerHTML = `
     <div class="card-pastel yellow rounded-[1.75rem] p-5">
-      <span class="sparkle">✦</span><span class="ring-deco"></span>
+      <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
       <div class="flex items-center gap-2 text-sm font-medium"><span class="grid h-6 w-6 place-items-center rounded-full bg-white">${icon('clock', 14)}</span>Request sent</div>
       <div class="mt-2 text-3xl font-extrabold tracking-tight">${esc(res.section.name)}</div>
       <p class="mt-1 text-sm">An officer checks your name and student ID, then lets you in. You’ll get a notification.</p>
@@ -180,7 +180,7 @@ UI.bindForm($('#create-form'), async (data) => {
   $('#created').hidden = false;
   $('#created').innerHTML = `
     <div class="card-pastel dark mt-5 rounded-[1.75rem] p-5">
-      <span class="sparkle">✦</span><span class="ring-deco"></span>
+      <span class="sparkle" aria-hidden="true"></span><span class="ring-deco"></span>
       <div class="text-[11px] font-semibold uppercase tracking-wider text-white/60">${esc(section.name)} · class code</div>
       <div class="mt-1 flex items-center justify-between">
         <div class="text-4xl font-extrabold tracking-wider">${esc(section.class_code)}</div>

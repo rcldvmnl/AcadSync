@@ -10,7 +10,7 @@ const OFFICE = {
   president: { label: 'President', tint: 'bg-sun-tint', duty: 'Created the section. Chooses the officers and runs everything.' },
   vice_president: { label: 'Vice President', tint: 'bg-lavender-tint', duty: 'Reviews the approval queue and runs activities.' },
   secretary: { label: 'Secretary', tint: 'bg-peach-tint', duty: 'Reviews the queue, takes attendance and keeps these records.' },
-  treasurer: { label: 'Treasurer', tint: 'bg-mint-tint', duty: 'Reviews the queue, sets dues and records cash and GCash payments.' },
+  treasurer: { label: 'Treasurer', tint: 'bg-[#EDEDF2]', duty: 'Reviews the queue, sets dues and records cash and GCash payments.' },
 };
 let state = { filter: 'all', data: null };
 

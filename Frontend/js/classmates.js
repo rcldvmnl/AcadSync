@@ -4,7 +4,7 @@
 // so "Group 3" always reads as "Group 3 of <that assignment>".
 
 /* Pale identity tints for people (initials), stable per person. */
-const PERSON_TINTS = ['#E6E1FD', '#FCE3CF', '#E5F6EE', '#FDF3C7', '#E3EEF9', '#F6E3EE'];
+const PERSON_TINTS = ['#ECEBFE', '#FDE7D6', '#E4F4EC', '#FFF3C4', '#E3EEF9', '#F6E3EE'];
 const personTint = (id) => PERSON_TINTS[Number(id) % PERSON_TINTS.length];
 const initialsOf = (name) => esc(Fmt.initials(name));
 const avatar = (p, cls = '') => `<span class="cm-avatar ${cls}" style="background:${personTint(p.id)}" aria-hidden="true">${initialsOf(p.name)}</span>`;
@@ -200,7 +200,7 @@ const People = {
       <div class="flex items-center gap-4">
         ${avatar(p, 'cm-avatar-lg')}
         <div class="min-w-0"><h2 class="truncate text-xl font-bold">${esc(p.first_name)} ${esc(p.last_name)}</h2>
-          <div class="truncate text-sm text-[#5C5C66]">${esc(p.role_label || 'Member')} · <span class="cm-num">${esc(p.student_id)}</span></div></div>
+          <div class="truncate text-sm text-[#5E5E68]">${esc(p.role_label || 'Member')} · <span class="cm-num">${esc(p.student_id)}</span></div></div>
       </div>
       <a href="mailto:${esc(p.email)}" class="cm-mail">${icon('mail', 16)}<span class="truncate">${esc(p.email)}</span></a>
       ${id === Data.me || Shell.can('view_member_records') ? `<a href="records.html?id=${id}" class="cm-mail mt-2">${icon('clipboard', 16)}<span class="truncate">Open member record: attendance, offices, status</span></a>` : ''}

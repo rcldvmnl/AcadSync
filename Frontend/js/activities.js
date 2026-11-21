@@ -6,7 +6,7 @@
 //   Officers add, edit and cancel activities; the Secretary and the President take attendance.
 //   Each kind has its own rule (Meeting / Seminar / Outreach / Competition / SectionProject are classes on the server).
 
-const KIND_TINT = { meeting: 'bg-lavender-tint', seminar: 'bg-peach-tint', outreach: 'bg-mint-tint', event: 'bg-sun-tint', competition: 'bg-mint-tint', project: 'bg-lavender-tint' };
+const KIND_TINT = { meeting: 'bg-lavender-tint', seminar: 'bg-peach-tint', outreach: 'bg-[#EDEDF2]', event: 'bg-sun-tint', competition: 'bg-sun-tint', project: 'bg-lavender-tint' };
 let data = null;
 let tab = location.hash === '#past' ? 'past' : 'upcoming';
 // Cancelled activities are hidden unless the viewer asks to see them (remembered in this browser only)
@@ -372,7 +372,7 @@ function needsPeopleCard() {
         <li><a href="#a${n.activity_id}" data-goto="${n.activity_id}" class="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-canvas">
           <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold">${esc(n.part_name)}</span>
             <span class="block truncate text-xs text-muted">${esc(n.activity_title)} · sign up by ${esc(Fmt.short(n.closes_at))}</span></span>
-          <span class="chip bg-mint-tint shrink-0">${plural(n.open_spots, 'spot')} open</span>
+          <span class="chip bg-sun-tint shrink-0">${plural(n.open_spots, 'spot')} open</span>
         </a></li>`).join('')}
       </ul>
     </section>`;
@@ -561,7 +561,7 @@ function openManage(partId) {
       ${p.picked.length ? `<ul class="mt-2 space-y-2">${p.picked.map((x) => `
         <li class="rounded-2xl bg-canvas p-3">
           <div class="flex items-center gap-3">
-            ${UI.avatar(x.name, 'bg-mint-tint', 'h-9 w-9 text-xs')}
+            ${UI.avatar(x.name, 'bg-lavender-tint', 'h-9 w-9 text-xs')}
             <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold">${esc(x.name)}</span>
               <span class="block text-xs text-muted">${x.assigned ? 'Assigned' : 'Volunteered'}${x.role ? ` · ${esc(x.role)}` : ''}</span></span>
             <button type="button" data-unpick="${x.id}" class="btn btn-light h-10 border border-line px-3 text-sm">Un-pick</button>

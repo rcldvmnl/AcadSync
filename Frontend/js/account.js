@@ -168,7 +168,7 @@ function openProfile() {
 
 function openHelp() {
   UI.sheet(`
-    <span class="mb-4 grid h-14 w-14 place-items-center rounded-full bg-mint-tint">${icon('help', 24)}</span>
+    <span class="mb-4 grid h-14 w-14 place-items-center rounded-full bg-lavender-tint">${icon('help', 24)}</span>
     <h2 class="text-2xl font-bold">Help & feedback</h2>
     <ul class="mt-3 space-y-2 text-sm text-muted">
       <li><b class="text-charcoal">Request a task</b> with the + button. It joins the admin’s queue and is reviewed first-come, first-served.</li>
