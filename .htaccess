@@ -8,8 +8,8 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
-# Database, SQL, notes and logs, wherever they are
-<FilesMatch "\.(db|sqlite|sqlite3|db-journal|sql|md|log|bak)$">
+# Database, SQL, notes, logs and local scripts (share.bat), wherever they are
+<FilesMatch "\.(db|sqlite|sqlite3|db-journal|sql|md|log|bak|bat|cmd|ps1)$">
     Require all denied
 </FilesMatch>
 

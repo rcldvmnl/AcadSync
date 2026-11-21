@@ -125,10 +125,23 @@ copy .env.example .env          # Windows
 cp .env.example .env            # Mac / Linux
 
 # 2. Start the server from the project folder, WITH the router
-C:\xampp\php\php.exe -S localhost:8000 router.php
+C:\xampp\php\php.exe -S 127.0.0.1:8000 router.php
 ```
 
-Then open **<http://localhost:8000>**.
+Then open **<http://localhost:8000>**. (Use `127.0.0.1`, not `localhost`, in the command: on Windows
+`localhost` can make PHP listen on IPv6 only, and then a port forward or tunnel can't reach it.)
+
+**Sharing it online for a demo:** install cloudflared once (`winget install Cloudflare.cloudflared`), then
+double-click **`share.bat`** (or run `share.bat demo` / `share.bat real`). It starts its own server on port
+8090, opens a Cloudflare tunnel, shows the public `https://….trycloudflare.com` link and copies it; press
+any key in its window (or close it) to stop. *Demo* (the default) serves a separate `data/demo.db`, so
+the class's real database is never online; for that server only it also hides the reset code and error
+details and makes the login cookie HTTPS-only (`.env` is never changed). The link changes every run.
+Doing it by hand also works (VS Code *Ports* → Forward a Port → `127.0.0.1:8000` → Public, or
+`cloudflared tunnel --url http://127.0.0.1:8000`), but then set `SHOW_RESET_CODE=false` and
+`DB_PATH=data/demo.db` yourself, because every demo account's password is in this README. The reset code
+is never shown through a tunnel anyway: the app treats any request with proxy headers or a public host
+name as coming from another computer.
 
 - The database is created on the first request, with demo data unless `.env` says otherwise.
 - To start over, delete `data/acadsync.db`.
@@ -480,6 +493,7 @@ Open your local `data/acadsync.db` in **DB Browser for SQLite** or the VS Code *
 router.php                router for `php -S` (keeps data/, backend/, docs/, tests/ and dotfiles private)
 .htaccess                 the same protection on Apache
 index.php                 redirects to Frontend/index.html
+share.bat                 double-click to share the site online for a demo (own server + Cloudflare tunnel)
 api/                      JSON endpoints
   auth.php                login, register, password reset, account stats
   section.php             ask to join / create / switch / leave sections

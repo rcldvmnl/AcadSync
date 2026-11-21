@@ -27,8 +27,10 @@ records, announcements, dues and payments, and the class's tasks, schedule, grou
   source `Frontend/css/tailwind.src.css`), linked last in each page's `<head>`. After adding a class that no
   page or script used before, run `npm run build:css` (once: `npm install`). No CDN, works offline.
 - Backend: PHP 8 (XAMPP `C:\xampp\php\php.exe`, currently 8.5), JSON endpoints in `api/`, SQLite via PDO.
-- Run: `copy .env.example .env`, then `C:\xampp\php\php.exe -S localhost:8000 router.php`
-  from the project root. Open http://localhost:8000. **Always use `router.php`** (it blocks
+- Run: `copy .env.example .env`, then `C:\xampp\php\php.exe -S 127.0.0.1:8000 router.php`
+  from the project root (not `localhost`: on this PC that bound IPv6 `[::1]` only, and the VS Code port
+  forward hung on loading). Open http://localhost:8000. Sharing online: README "Sharing it online for a demo";
+  `is_local_request()` in `api/auth.php` refuses tunnels (proxy headers or a non-loopback Host) for the reset code. **Always use `router.php`** (it blocks
   `/data`, `/backend`, `/docs`, dotfiles). On Apache, the `.htaccess` files do the same.
 - Settings in `.env` (read by `backend/Env.php`): `APP_ENV`, `APP_TIMEZONE`, `DB_PATH`
   (default `data/acadsync.db`), `SEED_DEMO_DATA`, `SHOW_RESET_CODE`, `SESSION_SECURE_COOKIE`, and for e-mailing

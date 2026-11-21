@@ -23,11 +23,30 @@ const EMAIL_PATTERN = '/^(\d{4}-\d{4})@lspu\.edu\.ph$/';
 const EMAIL_HINT = 'Use your university e-mail, e.g. 0000-0000@lspu.edu.ph.';
 const MAX_RESET_TRIES = 5;
 
-/** True when the browser runs on this same computer (the local demo/grading setup). */
+/**
+ * True when the browser runs on this same computer (the local demo/grading setup).
+ * A tunnel or port forward (VS Code Ports, Cloudflare Tunnel, ngrok) also reaches PHP from 127.0.0.1, so a
+ * loopback address alone is not enough: the request must also ask for a loopback host name and carry no
+ * proxy / forwarding headers. Any sign of a tunnel means "not this computer", so the reset code stays hidden.
+ */
 function is_local_request(): bool
 {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-    return $ip === '127.0.0.1' || $ip === '::1';
+    if ($ip !== '127.0.0.1' && $ip !== '::1') {
+        return false;
+    }
+    // Headers that proxies and tunnels add (PHP exposes them as HTTP_*)
+    foreach (['HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED_HOST', 'HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_PORT',
+        'HTTP_FORWARDED', 'HTTP_X_REAL_IP', 'HTTP_X_ORIGINAL_HOST', 'HTTP_X_ORIGINAL_URL', 'HTTP_CF_CONNECTING_IP',
+        'HTTP_CF_RAY', 'HTTP_TRUE_CLIENT_IP', 'HTTP_VIA'] as $header) {
+        if (isset($_SERVER[$header]) && $_SERVER[$header] !== '') {
+            return false;
+        }
+    }
+    // The host the browser asked for: a tunnel usually keeps its public name (e.g. abc.trycloudflare.com)
+    $host = DsaUtil::lower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    $host = preg_replace('/:\d+$/', '', $host);   // drop the port
+    return $host === 'localhost' || $host === '127.0.0.1' || $host === '[::1]';
 }
 
 /** Returns the student number inside a valid university e-mail, or null. */

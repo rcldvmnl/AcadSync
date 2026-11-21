@@ -19,7 +19,7 @@ $lower = strtolower(str_replace('\\', '/', $path));   // Windows paths are case-
 $blockedPrefixes = ['/data/', '/backend/', '/docs/', '/tests/', '/router.php'];
 $blocked = str_contains($lower, '/.')                 // any dotfile or dot-folder: /.env, /.git/, /.gitignore …
     || str_contains($lower, '..')                     // no climbing out of the project
-    || preg_match('/\.(db|sqlite|sqlite3|db-journal|env|sql|md|log|bak)$/', $lower);
+    || preg_match('/\.(db|sqlite|sqlite3|db-journal|env|sql|md|log|bak|bat|cmd|ps1)$/', $lower);   // + scripts like share.bat
 foreach ($blockedPrefixes as $prefix) {
     $blocked = $blocked || str_starts_with($lower, $prefix) || $lower === rtrim($prefix, '/');
 }
