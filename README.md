@@ -158,8 +158,14 @@ Then open **<http://localhost:8000>**.
 | `APP_TIMEZONE` | `Asia/Manila` | Timezone for deadlines, activities and notifications |
 | `DB_PATH` | `data/acadsync.db` | Location of the SQLite file: relative to the project, or a full path (safest: outside the project) |
 | `SEED_DEMO_DATA` | `true` | A brand-new database gets the demo section and accounts. Set `false` for a real class |
-| `SHOW_RESET_CODE` | `true` | "Forgot password" shows its code on screen (no e-mail server yet), only to a browser on the same computer |
+| `SHOW_RESET_CODE` | `true` | "Forgot password" also shows its code on screen, but only to a browser on the same computer (local demo). Set `false` once e-mail works |
+| `MAIL_HOST`, `MAIL_PORT`, `MAIL_ENCRYPTION` | empty, `465`, `ssl` | The SMTP server that e-mails the reset code (`smtp.gmail.com`, `465`, `ssl` for Gmail; `tls` = STARTTLS on 587). Empty host = no e-mail |
+| `MAIL_USERNAME`, `MAIL_PASSWORD` | empty | The sending account. For Gmail, `MAIL_PASSWORD` is an **app password** (Google Account → Security → App passwords, needs 2-Step Verification), never the normal password |
+| `MAIL_FROM`, `MAIL_FROM_NAME` | `MAIL_USERNAME`, `AcadSync` | The sender shown in the e-mail |
 | `SESSION_SECURE_COOKIE` | `false` | Set `true` once the site runs on HTTPS |
+
+With neither e-mail nor `SHOW_RESET_CODE`, "Forgot password" says that reset isn't set up yet instead of
+pretending a code was sent.
 
 ### What never goes to GitHub
 
@@ -273,6 +279,8 @@ in the same step, so the app never says two different things:
 - Each member sees what they owe and their payment history; Home reminds them of unpaid dues.
 - The Treasurer sees, per due, who has paid, how much was collected, and every payment, and can
   remove a payment entered by mistake.
+- **Export CSV** on each due downloads the Treasurer's report: one row per charged member (A–Z) with
+  paid, balance, standing and every payment's receipt line, then the totals. Opens in Excel or Google Sheets.
 
 ### 📅 Activities (meetings, seminars, outreach, events)
 
@@ -298,9 +306,11 @@ in the same step, so the app never says two different things:
 - Officers can **edit** an activity, and enter a plain-text **result** after it ends ("2nd place").
 - **Several days:** tick *Several days* to give a date range (**From** – **To**). It starts on the first day at the
   start time and ends on the last day at the end time; moving *From* moves *To* with it.
-- **Cancelled activities** are hidden from the lists (a *Show cancelled* toggle brings them back), stop showing
-  at all 3 days after their date (nothing is deleted), and an officer can **Remove** one for good, with its
-  RSVPs, parts, volunteers and invites.
+- **Cancelled activities** are hidden from the lists (a *Show cancelled* toggle brings them back). 3 days after
+  their date they move into a closed *N older cancelled activities* box under **Past** (nothing is deleted), and
+  an officer can **Remove** one for good, with its RSVPs, parts, volunteers and invites.
+- **Who can join:** making an activity invite-only takes everyone else off it (their RSVP, waitlist place or
+  part; they are told), and the seats they free go to the invited people waiting, first come, first served.
 
 ### 🏆 Competitions and section projects
 
@@ -364,7 +374,7 @@ The domain model lives in [`backend/domain/`](backend/domain/). Full UML diagram
 | **Abstraction** | `abstract class Person`, `Officer`, `Task`, `GroupRule`, `Activity`, `RsvpActivity`, `PartsActivity`, `MemberStatus`, `UndoAction`, `DatedDeadline`, `Payment`, `Announcement`; `interface Deadline` | Endpoints call what an object *can do* (`can()`, `undo()`, `timestamp()`, `receiptLine()`), never how it does it |
 | **Inheritance** | `President` / `VicePresident` / `Secretary` / `Treasurer` → `Officer` → `Member` → `Person`<br>`Meeting` / `Seminar` / `Outreach` / `SectionEvent` → `RsvpActivity` → `Activity`<br>`Competition` / `SectionProject` → `PartsActivity` → `Activity`<br>`GroupTask` / `IndividualTask` → `Task`<br>`AssignedGroups` / `FixedGroupCount` / `FixedGroupSize` / `FixedSizeAndCount` → `GroupRule`<br>`CashPayment` / `GcashPayment` → `Payment`<br>`GeneralNotice` / `PaymentNotice` / `NoClassNotice` / `DeadlineChangeNotice` / `TaskNotice` / `EventNotice` → `Announcement`<br>`ActiveStatus` / `InactiveStatus` / `AlumniStatus` → `MemberStatus` | `Officer::permissions()` builds on `parent::permissions()`; officers keep a member's stats |
 | **Polymorphism** | `$person->can(Permission::…)`, `$activity->canCheckIn()`, `$activity->expectsAttendanceFrom()`, `$activity->joinsBy()` / `canAssignDirectly()` / `partsNeedDueDates()`, `$status->canRsvp()`, `$status->owesDues()`, `$task->acceptsGroups()`, `$action->undo()`, `$payment->referenceIsUnique()`, `$announcement->apply()` / `facts()` | No `role === 'admin'`, payment-method or announcement-kind checks in the endpoints; each object answers for itself |
-| **Encapsulation** | Private fields + getters everywhere; `Activity` (incl. the link and sign-up deadline), `ActivityPart`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
+| **Encapsulation** | Private fields + getters everywhere; `Activity` (incl. the link and sign-up deadline), `ActivityPart`, `GroupRule`, `Due` and `Payment` validate in their constructors; money is whole centavos; `Env` keeps settings private; `Mailer` checks its SMTP settings once and only exposes `send()`; `readonly` context objects | An invalid activity, group rule, due or payment can't be built; settings can only be read |
 
 ---
 
@@ -374,7 +384,9 @@ All structures are written from scratch in [`backend/custom_dsa.php`](backend/cu
 
 > [!TIP]
 > Every place a structure is used is tagged with a comment. **Search the project for `[DSA:`** (and
-> `[ALGORITHM:`). In the app, **My Account → How AcadSync works** shows each structure filled with live data.
+> `[ALGORITHM:`). In the app, **My Account → How AcadSync works** shows each structure filled with live data,
+> including the join-request queue, the volunteer queue of the busiest open part and the HashSet of who
+> has paid the soonest due in full (names only for the officers who already see them).
 
 ### Data structures
 
@@ -422,7 +434,14 @@ BFS and shortest path, group planning). It never touches the database.
 C:\xampp\php\php.exe tests/dsa_test.php
 ```
 
-It prints `PASS` / `FAIL` per check and exits with 1 if anything failed. `tests/` is blocked from the
+[`tests/mailer_test.php`](tests/mailer_test.php) checks the hand-written SMTP mailer against a fake mail
+server it starts itself ([`tests/fake_smtp.php`](tests/fake_smtp.php)), so nothing is really sent.
+
+```bash
+C:\xampp\php\php.exe tests/mailer_test.php
+```
+
+Both print `PASS` / `FAIL` per check and exit with 1 if anything failed. `tests/` is blocked from the
 browser like `backend/`.
 
 ---
@@ -461,11 +480,13 @@ api/                      JSON endpoints
   groups.php, classmates.php, undo.php, search.php, notifications.php, dsa.php
 backend/
   Env.php                 reads .env
+  Mailer.php              sends the password-reset code over SMTP (hand-written, no library)
   domain/                 OOP model: Person, MemberStatus, Task, Deadline, Activity, ActivityPart, MemberRecord, UndoAction, Payment, Announcement
   custom_dsa.php          all data structures and algorithms
   services.php            loads one section's rows into the structures and objects
   db.php, schema.sql, seed.php, bootstrap.php
 tests/dsa_test.php        tests for every data structure and algorithm (command line only)
+tests/mailer_test.php     tests for the mailer, with tests/fake_smtp.php as a fake mail server
 docs/CLASS_DIAGRAM.md     UML class diagram (Mermaid)
 docs/screenshots/         screenshots used in this README
 Frontend/                 *.html pages (incl. dues.html), js/, css/ (tailwind.css is built), assets/

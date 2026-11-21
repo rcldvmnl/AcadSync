@@ -286,6 +286,9 @@ final class PartRoster
         if ($status === 'volunteer') {
             return 'You already volunteered for this part.';
         }
+        if (!$a->isCancelled() && $a->isOver($now)) {        // e.g. sign-ups close tonight but it ended at noon
+            return "“{$a->title()}” has already ended.";
+        }
         if (!$a->signupOpen($now)) {
             return $a->signupDeadline() !== null
                 ? "Sign-ups for “{$a->title()}” closed on " . date('D, M j', (int) strtotime($a->signupDeadline())) . '.'

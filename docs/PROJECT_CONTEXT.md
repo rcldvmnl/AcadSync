@@ -1,7 +1,7 @@
 # AcadSync: project context (for a new conversation)
 
 Paste or attach this file at the start of a new chat so the assistant knows the project.
-Last updated: 2026-11-20 (end of the second session).
+Last updated: 2026-11-21 (third session: code-review fixes).
 
 ## What it is
 
@@ -31,7 +31,9 @@ records, announcements, dues and payments, and the class's tasks, schedule, grou
   from the project root. Open http://localhost:8000. **Always use `router.php`** (it blocks
   `/data`, `/backend`, `/docs`, dotfiles). On Apache, the `.htaccess` files do the same.
 - Settings in `.env` (read by `backend/Env.php`): `APP_ENV`, `APP_TIMEZONE`, `DB_PATH`
-  (default `data/acadsync.db`), `SEED_DEMO_DATA`, `SHOW_RESET_CODE`, `SESSION_SECURE_COOKIE`.
+  (default `data/acadsync.db`), `SEED_DEMO_DATA`, `SHOW_RESET_CODE`, `SESSION_SECURE_COOKIE`, and for e-mailing
+  the reset code `MAIL_HOST`, `MAIL_PORT`, `MAIL_ENCRYPTION` (ssl | tls | none), `MAIL_USERNAME`, `MAIL_PASSWORD`
+  (a Gmail app password), `MAIL_FROM`, `MAIL_FROM_NAME`, `MAIL_TIMEOUT` (see `.env.example`).
 - The database is created on the first request and seeded when new (if `SEED_DEMO_DATA=true`).
   New columns/tables reach an existing DB automatically (`Store::addMissingColumns` + `CREATE TABLE IF NOT EXISTS`).
   Do **not** bump `SCHEMA_VERSION` in `db.php`: that renames (backs up) the existing database.
@@ -55,6 +57,7 @@ api/                 JSON endpoints (auth, section, records, activities, schedul
                      request_task, subtasks, admin_queue/action/undo, groups, classmates, undo, search,
                      notifications, dsa, join_requests, announcements, dues)
 backend/Env.php      .env loader
+backend/Mailer.php   hand-written SMTP client (SSL or STARTTLS, AUTH LOGIN) for the reset code
 backend/domain/      OOP model: Person.php, MemberStatus.php, Task.php, Deadline.php, Activity.php,
                      ActivityPart.php (ActivityPart, PartRoster), MemberRecord.php, UndoAction.php,
                      Payment.php (Payment, CashPayment, GcashPayment, Due), Announcement.php
@@ -66,6 +69,7 @@ backend/db.php, schema.sql, seed.php
 docs/CLASS_DIAGRAM.md    Mermaid UML for all classes + pillar table (keep it in sync with the code)
 docs/screenshots/        README screenshots (taken from seed data in a scratch copy)
 tests/dsa_test.php       CLI tests for every structure/algorithm (blocked from the browser)
+tests/mailer_test.php    CLI tests for Mailer against tests/fake_smtp.php (a one-connection fake SMTP server)
 Frontend/                pages incl. activities.html, records.html, classmates.html, task.html, dsa.html, dues.html
 router.php, .htaccess, .env.example, .gitignore
 ```
@@ -143,14 +147,22 @@ router.php, .htaccess, .env.example, .gitignore
   + `ApprovalQueue` waitlist. `MemberRecord` computes attendance from finished activities.
   Spec: docs/superpowers/specs/2026-11-20-competitions-and-projects-design.md.
 - **Cancelled activities:** hidden in the page unless *Show cancelled* (localStorage `acadsync.showCancelled`);
-  the GET leaves out cancelled ones that ended over 3 days ago (`HIDE_CANCELLED_AFTER`, count in `hidden_cancelled`);
+  the GET sends cancelled ones that ended over 3 days ago apart, in `old_cancelled` (`HIDE_CANCELLED_AFTER`); the page lists
+  them under Past in a closed *N older cancelled activities* box when *Show cancelled* is on;
   `action=delete` (officers, cancelled only) removes the activity with its part_members, activity_parts,
   activity_rsvps, attendance and activity_invites in one transaction.
 - **Date range:** the form has *Several days* → From/To (`date`, `end_date`); one day sends `end_date = date`.
 - **Who can join:** `activities.audience` (`everyone` | `invited`) + table `activity_invites`. `Activity` holds the
   invite list in a HashSet; `isFor(user id)` is asked by RSVP, volunteer, pick/assign, check-in, Needs people,
-  `MemberRecord` (not invited = never expected) and `EventNotice::notifies()`. `create`/`edit` take
-  `audience` + `invited` (checked against the section members).
+  `MemberRecord` (not invited = never expected) and `EventNotice::notifies(member, context)` (asks the live activity).
+  `create`/`edit` take `audience` + `invited` (checked against the section members; on edit, people already invited
+  may stay even if they left). Edit sends them only when the picker was touched. When an edit makes the list
+  narrower, the people left out lose their RSVP / waitlist place / part (and are told) and
+  `ActivityRoster::seatsToFill()` gives the freed seats to the invited people waiting; `cancel_rsvp` uses
+  `nextInLineFor()` and drops anyone waiting who isn't invited. A stored invite-only row with no invite rows
+  still loads (`Activity::fromRow($row, stored: true)`: nobody can join until an officer picks people).
+  The Event announcement always makes its new activity for everyone (the composer has no picker).
+  `PartsActivity`'s constructor drops any seat limit, so competitions/projects are built once.
 - `UndoAction` (abstract) → `ToggleDoneAction`, `RejoinGroupAction`, `RequestAgainAction`; stored in
   the session and rebuilt into an `UndoStack`. `Env` is a final static settings class.
 
@@ -175,9 +187,14 @@ activity titles and part names. Binary search: student ID, "Due by Fri".
 
 - `.gitignore` excludes `.env`, `data/*` (except `data/.htaccess`), all `*.db`/`*.sqlite`, logs, `.taste-skill/`.
 - The 3 DB files and `.taste-skill/` were removed from git tracking (files kept on disk).
-- **Open issue:** the old database is still in earlier commits on GitHub (`origin/main`,
-  https://github.com/rcldvmnl/AcadSync). Purging needs a history rewrite + force-push; not done.
-- Password reset shows its code only to a browser on the same machine (`SHOW_RESET_CODE`), 5 tries max.
+- **History purged on 2026-11-21:** the 3 DB files and `.taste-skill/` were removed from every commit with
+  `git filter-branch` and `main` was force-pushed (`154f12a` → `b141196`; same final code; 24 commits, the
+  "v2" commit that only deleted those files dropped out). Teammates must re-clone. GitHub can keep old commits
+  reachable by SHA for a while; for a full purge ask GitHub Support to clear cached views. Change any real
+  passwords that were in the old database.
+- Password reset: the code is e-mailed when `MAIL_*` is set (`Mailer`); it is shown on screen only when
+  `SHOW_RESET_CODE=true` AND the browser is on the server's computer; with neither, `forgot` answers 503
+  ("isn't set up yet"); a failed send closes the code (502). 5 wrong tries close a code.
 - `APP_ENV=production` hides error details from users.
 
 ## Testing approach that worked
@@ -197,16 +214,19 @@ activity titles and part names. Binary search: student ID, "Due by Fri".
   `.superpowers/sdd/2026-11-20-competitions-and-projects/`: `parts_test.php` (API, 81 checks; run with
   `run_api.sh`, which needs a scratch server on port 8123) and headless-browser checks (`*_check.mjs`, scratch
   server with a `/login-as` router on port 8124). The plan ledger `progress.md` there lists every ruling made.
+  The 2026-11-21 scripts are in `.superpowers/sdd/2026-11-21-review-fixes/` (see the comments in its `run.sh`).
 - Edit files with the editor tools. Never pipe a script's output over a project file (`cmd > tmp; cp tmp file`):
   if the script fails, the file is emptied.
 
 ## Open items / ideas
 
 The current to-do list (fixes and features, checked against the README) is in
-[NEXT_STEPS.md](NEXT_STEPS.md). **Its item 0 lists 9 code-review findings (1 critical) on the uncommitted
-work; fix those first.** The items below are older notes.
+[NEXT_STEPS.md](NEXT_STEPS.md). Everything listed there was done on 2026-11-21 except what needs the team
+(README names and links) or the owner (a Gmail app password in `.env`). The items below are older notes.
 
-- Decide whether to purge the old DB from GitHub history.
+- Phone nav: members Home, Schedule, Classmates | + | Groups, Activities, Account; officers Home, Schedule,
+  Queue | + | Members, Groups, Activities, with My account from the avatar in the phone header
+  (`Shell.accountInHeader()`; the desktop rail has the avatar for everyone).
 - The yellow glow on the active nav item (`app.css`) and the sand ground `#F6F3EE` come from the Figma
   components page; both have a recorded exception for every page in `.impeccable/config.json`.
 - Text colours meet WCAG AA: `muted` `#62626B` (secondary text, ≥ 4.5:1 on white, sand and every tint),

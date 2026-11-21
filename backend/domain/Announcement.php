@@ -141,8 +141,8 @@ abstract class Announcement
         };
     }
 
-    /** Should this member get the notification? (Payment: only members who are charged dues.) */
-    public function notifies(array $member): bool
+    /** Should this member get the notification? (Payment: only members who are charged dues; Event: only the invited.) */
+    public function notifies(array $member, AnnouncementContext $c): bool
     {
         return true;
     }
@@ -381,7 +381,7 @@ final class PaymentNotice extends Announcement
     }
 
     /** Only members who are charged dues (Active) are told about a payment. */
-    public function notifies(array $member): bool
+    public function notifies(array $member, AnnouncementContext $c): bool
     {
         return Person::fromRow($member)->status()->owesDues();
     }
@@ -731,7 +731,9 @@ final class EventNotice extends Announcement
     {
         $new = $in['new_activity'] ?? null;
         if (is_array($new) && $new) {
-            $a = validate_new_activity($new, $c->userId, $c->now);   // [OOP: ENCAPSULATION] Activity checks itself
+            // The composer has no member picker, so an activity made here is always for everyone
+            // (apply() only inserts the activity row, never invite rows)
+            $a = validate_new_activity(['audience' => 'everyone', 'invited' => []] + $new, $c->userId, $c->now);   // [OOP: ENCAPSULATION] Activity checks itself
             if ($a->joinsBy() !== 'rsvp') {                            // [OOP: POLYMORPHISM] parts kinds need their parts
                 throw new InvalidArgumentException('Post a competition or project from Activities: it needs its parts.');
             }
@@ -748,15 +750,17 @@ final class EventNotice extends Announcement
     {
         $row = $a->toRow();
         return ['row' => $row, 'title' => $a->title(), 'kind_label' => $a->kindLabel(), 'venue' => $row['venue'] ?? '',
-            'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'capacity' => $a->capacity(),
-            'invited' => $a->isInviteOnly() ? $a->invitedIds() : null];
+            'starts_at' => $row['starts_at'], 'ends_at' => $row['ends_at'], 'capacity' => $a->capacity()];
     }
 
-    /** An invite-only activity: only the people the poster chose are told. [ALGORITHM: LINEAR SEARCH] */
-    public function notifies(array $member): bool
+    /**
+     * An invite-only activity: only the people invited NOW are told ([DSA: HASHSET] Activity::isFor on the live
+     * activity, not a copy kept in the announcement). A new activity made here is for everyone.
+     */
+    public function notifies(array $member, AnnouncementContext $c): bool
     {
-        $invited = $this->details['invited'] ?? null;
-        return !is_array($invited) || Algorithms::linearContains($invited, (int) $member['id']);
+        $a = $this->refId !== null ? ($c->activities[$this->refId] ?? null) : null;
+        return $a === null || $a->isFor((int) $member['id']);
     }
 
     public function requiredPermission(): ?string
@@ -788,7 +792,10 @@ final class EventNotice extends Announcement
             return ['lines' => [$this->details['title'] ?? 'Activity', 'No longer available'], 'action' => null];
         }
         $start = (string) $this->details['starts_at'];
-        $line = date('D, M j', (int) strtotime($start)) . ' · ' . self::timeRange(substr($start, 11, 5), substr((string) $this->details['ends_at'], 11, 5))
+        $endsAt = (string) $this->details['ends_at'];
+        $days = date('D, M j', (int) strtotime($start))
+            . (substr($endsAt, 0, 10) !== substr($start, 0, 10) ? ' – ' . date('D, M j', (int) strtotime($endsAt)) : '');   // several days
+        $line = $days . ' · ' . self::timeRange(substr($start, 11, 5), substr($endsAt, 11, 5))
             . ($this->details['venue'] !== '' ? ' · ' . $this->details['venue'] : '');
         $lines = [$line];
         if ($a->isOver($c->now)) {

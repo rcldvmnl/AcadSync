@@ -61,6 +61,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $sortedMembers = Algorithms::selectionSortByLastName($ctx['members']);   // [ALGORITHM: SELECTION SORT]
     $myCharged = Person::fromRow($user)->status()->owesDues();
 
+    // ?export=<due id>: the Treasurer's report as a CSV file (one row per charged member, A–Z, then the total)
+    if (param('export')) {
+        if (!$canManage) {
+            fail('Only the Treasurer or the President can export dues.', 403);
+        }
+        $due = $dues[(int) param('export', 0)] ?? null;
+        if ($due === null) {
+            fail('That due doesn’t exist.', 404);
+        }
+        $pesos = fn (int $centavos) => number_format($centavos / 100, 2, '.', '');
+        $csv = "\xEF\xBB\xBF"                               // UTF-8 BOM: Excel then shows ₱ and ñ correctly
+            . csv_line([$due->title()])
+            . csv_line(['Amount (PHP)', $pesos($due->amount()), 'Due', $due->dueDate() ?? 'No date', 'Exported', date('Y-m-d H:i', $now)])
+            . csv_line([])
+            . csv_line(['Student ID', 'Name', 'Status', 'Paid (PHP)', 'Balance (PHP)', 'Standing', 'Payments']);
+        $collected = 0;
+        $owed = 0;
+        foreach ($sortedMembers as $m) {
+            $mid = (int) $m['id'];
+            if (!$isCharged($m, $due->id())) {
+                continue;
+            }
+            $got = $paid[$due->id()][$mid] ?? 0;
+            $collected += $got;
+            $owed += $due->balance($got);
+            $lines = [];
+            foreach ($payments as $p) {
+                if ($p->dueId() === $due->id() && $p->userId() === $mid) {
+                    // [OOP: POLYMORPHISM] each kind of payment writes its own receipt line
+                    $lines[] = substr($p->paidAt(), 0, 10) . ' ' . $pesos($p->amount()) . ' ' . $p->receiptLine()
+                        . ' (received by ' . ($names[$p->receivedBy()] ?? 'Former officer') . ')';
+                }
+            }
+            $csv .= csv_line([$m['student_id'], $names[$mid] ?? '', MemberStatus::fromString($m['status'] ?? 'active')->label(),
+                $pesos($got), $pesos($due->balance($got)), $due->standing($got, $now), implode('; ', $lines)]);
+        }
+        $csv .= csv_line(['Total', '', '', $pesos($collected), $pesos($owed), '', '']);
+        $file = trim((string) preg_replace('/[^A-Za-z0-9]+/', '-', $due->title()), '-') ?: 'due';
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $file . '-' . date('Y-m-d', $now) . '.csv"');
+        echo $csv;
+        exit;
+    }
+
     $list = [];
     $myBalance = 0;
     foreach ($dues as $due) {

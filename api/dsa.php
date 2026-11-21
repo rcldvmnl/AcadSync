@@ -46,6 +46,92 @@ $present = fn (array $t) => ['id' => (int) $t['id'], 'title' => $t['title'], 'su
 $stack = array_map($present, build_undo_stack($sectionId, $ctx['taskIndex'])->toArray());
 $queue = array_map($present, build_queue($sectionId, $ctx['taskIndex'])->toArray());
 
+$me = Person::fromRow($user);
+$uid = (int) $user['id'];
+
+// 5b. QUEUE — people waiting to join the section (only the front can be decided). Names: officers who review them.
+$joinQueue = build_join_queue($sectionId);
+$join = ['size' => $joinQueue->size()];
+if ($me->can(Permission::REVIEW_MEMBERS)) {
+    $join['items'] = [];
+    foreach ($joinQueue->toArray() as $r) {
+        $join['items'][] = trim($r['user']['first_name'] . ' ' . $r['user']['last_name']);
+    }
+}
+
+// 5c. QUEUE — the volunteers for the part with the most of them (PartRoster keeps them in arrival order)
+$activities = load_activities($sectionId);
+$parts = load_parts($sectionId, $activities);
+$rosters = part_rosters($sectionId);
+$byStart = Algorithms::mergeSortBy(array_map(fn (Activity $a) => ['ts' => $a->startTs(), 'a' => $a], array_values($activities)), 'ts', false);   // [ALGORITHM: MERGE SORT]
+$busiest = null;
+foreach ($byStart as $item) {
+    $a = $item['a'];
+    if ($a->isCancelled() || $a->isOver($now)) {
+        continue;
+    }
+    foreach ($parts[$a->id()] ?? [] as $p) {
+        $r = $rosters[$p->id()] ?? new PartRoster([]);
+        if ($r->volunteerCount() > ($busiest === null ? 0 : $busiest['roster']->volunteerCount())) {
+            $busiest = ['activity' => $a, 'part' => $p, 'roster' => $r];
+        }
+    }
+}
+$volunteers = ['size' => 0];
+if ($busiest !== null) {
+    $ids = array_map(fn (array $row) => (int) $row['user_id'], $busiest['roster']->volunteers());   // front first
+    $position = 0;
+    foreach ($ids as $i => $id) {
+        $position = $id === $uid ? $i + 1 : $position;
+    }
+    $volunteers = ['size' => count($ids), 'part' => $busiest['part']->name(), 'activity' => $busiest['activity']->title(), 'my_position' => $position];
+    if ($me->can(Permission::MANAGE_ACTIVITIES)) {         // only officers see who volunteered
+        $volunteers['items'] = array_map($name, $ids);
+    }
+}
+
+// 3b. HASHSET — who has paid the soonest open due in full (each person once; "did I pay?" is one O(1) lookup)
+$openDues = [];
+foreach (section_rows('dues', $sectionId) as $row) {
+    $due = Due::fromRow($row);
+    if ($due->isOpen()) {
+        $openDues[] = ['due' => $due, 'ts' => $due->dueDate() !== null ? (int) strtotime($due->dueDate()) : PHP_INT_MAX];
+    }
+}
+$openDues = Algorithms::mergeSortBy($openDues, 'ts', false);   // [ALGORITHM: MERGE SORT] soonest first
+$paidSet = null;
+if ($openDues) {
+    $due = $openDues[0]['due'];
+    $paid = [];
+    foreach (section_rows('payments', $sectionId) as $row) {
+        $p = Payment::fromRow($row);
+        if ($p->dueId() === $due->id()) {
+            $paid[$p->userId()] = ($paid[$p->userId()] ?? 0) + $p->amount();
+        }
+    }
+    $set = new HashSet();
+    $names = [];
+    $charged = 0;
+    foreach ($ctx['members'] as $m) {
+        $mid = (int) $m['id'];
+        if (!Person::fromRow($m)->status()->owesDues() && !isset($paid[$mid])) {   // [POLYMORPHISM] who is charged
+            continue;
+        }
+        $charged++;
+        if (($paid[$mid] ?? 0) >= $due->amount() && $set->add((string) $mid)) {
+            $names[] = $name($mid);
+        }
+    }
+    $paidSet = ['due' => $due->title(), 'size' => $set->size(), 'charged' => $charged, 'me' => $set->contains((string) $uid)];
+    if ($me->can(Permission::MANAGE_DUES)) {               // the Treasurer and the President see who paid
+        $named = new HashSet();
+        foreach ($names as $n) {
+            $named->add($n);
+        }
+        $paidSet += ['names' => $names, 'buckets' => $named->buckets()];
+    }
+}
+
 // 6. TREE
 $tree = build_tree($ctx['section'], $ctx['subjects'], $timeline)->toArray();
 
@@ -147,6 +233,9 @@ respond([
     'hashset' => ['buckets' => 13, 'size' => $set->size(), 'filled' => $set->buckets()],
     'stack' => $stack,
     'queue' => $queue,
+    'join_queue' => $join,
+    'volunteer_queue' => $volunteers,
+    'paid_set' => $paidSet,
     'tree' => $tree,
     'graph' => $adjacency,
 ]);

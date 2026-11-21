@@ -17,6 +17,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/../backend/bootstrap.php';
+require_once __DIR__ . '/../backend/Mailer.php';
 
 const EMAIL_PATTERN = '/^(\d{4}-\d{4})@lspu\.edu\.ph$/';
 const EMAIL_HINT = 'Use your university e-mail, e.g. 0000-0000@lspu.edu.ph.';
@@ -163,6 +164,19 @@ switch (param('action')) {
         if (!hashset_of('users', 'email')->contains($email)) {
             fail('No account uses that e-mail.', 404);
         }
+        // Where the code can go: an e-mail (MAIL_* in .env), and/or the screen of a browser on THIS computer
+        // (SHOW_RESET_CODE, for the local demo). Someone reaching the server from elsewhere never sees it,
+        // so "forgot password" can't be used to take over someone else's account.
+        $mailer = null;
+        try {
+            $mailer = Mailer::fromEnv();
+        } catch (InvalidArgumentException $e) {
+            error_log('AcadSync mail settings: ' . $e->getMessage());
+        }
+        $showCode = Env::bool('SHOW_RESET_CODE', true) && is_local_request();
+        if ($mailer === null && !$showCode) {
+            fail('Password reset by e-mail isn’t set up yet. Ask your President or the person who runs AcadSync.', 503);
+        }
         // A new code replaces any older one, so only the latest code works
         foreach (Store::all('password_resets') as $r) {
             if ($r['email'] === $email && !(int) $r['used']) {
@@ -170,11 +184,22 @@ switch (param('action')) {
             }
         }
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-        Store::insert('password_resets', ['email' => $email, 'code' => $code, 'expires_at' => time() + 900]);
-        // No SMTP during local grading: the code is shown on screen, but ONLY to a browser on this
-        // computer. Anyone reaching the server from elsewhere never sees it, so they can't use
-        // "forgot password" to take over someone else's account.
-        respond(['message' => 'Reset code sent.'] + (is_local_request() ? ['dev_code' => $code] : []));
+        $resetId = Store::insert('password_resets', ['email' => $email, 'code' => $code, 'expires_at' => time() + 900]);
+        $emailed = false;
+        if ($mailer !== null) {
+            try {
+                $mailer->send($email, 'Your AcadSync reset code', "Your AcadSync code is $code.\n\nEnter it on the login page to choose a new password. "
+                    . "It works for 15 minutes.\n\nIf you didn’t ask for this, you can ignore this e-mail: your password stays the same.");
+                $emailed = true;
+            } catch (InvalidArgumentException | RuntimeException $e) {
+                error_log('AcadSync reset e-mail: ' . $e->getMessage());
+                if (!$showCode) {                           // nobody can see this code: close it
+                    Store::update('password_resets', $resetId, ['used' => 1]);
+                    fail('We couldn’t send the e-mail right now. Try again in a few minutes.', 502);
+                }
+            }
+        }
+        respond(['message' => 'Reset code sent.', 'emailed' => $emailed] + ($showCode ? ['dev_code' => $code] : []));
     }
 
     case 'reset': {

@@ -1,6 +1,6 @@
 # AcadSync class diagram
 
-The classes below are every class in `backend/domain/` and `backend/Env.php` (the OOP model) and
+The classes below are every class in `backend/domain/`, `backend/Env.php` and `backend/Mailer.php` (the OOP model) and
 `backend/custom_dsa.php` (the data structures and algorithms), with their real names, fields, methods
 and visibility. Long method lists are shortened to the methods the app relies on.
 GitHub draws these diagrams automatically; they can also be pasted into <https://mermaid.live> to
@@ -136,7 +136,7 @@ classDiagram
         -string signupDeadline
         -string result
         +__construct(id, title, …, capacity, status, createdBy, link, signupDeadline, result)
-        +fromRow(row)$ Activity
+        +fromRow(row, stored)$ Activity
         +kinds()$ array
         -cleanLink(link)$ string
         +startTs() int
@@ -166,6 +166,7 @@ classDiagram
     }
     class PartsActivity {
         <<abstract>>
+        +__construct(args)
         +joinsBy() string
         +usesSeats() bool
         +expectsAttendanceFrom(hasSeat) bool
@@ -251,9 +252,13 @@ classDiagram
         +isCheckedIn(userId) bool
         +waitlistPosition(userId) int
         +nextInLine() array
+        +nextInLineFor(activity) array
+        +waitingNotFor(activity) array
+        +seatsToFill(activity) array
     }
     ActivityRoster *-- HashSet
     ActivityRoster *-- ApprovalQueue : waitlist
+    ActivityRoster ..> Activity : isFor(), hasRoom()
 
     class MemberRecord {
         <<final>>
@@ -472,6 +477,7 @@ classDiagram
         +facts(context)* array
         +apply(context, announcementId)* void
         +onRemove(context) void
+        +notifies(member, context) bool
         +requiredPermission() string
         +eventAt() int
         +notifyText(context) string
@@ -482,6 +488,7 @@ classDiagram
     class PaymentNotice {
         +requiredPermission() string
         +apply(context, id) void
+        +notifies(member, context) bool
     }
     class NoClassNotice {
         +apply(context, id) void
@@ -496,6 +503,7 @@ classDiagram
     class EventNotice {
         +requiredPermission() string
         +apply(context, id) void
+        +notifies(member, context) bool
     }
     class AnnouncementContext {
         <<final>>
@@ -525,7 +533,7 @@ classDiagram
     NoClassNotice ..> HashSet : cancelled classes
 ```
 
-## 5. Undo (OOP objects kept in a DSA stack) and settings
+## 5. Undo (OOP objects kept in a DSA stack), settings and e-mail
 
 ```mermaid
 classDiagram
@@ -568,6 +576,25 @@ classDiagram
         +bool(key, default)$ bool
         +path(key, default)$ string
     }
+    class Mailer {
+        <<final>>
+        -string host
+        -int port
+        -string encryption
+        -string username
+        -string password
+        -string from
+        -string fromName
+        -int timeout
+        -__construct(host, port, encryption, username, password, from, fromName, timeout)
+        +fromEnv()$ Mailer
+        +fromSettings(settings)$ Mailer
+        +describe() string
+        +send(to, subject, text) void
+        -message(to, subject, text) string
+        -expect(socket, code) void
+    }
+    Mailer ..> Env : reads MAIL_*
 ```
 
 ## 6. Data structures and algorithms (`backend/custom_dsa.php`)
@@ -692,7 +719,7 @@ classDiagram
 
 | Pillar | Where in the code | What it does in AcadSync |
 | --- | --- | --- |
-| **Encapsulation** | Private fields + getters in every domain class; `Activity` (title, times, a link that must be http(s), a sign-up deadline on or before the first day), `ActivityPart`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
+| **Encapsulation** | Private fields + getters in every domain class; `Activity` (title, times, a link that must be http(s), a sign-up deadline on or before the first day), `ActivityPart`, `GroupRule`, `Due` and `Payment` check their values in the constructor and have no setters; money is whole centavos in private fields; `Env` keeps settings in a private array; `Mailer` checks its SMTP settings once (private constructor, `fromSettings()`) and only exposes `send()`; `UndoContext` uses `readonly` | An invalid activity, group rule, due or payment can't exist; nothing outside a class can change its data |
 | **Inheritance** | `President`/`VicePresident`/`Secretary`/`Treasurer` → `Officer` → `Member` → `Person`; `Meeting`/`Seminar`/`Outreach`/`SectionEvent` → `RsvpActivity` → `Activity`; `Competition`/`SectionProject` → `PartsActivity` → `Activity`; `GroupTask`/`IndividualTask` → `Task`; `AssignedGroups`/`FixedGroupCount`/`FixedGroupSize`/`FixedSizeAndCount` → `GroupRule`; `CashPayment`/`GcashPayment` → `Payment`; the six notices → `Announcement`; the three `MemberStatus` and three `UndoAction` subclasses; `ExactDeadline`/`RangeDeadline` → `DatedDeadline`; `SubjectArray` → `FixedArray`, `StudentHashSet` → `HashSet`; `UndoNotPossible` → `RuntimeException` | `Officer::permissions()` adds to `parent::permissions()`; `Secretary`, `Treasurer` and `President` add to `Officer`'s; officers inherit a member's account stats |
 | **Polymorphism** | `$person->can()` / `roleLabel()` / `accountStats()`; `$activity->canCheckIn()` / `expectsAttendanceFrom()` / `joinsBy()` / `usesSeats()` / `canAssignDirectly()` / `partsNeedDueDates()` (competitions and projects never touch attendance); `$status->canRsvp()` / `allows()` / `owesDues()`; `$task->acceptsGroups()` / `rule()`; `$rule->seats()` / `explain()` / `studentsOrganize()` (one class per way a prof sets up groups); `$deadline->timestamp()` / `attentionAt()` (an open date range counts as today); `$action->undo()`; `$payment->receiptLine()` / `referenceIsUnique()`; `$announcement->apply()` / `facts()` / `onRemove()` | The endpoints never test `role === 'admin'`, the activity kind, `work_mode`, `deadline_type`, the payment method or the announcement kind: each object answers for itself |
 | **Abstraction** | `interface Deadline`; `abstract class Person`, `Officer`, `MemberStatus`, `Activity`, `RsvpActivity`, `PartsActivity`, `Task`, `GroupRule`, `DatedDeadline`, `UndoAction`, `Payment`, `Announcement` | Callers use what an object can do, not how it does it |
@@ -704,6 +731,7 @@ classDiagram
 | `Person` ◆— `MemberStatus` | composition | every person has exactly one status; it can hold back permissions (Alumni) |
 | `Task` ◆— `Deadline`, `GroupTask` ◆— `GroupRule` | composition | a task owns its deadline and its group rule |
 | `ActivityRoster` ◆— `HashSet`, `ApprovalQueue` | composition | going / checked-in sets and the waitlist queue of one activity |
+| `ActivityRoster` → `Activity` | dependency | a freed seat goes to the first person waiting whom the activity is for (`isFor()`), while it `hasRoom()` |
 | `PartsActivity` ◆— `ActivityPart` | composition | a competition or project owns its parts (at least one) |
 | `PartRoster` ◆— `ApprovalQueue`, `HashSet` | composition | a part's volunteers in arrival order and who is picked |
 | `ActivityPart` / `PartRoster` → `Activity` | dependency | the part asks its activity for the due-date rule; the roster asks whether sign-ups are open and whether officers may assign directly |

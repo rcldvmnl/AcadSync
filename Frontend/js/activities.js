@@ -12,8 +12,15 @@ let tab = location.hash === '#past' ? 'past' : 'upcoming';
 // Cancelled activities are hidden unless the viewer asks to see them (remembered in this browser only)
 let showCancelled = false;
 try { showCancelled = localStorage.getItem('acadsync.showCancelled') === '1'; } catch { /* private mode */ }
+const setShowCancelled = (on) => {
+  showCancelled = on;
+  try { localStorage.setItem('acadsync.showCancelled', on ? '1' : '0'); } catch { /* private mode */ }
+};
+// Cancelled over 3 days ago: sent apart by the server (old_cancelled), listed under Past in a closed box
+let oldOpen = false;
 const visible = (k) => data[k].filter((a) => showCancelled || !a.cancelled);
-const cancelledIn = (k) => data[k].filter((a) => a.cancelled).length;
+const cancelledIn = (k) => data[k].filter((a) => a.cancelled).length + (k === 'past' ? data.old_cancelled.length : 0);
+const shownCount = (k) => visible(k).length + (k === 'past' && showCancelled ? data.old_cancelled.length : 0);
 
 const hm = (d) => Fmt.time(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
 const isParts = (a) => a.joins_by === 'parts';
@@ -38,7 +45,7 @@ const whenChip = (iso) => {
   if (n === 1) return UI.chip('Tomorrow', 'bg-sun-tint');
   return n > 1 ? `<span class="text-xs text-muted">in ${n} days</span>` : '';
 };
-const findActivity = (id) => [...data.upcoming, ...data.past].find((x) => x.id === id);
+const findActivity = (id) => [...data.upcoming, ...data.past, ...data.old_cancelled].find((x) => x.id === id);
 const findPart = (partId) => {
   for (const a of [...data.upcoming, ...data.past]) {
     const p = (a.parts || []).find((x) => x.id === partId);
@@ -67,9 +74,14 @@ function goToHash() {
 function scrollToActivity(id) {
   const a = findActivity(id);
   if (!a) return;
-  const want = data.past.some((x) => x.id === id) ? 'past' : 'upcoming';
-  if (a.cancelled && !showCancelled) { showCancelled = true; render(); }   // a link to a cancelled one shows it
-  if (tab !== want) { tab = want; render(); }
+  const old = data.old_cancelled.some((x) => x.id === id);
+  const want = old || data.past.some((x) => x.id === id) ? 'past' : 'upcoming';
+  // Set everything first, then draw once. A link to a cancelled one turns Show cancelled on (and keeps it on).
+  let changed = false;
+  if (a.cancelled && !showCancelled) { setShowCancelled(true); changed = true; }
+  if (old && !oldOpen) { oldOpen = true; changed = true; }
+  if (tab !== want) { tab = want; changed = true; }
+  if (changed) render();
   const el = document.getElementById(`a${id}`);
   if (!el) return;
   el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
@@ -85,7 +97,7 @@ function render() {
     <div class="mb-5 flex flex-wrap items-center gap-2">
       <div class="flex gap-2" role="tablist" aria-label="Which activities">
         ${[['upcoming', 'Upcoming'], ['past', 'Past']].map(([k, l]) => `
-          <button type="button" role="tab" data-tab="${k}" aria-selected="${tab === k}" aria-pressed="${tab === k}" class="chip chip-filter">${l} <span class="opacity-70">${visible(k).length}</span></button>`).join('')}
+          <button type="button" role="tab" data-tab="${k}" aria-selected="${tab === k}" aria-pressed="${tab === k}" class="chip chip-filter">${l} <span class="opacity-70">${shownCount(k)}</span></button>`).join('')}
       </div>
       ${hidden ? `<button type="button" id="toggle-cancelled" aria-pressed="${showCancelled}" class="chip chip-filter">${icon(showCancelled ? 'eyeOff' : 'eye', 14)}${showCancelled ? 'Hide cancelled' : `Show cancelled (${hidden})`}</button>` : ''}
       ${data.can_manage ? `<button type="button" id="new-activity" class="btn btn-dark ml-auto h-11 px-5 text-sm">${icon('plus', 18)}New activity</button>` : ''}
@@ -93,10 +105,22 @@ function render() {
     <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
       <section class="min-w-0 space-y-3" aria-label="${tab === 'upcoming' ? 'Upcoming activities' : 'Past activities'}">
         ${list.length ? list.map(card).join('') : emptyState()}
+        ${oldCancelledBox()}
       </section>
       <aside class="min-w-0 space-y-4">${mySignupsCard()}${needsPeopleCard()}${monthCard()}${myAttendanceCard()}${rulesCard()}</aside>
     </div>`;
   bind();
+}
+
+/** Past tab, Show cancelled on: the activities cancelled over 3 days ago, in a box that opens (officers can Remove them). */
+function oldCancelledBox() {
+  const old = data.old_cancelled;
+  if (tab !== 'past' || !showCancelled || !old.length) return '';
+  return `
+    <details data-old-cancelled class="rounded-[1.75rem] bg-white p-4 shadow-card" ${oldOpen ? 'open' : ''}>
+      <summary class="cursor-pointer text-sm font-semibold">${old.length === 1 ? '1 older cancelled activity' : `${old.length} older cancelled activities`}</summary>
+      <div class="mt-3 space-y-3">${old.map(card).join('')}</div>
+    </details>`;
 }
 
 function emptyState() {
@@ -445,11 +469,8 @@ function bind() {
     });
   });
   $$('[data-edit-activity]').forEach((b) => b.onclick = () => openEdit(findActivity(Number(b.dataset.editActivity))));
-  $('#toggle-cancelled')?.addEventListener('click', () => {
-    showCancelled = !showCancelled;
-    try { localStorage.setItem('acadsync.showCancelled', showCancelled ? '1' : '0'); } catch { /* private mode */ }
-    render();
-  });
+  $('#toggle-cancelled')?.addEventListener('click', () => { setShowCancelled(!showCancelled); render(); });
+  $('[data-old-cancelled]')?.addEventListener('toggle', (e) => { oldOpen = e.target.open; });
   $$('[data-remove-activity]').forEach((b) => b.onclick = () => {
     const a = findActivity(Number(b.dataset.removeActivity));
     UI.sheet(`<h2 class="text-2xl font-bold">Remove “${esc(a.title)}” for good?</h2>
@@ -716,7 +737,9 @@ function openCreate(startKind = 'meeting') {
         $('[data-signup]', el).hidden = !parts;
         $('[data-parts-box]', el).hidden = !parts;
         if (parts) {
-          const saved = [...partsList.children].map(readPart);   // keep what was typed when switching kinds
+          // Keep what was typed when switching kinds. A competition row has no due date field, so each row
+          // also remembers its due date (data-due) for when the kind goes back to a project.
+          const saved = [...partsList.children].map((li) => ({ ...readPart(li), due_date: readPart(li).due_date || li.dataset.due || null }));
           partsList.innerHTML = '';
           (saved.length ? saved : [{}]).forEach(() => addRow());
           [...partsList.children].forEach((li, i) => {
@@ -725,6 +748,11 @@ function openCreate(startKind = 'meeting') {
             $('[name="p_name"]', li).value = s.name; $('[name="p_details"]', li).value = s.details;
             $('[name="p_spots"]', li).value = s.spots; $('[name="p_together"]', li).checked = s.together;
             $('[name="p_roles"]', li).value = s.roles.join(', ');
+            if (s.due_date) {
+              li.dataset.due = s.due_date;
+              const dueInput = $('[name="p_due"]', li);
+              if (dueInput) dueInput.value = s.due_date;
+            }
           });
         }
         if (kind === 'project') {
@@ -786,16 +814,16 @@ function openEdit(a) {
           <span class="field"><input type="date" name="signup_deadline" value="${esc(a.signup_deadline || '')}"></span></label>` : ''}
         <label class="block"><span class="mb-1.5 block text-xs text-muted">Details (optional)</span>
           <span class="field area"><textarea name="description" rows="3" maxlength="2000">${esc(a.description || '')}</textarea></span></label>
-        ${whoField(a.invite_only, (a.invited || []).map((x) => x.id))}
+        ${whoField(a.invite_only, a.invited || [])}
       </div>
       <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
       <button type="submit" class="btn btn-dark mt-5 w-full">Save</button>
     </form>`, {
     label: 'Edit activity',
-    onMount: (el, close) => { const who = bindWho(el); const range = bindRange(el); UI.bindForm($('form', el), async (f) => {
+    onMount: (el, close) => { const who = bindWho(el, { onlyIfTouched: true }); const range = bindRange(el); UI.bindForm($('form', el), async (f) => {
       // One day: the last day is the first day. A range: To already moved with From (bindRange).
       if (!range.multi()) f.end_date = f.date;
-      Object.assign(f, who());
+      Object.assign(f, who());   // nothing when the picker wasn't touched: the server keeps the invites as they are
       await API.post('activities.php', { action: 'edit', id: a.id, ...f });
       close();
       UI.toast('Activity saved');
@@ -821,9 +849,15 @@ function invitedLine(a) {
   return `<p class="mt-2 text-xs"><span class="text-muted">Invited (${names.length}):</span> ${esc(shown)}</p>`;
 }
 
-/** "Who can join": everyone, or only the members the poster picks from a searchable list. */
+/**
+ * "Who can join": everyone, or only the members the poster picks from a searchable list.
+ * chosen: [{id, name}] already invited. Anyone among them who isn't in data.people (alumni, or who left the
+ * section) is listed too, so saving the form never drops them by accident.
+ */
 function whoField(inviteOnly = false, chosen = []) {
-  const picked = new Set(chosen);
+  const picked = new Set(chosen.map((x) => x.id));
+  const listed = new Set(data.people.map((m) => m.id));
+  const rows = [...data.people, ...chosen.filter((x) => !listed.has(x.id)).map((x) => ({ ...x, inactive: true }))];
   return `
     <fieldset data-who>
       <legend class="mb-1.5 block text-xs text-muted">Who can join</legend>
@@ -838,12 +872,13 @@ function whoField(inviteOnly = false, chosen = []) {
         </div>
         <p data-who-count class="mt-2 text-xs text-muted" aria-live="polite"></p>
         <ul class="mt-1 max-h-56 space-y-0.5 overflow-y-auto" aria-label="Members to invite">
-          ${data.people.map((m) => `
+          ${rows.map((m) => `
             <li data-who-row="${esc(m.name.toLowerCase())}">
               <label class="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-canvas">
                 <input type="checkbox" data-who-id="${m.id}" class="h-5 w-5 accent-charcoal" ${picked.has(m.id) ? 'checked' : ''}>
                 ${UI.avatar(m.name, 'bg-lavender-tint', 'h-8 w-8 text-xs')}
                 <span class="min-w-0 flex-1 truncate text-sm">${esc(m.name)}</span>
+                ${m.inactive ? '<span class="shrink-0 text-xs text-muted">Not active</span>' : ''}
               </label>
             </li>`).join('')}
         </ul>
@@ -852,16 +887,21 @@ function whoField(inviteOnly = false, chosen = []) {
     </fieldset>`;
 }
 
-/** Wires a whoField inside el; returns a function that reads {audience, invited}. */
-function bindWho(el) {
+/**
+ * Wires a whoField inside el; returns a function that reads {audience, invited}.
+ * onlyIfTouched (Edit): the function returns {} until the officer changes something in the field.
+ */
+function bindWho(el, { onlyIfTouched = false } = {}) {
   const box = $('[data-who]', el);
   let audience = $('[data-aud="invited"]', box).getAttribute('aria-checked') === 'true' ? 'invited' : 'everyone';
+  let touched = false;
   const boxes = () => $$('[data-who-id]', box);
   const count = () => {
     const n = boxes().filter((c) => c.checked).length;
     $('[data-who-count]', box).textContent = n ? `${plural(n, 'person', 'people')} chosen` : 'Nobody chosen yet';
   };
   $$('[data-aud]', box).forEach((b) => b.onclick = () => {
+    touched = true;
     audience = b.dataset.aud;
     $$('[data-aud]', box).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
     $('[data-picker]', box).hidden = audience !== 'invited';
@@ -874,11 +914,12 @@ function bindWho(el) {
     const visible = boxes().filter((c) => !c.closest('li').hidden);
     const all = visible.every((c) => c.checked);
     visible.forEach((c) => { c.checked = !all; });
+    touched = true;
     count();
   };
-  boxes().forEach((c) => c.onchange = count);
+  boxes().forEach((c) => c.onchange = () => { touched = true; count(); });
   count();
-  return () => ({
+  return () => (onlyIfTouched && !touched ? {} : {
     audience,
     invited: audience === 'invited' ? boxes().filter((c) => c.checked).map((c) => Number(c.dataset.whoId)) : [],
   });

@@ -375,8 +375,8 @@ $ev = Announcement::fromRow(['id' => 3, 'kind' => 'event', 'title' => 'Meeting: 
 check('minor: an event that ended today is over', $ev->isOverIn($evCtx), true);
 check('minor: a finished event has no RSVP button', [$ev->facts($evCtx)['action'], Algorithms::linearContains($ev->facts($evCtx)['lines'], 'Finished')], [null, true]);
 $alum = ['id' => 9, 'first_name' => 'A', 'last_name' => 'B', 'student_id' => '1', 'email' => 'x', 'role' => 'student', 'position' => null, 'status' => 'alumni'];
-check('minor: payment notices skip people who aren\'t charged', Announcement::fromInput('payment', ['due_id' => 2], $pc)->notifies($alum), false);
-check('minor: other notices reach everyone', Announcement::fromInput('general', ['title' => 'Hi'], $pc)->notifies($alum), true);
+check('minor: payment notices skip people who aren\'t charged', Announcement::fromInput('payment', ['due_id' => 2], $pc)->notifies($alum, $pc), false);
+check('minor: other notices reach everyone', Announcement::fromInput('general', ['title' => 'Hi'], $pc)->notifies($alum, $pc), true);
 check('minor: permission is checked before the details', $refused(fn () => Announcement::fromInput('deadline_change', ['task_id' => 3, 'deadline_type' => 'exact', 'deadline' => '2026-11-19'], $annCtx($secr))), 'Only the President can move a deadline.');
 check('minor: a new due without permission is refused first', $refused(fn () => Announcement::fromInput('payment', ['new_due' => ['title' => '', 'amount' => 'x']], $annCtx($secr))), 'Only the Treasurer or the President can add a due.');
 
@@ -444,6 +444,9 @@ check('volunteer twice', $r->whyCantVolunteer($comp, 5, true, $before), 'You alr
 check('volunteer when picked', $r->whyCantVolunteer($comp, 4, true, $before), 'You’re already picked for this part.');
 check('alumni', $r->whyCantVolunteer($comp, 99, false, $before), 'Alumni members can’t volunteer.');
 check('after deadline', $r->whyCantVolunteer($comp, 99, true, $after), 'Sign-ups for “Founding Anniversary” closed on Fri, Nov 20.');
+$sameDay = Activity::fromRow(['id' => 9, 'kind' => 'competition', 'title' => 'Quiz Bee', 'starts_at' => '2026-11-20 08:00', 'ends_at' => '2026-11-20 12:00',
+    'signup_deadline' => '2026-11-20']);
+check('minor: no volunteering after a same-day competition ended', $r->whyCantVolunteer($sameDay, 99, true, strtotime('2026-11-20 13:00')), '“Quiz Bee” has already ended.');
 check('pick a volunteer', $r->whyCantPick($cos, $comp, 5, false), null);
 check('pick a stranger in a competition', $r->whyCantPick($cos, $comp, 99, false), 'Pick someone who volunteered.');
 check('pick twice', $r->whyCantPick($cos, $comp, 4, false), 'Already picked.');
@@ -470,6 +473,7 @@ $n = Announcement::fromRow(['id' => 4, 'kind' => 'event', 'title' => 'Competitio
     'details' => json_encode(['title' => 'Founding Anniversary', 'kind_label' => 'Competition', 'venue' => 'Gym', 'starts_at' => '2026-11-25 08:00', 'ends_at' => '2026-11-26 17:00', 'capacity' => null])]);
 $ctxOpen = $faCtx(strtotime('2026-11-20 10:00'));
 check('event facts for a competition', $n->facts($ctxOpen)['lines'][1] ?? null, '7 spots open across 5 parts');
+check('minor: event facts show every day of a multi-day activity', $n->facts($ctxOpen)['lines'][0] ?? null, 'Wed, Nov 25 – Thu, Nov 26 · 8:00–5:00 PM · Gym');
 check('event facts: sign-up deadline', $n->facts($ctxOpen)['lines'][2] ?? null, 'Sign up by Fri, Nov 20');
 check('volunteer action', [$n->facts($ctxOpen)['action']['label'] ?? null, $n->facts($ctxOpen)['action']['href'] ?? null], ['Volunteer', 'activities.html#a1']);
 $ctxClosed = $faCtx(strtotime('2026-11-22 10:00'));
@@ -496,8 +500,53 @@ $invCtx = new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [],
     cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
 $invNote = Announcement::fromInput('event', ['activity_id' => 22], $invCtx);
 $row = fn (int $id) => ['id' => $id, 'first_name' => 'M', 'last_name' => 'X', 'student_id' => 's', 'email' => 'x', 'role' => 'student', 'position' => null, 'status' => 'active'];
-check('an Event announcement for an invite-only activity reaches only the invited', [$invNote->notifies($row(4)), $invNote->notifies($row(5))], [true, false]);
+check('an Event announcement for an invite-only activity reaches only the invited', [$invNote->notifies($row(4), $invCtx), $invNote->notifies($row(5), $invCtx)], [true, false]);
 check('someone not invited is not counted absent', MemberRecord::fromActivities($member(5), '2026-10-01', [$open, $inv], $emptyRosters, 0, [])->expected(), 1);
+
+// Review fix 1: the Event composer has no picker, so a new activity made from an announcement is for everyone
+// (an 'invited' row without invite rows used to break every page that loads activities)
+$madeNote = Announcement::fromInput('event', ['new_activity' => ['kind' => 'meeting', 'title' => 'Assembly', 'date' => '2026-11-28',
+    'start' => '08:00', 'end' => '09:00', 'audience' => 'invited', 'invited' => [4]]], $invCtx);
+check('fix 1: an Event announcement makes a new activity for everyone', json_decode((string) $madeNote->toRow(1)['details'], true)['row']['audience'] ?? null, 'everyone');
+check('fix 1: a stored invite-only row whose invites are gone still loads (nobody can join yet)', (function () {
+    $a = Activity::fromRow(['id' => 23, 'kind' => 'meeting', 'title' => 'Orphan', 'starts_at' => '2026-11-27 08:00', 'ends_at' => '2026-11-27 09:00',
+        'audience' => 'invited', 'invited' => []], stored: true);
+    return [$a->isInviteOnly(), $a->isFor(4), $a->invitedIds()];
+})(), [true, false, []]);
+
+// Review fix 3: a freed seat goes to the first INVITED person waiting; anyone else waiting is dropped
+$waitRoster = new ActivityRoster([
+    ['id' => 10, 'user_id' => 6, 'status' => 'going'],
+    ['id' => 11, 'user_id' => 5, 'status' => 'waitlist'],
+    ['id' => 12, 'user_id' => 4, 'status' => 'waitlist'],
+], []);
+check('fix 3: the next invited person in line', $waitRoster->nextInLineFor($inv), ['user_id' => 4, 'rsvp_id' => 12]);
+check('fix 3: people waiting who are not invited', $waitRoster->waitingNotFor($inv), [['user_id' => 5, 'rsvp_id' => 11]]);
+check('fix 3: open to everyone, the front is next', $waitRoster->nextInLineFor($open), ['user_id' => 5, 'rsvp_id' => 11]);
+
+// Review fix 2: after the invite list changes, the free seats go to the invited people waiting, front first
+$twoSeats = Activity::fromRow(['id' => 21, 'kind' => 'meeting', 'title' => 'Officers only', 'starts_at' => '2026-11-03 08:00', 'ends_at' => '2026-11-03 09:00',
+    'capacity' => 2, 'audience' => 'invited', 'invited' => [4, 6, 7, 8]]);
+$afterEdit = new ActivityRoster([
+    ['id' => 10, 'user_id' => 6, 'status' => 'going'],
+    ['id' => 11, 'user_id' => 7, 'status' => 'waitlist'],
+    ['id' => 12, 'user_id' => 5, 'status' => 'waitlist'],
+    ['id' => 13, 'user_id' => 8, 'status' => 'waitlist'],
+], []);
+check('fix 2: one free seat goes to the first invited person waiting', $afterEdit->seatsToFill($twoSeats), [['user_id' => 7, 'rsvp_id' => 11]]);
+check('fix 2: no seat limit, nobody waits', (new ActivityRoster([['id' => 1, 'user_id' => 4, 'status' => 'waitlist']], []))->seatsToFill($open), [['user_id' => 4, 'rsvp_id' => 1]]);
+
+// Review fix 9: competitions and projects have no seats, so a seat limit in the input is ignored (built once)
+check('fix 9: a competition drops any seat limit', $refused(fn () => Activity::fromRow(['kind' => 'competition', 'title' => 'C', 'starts_at' => '2026-11-27 08:00',
+    'ends_at' => '2026-11-27 09:00', 'capacity' => 5000])), 'built');
+check('fix 9: and has no capacity', Activity::fromRow(['kind' => 'project', 'title' => 'P', 'starts_at' => '2026-11-27 08:00', 'ends_at' => '2026-11-27 09:00', 'capacity' => 30])->capacity(), null);
+
+// Review fix 8: who an Event announcement reaches follows the live activity, not a copy made when it was posted
+$reInvited = Activity::fromRow(['id' => 22, 'kind' => 'meeting', 'title' => 'Officers only', 'starts_at' => '2026-11-27 08:00', 'ends_at' => '2026-11-27 09:00',
+    'audience' => 'invited', 'invited' => [5], 'created_by' => 1]);
+$liveCtx = new AnnouncementContext(sectionId: 1, userId: 1, me: $pres, tasks: [], subjects: [], slots: [], dues: [], activities: [22 => $reInvited],
+    cancelled: new HashSet(), now: strtotime('2026-11-20 10:00'));
+check('fix 8: notifies the people invited now', [$invNote->notifies($row(5), $liveCtx), $invNote->notifies($row(4), $liveCtx)], [true, false]);
 
 // ---------------------------------------------------------------------------
 section('Group planning');
@@ -507,6 +556,22 @@ check('17 students, 5 groups', Algorithms::planGroupSizes(17, 3, 3, 5), [4, 4, 3
 check('nobody to group', Algorithms::planGroupSizes(0, 3, 4), []);
 $shuffled = Algorithms::shuffle([1, 2, 3, 4, 5]);
 check('shuffle keeps every item', Algorithms::mergeSortBy(array_map(fn ($v) => ['v' => $v], $shuffled), 'v', false), [['v' => 1], ['v' => 2], ['v' => 3], ['v' => 4], ['v' => 5]]);
+
+// ---------------------------------------------------------------------------
+section('Database errors');
+$pdoError = function (string $message, int $code): PDOException {
+    $e = new PDOException("SQLSTATE[23000]: $message");
+    $e->errorInfo = ['23000', $code, $message];
+    return $e;
+};
+check('a UNIQUE clash is a double tap', is_unique_violation($pdoError('UNIQUE constraint failed: part_members.part_id, part_members.user_id', 19)), true);
+check('a foreign key error is not', is_unique_violation($pdoError('FOREIGN KEY constraint failed', 19)), false);
+check('a locked database is not', is_unique_violation($pdoError('database is locked', 5)), false);
+
+section('CSV export');
+check('quotes commas and quotes', csv_line(['Ana', 'Bautista, Ana', 'said "hi"', '150.00']), "Ana,\"Bautista, Ana\",\"said \"\"hi\"\"\",150.00\r\n");
+check('a cell that starts like a formula is made plain text', csv_line(['=HYPERLINK("x")', '+1', '@cmd', "\tx"]), "\"'=HYPERLINK(\"\"x\"\")\",'+1,'@cmd,'\tx\r\n");
+check('line breaks stay inside one cell', csv_line(["two\nlines"]), "\"two\nlines\"\r\n");
 
 echo "\n$passed passed, $failed failed\n";
 exit($failed === 0 ? 0 : 1);

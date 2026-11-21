@@ -46,6 +46,7 @@ abstract class Activity
         private ?string $signupDeadline = null,  // 'YYYY-MM-DD': volunteering closes at the end of that day
         private ?string $result = null,          // e.g. "2nd place in Cosplay", entered after it ends
         ?array $invited = null,                  // null = everyone; otherwise the user ids the poster chose
+        bool $stored = false,                    // read back from the database: an empty invite list is allowed
     ) {
         $title = trim($title);
         if ($title === '' || strlen($title) > 120) {
@@ -90,7 +91,9 @@ abstract class Activity
                     $this->invitedIds[] = (int) $id;
                 }
             }
-            if (!$this->invitedIds) {
+            // New input must name someone. A stored row whose invites are all gone still loads (nobody can
+            // join until an officer picks people), so one bad row can't break every page that lists activities.
+            if (!$this->invitedIds && !$stored) {
                 throw new InvalidArgumentException('Pick at least one person to invite.');
             }
         }
@@ -113,8 +116,8 @@ abstract class Activity
         return $link;
     }
 
-    /** Factory: builds the right kind from a row (or from new input, with id 0). */
-    public static function fromRow(array $r): Activity
+    /** Factory: builds the right kind from a row (or from new input, with id 0). $stored: a row read from the database. */
+    public static function fromRow(array $r, bool $stored = false): Activity
     {
         $args = [(int) ($r['id'] ?? 0), (string) ($r['title'] ?? ''), (string) ($r['description'] ?? ''), (string) ($r['venue'] ?? ''),
             (string) ($r['starts_at'] ?? ''), (string) ($r['ends_at'] ?? ''),
@@ -123,7 +126,7 @@ abstract class Activity
             isset($r['link']) ? (string) $r['link'] : null,
             isset($r['signup_deadline']) ? (string) $r['signup_deadline'] : null,
             isset($r['result']) ? (string) $r['result'] : null,
-            ($r['audience'] ?? 'everyone') === 'invited' ? array_values((array) ($r['invited'] ?? [])) : null];
+            ($r['audience'] ?? 'everyone') === 'invited' ? array_values((array) ($r['invited'] ?? [])) : null, $stored];
         return match ($r['kind'] ?? '') {
             'meeting' => new Meeting(...$args),
             'seminar' => new Seminar(...$args),
@@ -338,6 +341,17 @@ abstract class RsvpActivity extends Activity
  */
 abstract class PartsActivity extends Activity
 {
+    /** [OOP: INHERITANCE] the same checks as every activity, but parts, not seats: a seat limit in the input is dropped. */
+    public function __construct(mixed ...$args)
+    {
+        if (array_key_exists('capacity', $args)) {   // named arguments
+            $args['capacity'] = null;
+        } else {                                     // positional (Activity::fromRow): capacity is the 7th
+            $args[6] = null;
+        }
+        parent::__construct(...$args);
+    }
+
     public function joinsBy(): string
     {
         return 'parts';
@@ -609,6 +623,49 @@ final class ActivityRoster
     public function nextInLine(): ?array
     {
         return $this->waitlist->peek();
+    }
+
+    /**
+     * The first person waiting who may still join $a (invite-only: someone the poster chose), or null.
+     * [DSA: QUEUE] walked from the front, so the order people asked in is kept.
+     */
+    public function nextInLineFor(Activity $a): ?array
+    {
+        foreach ($this->waitlist->toArray() as $w) {
+            if ($a->isFor($w['user_id'])) {
+                return $w;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Who gets the seats that are free now (e.g. after people who aren't invited any more were taken off):
+     * [DSA: QUEUE] the invited people waiting, front first, while $a still has room.
+     */
+    public function seatsToFill(Activity $a): array
+    {
+        $out = [];
+        $going = $this->goingCount;
+        foreach ($this->waitlist->toArray() as $w) {
+            if ($a->isFor($w['user_id']) && $a->hasRoom($going)) {
+                $out[] = $w;
+                $going++;
+            }
+        }
+        return $out;
+    }
+
+    /** @return array[] the people waiting who may no longer join $a (they are dropped from the waitlist) */
+    public function waitingNotFor(Activity $a): array
+    {
+        $out = [];
+        foreach ($this->waitlist->toArray() as $w) {
+            if (!$a->isFor($w['user_id'])) {
+                $out[] = $w;
+            }
+        }
+        return $out;
     }
 
     /** @return int[] waitlisted user ids, front first */

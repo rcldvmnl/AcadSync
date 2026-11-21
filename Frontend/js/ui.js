@@ -40,6 +40,7 @@ const ICON_PATHS = {
   eyeOff: '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a17 17 0 0 1-2.16 3.19M6.6 6.6A17.5 17.5 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2M2 2l20 20"/>',
   flag: '<path d="M5 21V4"/><path d="M5 4h11.5l-2.25 4.5L16.5 13H5"/>',
   clipboard: '<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 4V2.75h6V4M9 10h6M9 14h6M9 18h3"/>',
+  download: '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/>',
 };
 
 /**
@@ -496,9 +497,9 @@ const Shell = {
   /**
    * Nav for this person. The phone bar is always 3 | + | 3:
    *   member:  Home, Schedule, Classmates | + | Groups, Activities, My account
-   *   officer: Home, Schedule, Queue      | + | Members/Classmates, Activities, My account
-   * Classmates always comes before Groups. Officers still get Groups on the desktop rail
-   * (a 4th phone icon would make one side longer).
+   *   officer: Home, Schedule, Queue      | + | Members/Classmates, Groups, Activities
+   * Classmates always comes before Groups. Officers open My account from the avatar in the phone
+   * header instead (the queue keeps its badge on the bar); the desktop rail has the avatar for everyone.
    */
   navItems() {
     const president = Shell.can('manage_section');
@@ -510,11 +511,15 @@ const Shell = {
       { key: 'schedule', href: 'schedule.html', icon: 'calendar', label: 'Schedule' },
       officer ? { key: 'queue', href: 'queue.html', icon: 'inbox', label: 'Approval queue', badge: true } : classmates,
       { key: 'add', href: 'task-form.html', icon: 'plus', label: president ? 'Add task' : 'Request a task', fab: true },
-      officer ? classmates : groups,
-      ...(officer ? [{ ...groups, desktopOnly: true }] : []),
+      ...(officer ? [classmates, groups] : [groups]),
       { key: 'activities', href: 'activities.html', icon: 'flag', label: 'Activities' },
-      { key: 'account', href: 'account.html', icon: 'user', label: 'My account' },
+      { key: 'account', href: 'account.html', icon: 'user', label: 'My account', desktopOnly: officer },
     ];
+  },
+
+  /** Officers have no Account button on the phone bar: the phone header shows their avatar instead. */
+  accountInHeader() {
+    return Shell.navItems().some((it) => it.key === 'account' && it.desktopOnly);
   },
 
   /**
@@ -562,7 +567,8 @@ const Shell = {
       <a href="search.html" class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-card lg:hidden" aria-label="Search">${icon('search', 20)}</a>` : ''}
       <a href="notifications.html" class="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white shadow-card" aria-label="Notifications${unread ? ` (${unread} unread)` : ''}">
         ${icon('bell', 20)}${unread ? '<span class="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-danger ring-2 ring-white"></span>' : ''}
-      </a>`;
+      </a>
+      ${!avatar && Shell.accountInHeader() ? `<button type="button" data-open-account class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach text-sm font-semibold lg:hidden" aria-label="Open my account">${esc(Fmt.initials(name))}</button>` : ''}`;
     $('[data-back]', header)?.addEventListener('click', () => {
       if (typeof back === 'string') location.href = back;
       else if (history.length > 1 && document.referrer.includes(location.host)) history.back();
@@ -584,8 +590,7 @@ const Shell = {
     mobile.className = 'nav-pill fixed inset-x-4 bottom-4 z-40 mx-auto flex h-16 max-w-[24rem] items-center rounded-full px-1.5 lg:hidden';
     const phoneItems = items.filter((it) => !it.desktopOnly);
     const fabAt = phoneItems.findIndex((it) => it.fab);
-    // No Groups button on this phone bar (officers): the Classmates button stands for both tabs
-    const phoneActive = active === 'groups' && !phoneItems.some((it) => it.key === 'groups') ? 'classmates' : active;
+    const phoneActive = active;
     const link = (it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${phoneActive === it.key ? 'active' : ''}" aria-label="${it.label}" ${phoneActive === it.key ? 'aria-current="page"' : ''}>${icon(it.icon, 20)}${badge(it)}</a>`;
     const side = (list) => `<div class="flex min-w-0 flex-1 items-center justify-evenly">${list.map(link).join('')}</div>`;
     mobile.innerHTML = `${side(phoneItems.slice(0, fabAt))}

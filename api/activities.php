@@ -4,6 +4,7 @@
  * attendance, and the parts people volunteer for.
  *
  * GET  /api/activities.php                     -> upcoming + past activities (with their parts), your RSVP,
+ *                                                 old_cancelled (cancelled over 3 days ago, kept apart),
  *                                                 your attendance rate, needs_people, my_signups, month, latest_results
  * GET  /api/activities.php?mine=1              -> only my_signups (for Home)
  * GET  /api/activities.php?id=5&roster=1       -> the attendance sheet (officers who take attendance)
@@ -87,8 +88,9 @@ $findPart = function () use ($parts, $activities, $partRosters): array {
 /**
  * The 'invited' list from input, checked against this section's members ([DSA: HASHSET]); fails on anyone else.
  * Returns null when the input doesn't say who can join, [] for everyone.
+ * $keep: people already invited (edit), who may stay on the list even if they left the section since.
  */
-$invitedInput = function (array $in) use ($ctx): ?array {
+$invitedInput = function (array $in, array $keep = []) use ($ctx): ?array {
     if (!array_key_exists('audience', $in)) {
         return null;
     }
@@ -98,6 +100,9 @@ $invitedInput = function (array $in) use ($ctx): ?array {
     $members = new HashSet();
     foreach ($ctx['members'] as $m) {
         $members->add((string) (int) $m['id']);
+    }
+    foreach ($keep as $id) {
+        $members->add((string) (int) $id);
     }
     $ids = [];
     foreach ((array) ($in['invited'] ?? []) as $id) {
@@ -121,6 +126,13 @@ $saveInvites = function (int $activityId, array $ids) use ($sectionId): void {
         if ($seen->add((string) $id)) {
             Store::insert('activity_invites', ['section_id' => $sectionId, 'activity_id' => $activityId, 'user_id' => $id]);
         }
+    }
+};
+
+/** Stops a change to a cancelled activity's parts (the page hides those buttons; this covers a direct POST). */
+$refuseCancelled = function (Activity $a): void {
+    if ($a->isCancelled()) {
+        fail('This activity was cancelled.', 409);
     }
 };
 
@@ -296,15 +308,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Upcoming (soonest first) and past (latest first), both put in order with Merge Sort
     $upcoming = [];
     $past = [];
-    $hiddenCancelled = 0;
+    $oldCancelled = [];
     foreach ($activities as $a) {
-        // Auto-hide: a cancelled activity leaves the lists a few days after its date (nothing is deleted)
-        if ($a->isCancelled() && $a->endTs() < $now - HIDE_CANCELLED_AFTER) {
-            $hiddenCancelled++;
-            continue;
-        }
         $row = $present($a);
-        if ($a->isOver($now)) {
+        // Auto-hide: a cancelled activity leaves the lists a few days after its date (nothing is deleted).
+        // It is sent apart, so "Show cancelled" can still list it and officers can remove it.
+        if ($a->isCancelled() && $a->endTs() < $now - HIDE_CANCELLED_AFTER) {
+            $oldCancelled[] = $row;
+        } elseif ($a->isOver($now)) {
             $past[] = $row;
         } else {
             $upcoming[] = $row;
@@ -313,6 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $steps = 0;
     $upcoming = Algorithms::mergeSortBy($upcoming, 'start_ts', false, $steps);
     $past = Algorithms::mergeSortBy($past, 'start_ts', true, $steps);
+    $oldCancelled = Algorithms::mergeSortBy($oldCancelled, 'start_ts', true, $steps);   // [ALGORITHM: MERGE SORT] latest first
 
     // Your own attendance, worked out the same way as in member records
     $mine = null;
@@ -405,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'my_status' => $me->status()->toArray(), 'me_id' => $uid,
         'needs_people' => $needs, 'my_signups' => $mySignups(),
         'month' => ['first' => $first, 'days' => $dayList, 'first_activity' => $firstOn, 'today' => $today],
-        'latest_results' => $latest, 'people' => $people, 'hidden_cancelled' => $hiddenCancelled,
+        'latest_results' => $latest, 'people' => $people, 'old_cancelled' => $oldCancelled,
     ]);
 }
 
@@ -423,10 +435,7 @@ switch (param('action')) {
             // announcements' "Event" builds new activities the same way)
             $in = input();
             $in['invited'] = $invitedInput($in) ?? [];      // only people from this section
-            $activity = validate_new_activity($in, $uid, $now);
-            if (!$activity->usesSeats()) {                  // [OOP: POLYMORPHISM] parts kinds have no seats
-                $activity = validate_new_activity(['capacity' => null] + $in, $uid, $now);
-            }
+            $activity = validate_new_activity($in, $uid, $now);   // [OOP: POLYMORPHISM] parts kinds drop any seat limit
             if ($activity->joinsBy() === 'parts') {
                 $list = is_array($in['parts'] ?? null) ? array_values($in['parts']) : [];
                 if (!$list) {
@@ -509,7 +518,7 @@ switch (param('action')) {
         $row['starts_at'] = "$date $start";
         $row['ends_at'] = "$endDate $end";
         $row['invited'] = $a->invitedIds();
-        $newInvites = $invitedInput($in);                  // null = who can join stays as it was
+        $newInvites = $invitedInput($in, $a->invitedIds()); // null = who can join stays as it was
         if ($newInvites !== null) {
             $row['audience'] = $in['audience'] === 'invited' ? 'invited' : 'everyone';
             $row['invited'] = $newInvites;
@@ -525,12 +534,57 @@ switch (param('action')) {
         }
         $cols = $edited->toRow();
         unset($cols['kind'], $cols['created_by'], $cols['result']);
+        $droppedOut = new HashSet();                       // [DSA: HASHSET] each person told once
+        $removed = [];
+        $promoted = [];
         Store::begin();
         Store::update('activities', $a->id(), $cols);
         if ($newInvites !== null) {
             $saveInvites($a->id(), $edited->invitedIds());
         }
+        if ($newInvites !== null && $edited->isInviteOnly()) {
+            // People who aren't invited any more lose their seat, their waitlist place and their parts…
+            $kept = [];
+            foreach (section_rows('activity_rsvps', $sectionId) as $x) {
+                if ((int) $x['activity_id'] !== $a->id()) {
+                    continue;
+                }
+                if ($edited->isFor((int) $x['user_id'])) {
+                    $kept[] = $x;
+                } else {
+                    Store::delete('activity_rsvps', (int) $x['id']);
+                    if ($droppedOut->add((string) (int) $x['user_id'])) {
+                        $removed[] = (int) $x['user_id'];
+                    }
+                }
+            }
+            $partIds = new HashSet();
+            foreach ($parts[$a->id()] ?? [] as $p) {
+                $partIds->add((string) $p->id());
+            }
+            foreach (section_rows('part_members', $sectionId) as $m) {
+                if ($partIds->contains((string) (int) $m['part_id']) && !$edited->isFor((int) $m['user_id'])) {
+                    Store::delete('part_members', (int) $m['id']);
+                    if ($droppedOut->add((string) (int) $m['user_id'])) {
+                        $removed[] = (int) $m['user_id'];
+                    }
+                }
+            }
+            // …and the seats they freed go to the invited people waiting, front of the QUEUE first
+            foreach ((new ActivityRoster($kept, []))->seatsToFill($edited) as $w) {
+                Store::update('activity_rsvps', $w['rsvp_id'], ['status' => 'going']);
+                $promoted[] = $w['user_id'];
+            }
+        }
         Store::commit();
+        foreach ($removed as $who) {
+            if ($who !== $uid) {
+                notify($who, $sectionId, 'moved', "“{$edited->title()}” is now only for the people invited, so you’re no longer on it", 'activities.html');
+            }
+        }
+        foreach ($promoted as $who) {
+            notify($who, $sectionId, 'approved', "A seat opened up: you’re going to “{$edited->title()}”", "activities.html#a{$a->id()}");
+        }
         if ($edited->isInviteOnly()) {                     // tell the people who are newly invited
             foreach ($edited->invitedIds() as $who) {
                 if ($who !== $uid && !($a->isInviteOnly() && $a->isFor($who))) {
@@ -603,6 +657,7 @@ switch (param('action')) {
             fail('Only officers can change the parts.', 403);
         }
         [$p, $a, $r] = $findPart();
+        $refuseCancelled($a);
         $row = $p->toRow();
         $in = input();
         foreach (['name', 'details', 'spots', 'together', 'roles', 'due_date'] as $key) {
@@ -620,7 +675,15 @@ switch (param('action')) {
         }
         $cols = $edited->toRow();
         unset($cols['activity_id'], $cols['position']);
+        Store::begin();
         Store::update('activity_parts', $p->id(), $cols);
+        // A role that was taken out is cleared from whoever had it ([ALGORITHM: LINEAR SEARCH] over the part's roles)
+        foreach ([...$r->picked(), ...$r->volunteers()] as $m) {
+            if (($m['role'] ?? null) !== null && !Algorithms::linearContains($edited->roles(), $m['role'])) {
+                Store::update('part_members', (int) $m['id'], ['role' => null]);
+            }
+        }
+        Store::commit();
         respond();
     }
 
@@ -664,8 +727,11 @@ switch (param('action')) {
         try {
             Store::insert('part_members', ['section_id' => $sectionId, 'part_id' => $p->id(), 'user_id' => $uid, 'status' => 'volunteer',
                 'volunteered' => 1, 'role' => $role, 'note' => $note === '' ? null : $note]);
-        } catch (PDOException) {                            // UNIQUE(part_id, user_id): a double tap
-            fail('You already volunteered for this part.', 409);
+        } catch (PDOException $e) {
+            if (!is_unique_violation($e)) {                 // a real error, not a double tap
+                throw $e;
+            }
+            fail('You already volunteered for this part.', 409);   // UNIQUE(part_id, user_id)
         }
         respond(['status' => 'volunteer'], 201);   // spec: no notification, officers read the list
     }
@@ -738,6 +804,7 @@ switch (param('action')) {
             fail('Only officers can un-pick people.', 403);
         }
         [$p, $a, ] = $findPart();
+        $refuseCancelled($a);
         $who = (int) param('user_id', 0);
         $row = $memberRow($p->id(), $who);
         if ($row === null || $row['status'] !== 'picked') {
@@ -758,7 +825,8 @@ switch (param('action')) {
         if (!$canManage) {
             fail('Only officers can give roles.', 403);
         }
-        [$p, , ] = $findPart();
+        [$p, $a, ] = $findPart();
+        $refuseCancelled($a);
         $row = $memberRow($p->id(), (int) param('user_id', 0));
         if ($row === null) {
             fail('That person isn’t on this part.', 404);
@@ -782,6 +850,7 @@ switch (param('action')) {
 
     case 'mark_done': {
         [$p, $a, $r] = $findPart();
+        $refuseCancelled($a);
         if (!$a->partsNeedDueDates()) {                     // [OOP: POLYMORPHISM] only project parts are "done"
             fail('Only project parts are marked done.', 409);
         }
@@ -897,10 +966,16 @@ switch (param('action')) {
         Store::begin();
         Store::delete('activity_rsvps', (int) $row['id']);
         $promoted = null;
-        // A seat opened up: DEQUEUE the front of the waitlist into it (first come, first served)
-        if ($row['status'] === 'going' && !$a->isOver($now) && !$a->isCancelled() && ($next = $r->nextInLine()) !== null) {
-            Store::update('activity_rsvps', $next['rsvp_id'], ['status' => 'going']);
-            $promoted = $next['user_id'];
+        // A seat opened up: the first INVITED person in the waitlist QUEUE gets it (first come, first served).
+        // Anyone waiting who may no longer join (the invite list changed) is dropped instead.
+        if ($row['status'] === 'going' && !$a->isOver($now) && !$a->isCancelled()) {
+            foreach ($r->waitingNotFor($a) as $w) {
+                Store::delete('activity_rsvps', $w['rsvp_id']);
+            }
+            if (($next = $r->nextInLineFor($a)) !== null) {
+                Store::update('activity_rsvps', $next['rsvp_id'], ['status' => 'going']);
+                $promoted = $next['user_id'];
+            }
         }
         Store::commit();
         if ($promoted !== null) {

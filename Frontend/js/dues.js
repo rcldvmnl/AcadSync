@@ -129,6 +129,7 @@ function manageCard(d) {
       <p class="mt-1.5 text-xs text-muted"><b class="font-semibold text-charcoal">${esc(d.collected_label)}</b> of ${esc(d.target_label)} collected</p>
       <div class="mt-4 flex flex-wrap items-center gap-2">
         <button type="button" data-toggle="${d.id}" aria-expanded="${expanded}" class="btn btn-canvas h-10 px-4 text-sm">${expanded ? 'Hide members' : `Show ${plural(d.expected, 'member')}`}</button>
+        <a href="${API_BASE}dues.php?export=${d.id}" download data-export-due="${d.id}" class="btn btn-canvas h-10 px-4 text-sm">${icon('download', 16)}Export CSV</a>
         <button type="button" data-cancel-due="${d.id}" class="ml-auto text-xs font-semibold text-danger">Cancel due</button>
       </div>
       ${expanded ? `<ul class="mt-3 space-y-2">${d.members.map(row).join('') || '<li class="text-sm text-muted">No active members to charge.</li>'}</ul>` : ''}

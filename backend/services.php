@@ -323,7 +323,7 @@ function load_activities(int $sectionId): array
     }
     $out = [];
     foreach (section_rows('activities', $sectionId) as $r) {
-        $out[(int) $r['id']] = Activity::fromRow($r + ['invited' => $invited[(int) $r['id']] ?? []]);
+        $out[(int) $r['id']] = Activity::fromRow($r + ['invited' => $invited[(int) $r['id']] ?? []], stored: true);
     }
     return $out;
 }
@@ -859,6 +859,33 @@ function validate_new_activity(array $in, int $createdBy, int $now): Activity
         'audience' => ($in['audience'] ?? 'everyone') === 'invited' ? 'invited' : 'everyone',
         'invited' => is_array($in['invited'] ?? null) ? $in['invited'] : [],
     ]);
+}
+
+/**
+ * Was this insert stopped by a UNIQUE index (a double tap, or two people at the same moment)?
+ * Anything else (a locked database, a foreign key) is a real error and must not be reported as "already done".
+ */
+function is_unique_violation(PDOException $e): bool
+{
+    return (int) ($e->errorInfo[1] ?? 0) === 19 && str_contains((string) ($e->errorInfo[2] ?? $e->getMessage()), 'UNIQUE');
+}
+
+/**
+ * One CSV line (RFC 4180: commas, quotes and line breaks are quoted; ends with CRLF).
+ * A cell that starts with = + - @ or a tab/return gets a leading ' so a spreadsheet shows it as text
+ * instead of running it as a formula (CSV injection).
+ */
+function csv_line(array $cells): string
+{
+    $out = [];
+    foreach ($cells as $cell) {
+        $cell = (string) $cell;
+        if ($cell !== '' && str_contains("=+-@\t\r", $cell[0])) {
+            $cell = "'" . $cell;
+        }
+        $out[] = preg_match('/[",\r\n]/', $cell) ? '"' . str_replace('"', '""', $cell) . '"' : $cell;
+    }
+    return implode(',', $out) . "\r\n";
 }
 
 /** [DSA: HASHSET] — classes cancelled by "No class" announcements: "Y-m-d|subjectId", or "Y-m-d|*" for a whole day. */

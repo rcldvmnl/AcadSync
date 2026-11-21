@@ -158,12 +158,15 @@ switch (param('action')) {
         } catch (PDOException $e) {
             // two officers cancelling the same class at the same moment: the unique index stops the second
             Store::rollbackIfOpen();
+            if (!is_unique_violation($e)) {                 // anything else is a real error
+                throw $e;
+            }
             fail('That class is already cancelled on that day.', 409);
         }
         Store::commit();
         // [OOP: POLYMORPHISM] a payment only reaches members who are charged dues
         foreach ($ctx['members'] as $m) {
-            if ((int) $m['id'] !== $uid && $new->notifies($m)) {
+            if ((int) $m['id'] !== $uid && $new->notifies($m, $c)) {
                 notify((int) $m['id'], $sectionId, $new->notifyType(), $new->notifyText($c), $new->notifyLink());
             }
         }

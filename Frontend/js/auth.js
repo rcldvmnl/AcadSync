@@ -33,16 +33,19 @@ function openForgot() {
     UI.bindForm($('form', body), async (d) => {
       const res = await API.post('auth.php', { action: 'forgot', email: d.email }, { redirect: false });
       email = d.email;
-      stepCode(res.dev_code);
+      stepCode(res.dev_code, res.emailed);
     });
   }
 
-  function stepCode(devCode) {
+  /** emailed: the server sent the code by e-mail. devCode: shown only to a browser on the server's own computer. */
+  function stepCode(devCode, emailed) {
     body.innerHTML = `${steps(1)}${badge('mail')}
       <form>
-        <h2 class="text-2xl font-bold">Check your inbox</h2>
-        <p class="mt-2 text-sm text-muted">We sent a 6-digit code to <b class="text-charcoal">${esc(email)}</b>.</p>
-        ${devCode ? `<p class="mt-3 rounded-2xl bg-sun-tint px-4 py-3 text-xs">Local demo (no e-mail server): your code is <b class="text-sm tracking-widest">${esc(devCode)}</b></p>` : ''}
+        <h2 class="text-2xl font-bold">${emailed ? 'Check your inbox' : 'Enter your code'}</h2>
+        <p class="mt-2 text-sm text-muted">${emailed
+          ? `We sent a 6-digit code to <b class="text-charcoal">${esc(email)}</b>. It works for 15 minutes.`
+          : `A 6-digit code for <b class="text-charcoal">${esc(email)}</b>. It works for 15 minutes.`}</p>
+        ${devCode ? `<p class="mt-3 rounded-2xl bg-sun-tint px-4 py-3 text-xs">${emailed ? 'Local demo (also e-mailed)' : 'Local demo (no e-mail server)'}: your code is <b class="text-sm tracking-widest">${esc(devCode)}</b></p>` : ''}
         <div class="mt-4 space-y-4">
           ${UI.field({ name: 'code', label: '6-digit code', iconName: 'hash', placeholder: '123456', required: true })}
           ${UI.field({ name: 'password', label: 'New password', type: 'password', iconName: 'lock', placeholder: 'At least 8 characters', required: true, autocomplete: 'new-password' })}

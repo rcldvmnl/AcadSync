@@ -3,16 +3,47 @@
 Attach this file **and** [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) at the start of a new chat.
 PROJECT_CONTEXT.md explains the project, the rules the code follows and how to test safely;
 this file lists what is left to do.
-Last updated: 2026-11-20 (end of the second session).
+Last updated: 2026-11-21 (end of the third session).
 
 **Suggested first message:**
-> Read docs/PROJECT_CONTEXT.md and docs/NEXT_STEPS.md. Fix the code-review findings in item 0 under
-> "Still to do" (most severe first, a failing test before each fix), then continue with the other items.
+> Read docs/PROJECT_CONTEXT.md and docs/NEXT_STEPS.md, then continue with "Still to do".
 > Keep the rules in PROJECT_CONTEXT.md.
 
-**State of the work:** everything below "Done" is **uncommitted** on `main` (the owner commits).
-Last verified: `php tests/dsa_test.php` → 202 passed, 0 failed; the scratch API test → 81 passed;
-`impeccable detect Frontend/*.html` → 0 issues; DSA grep prints nothing.
+**State of the work:** the 2026-11-20 work was committed by the owner. History was rewritten on 2026-11-21
+(DB files purged; `main` is now `b141196`, same code as the old `154f12a`). All 2026-11-21 changes below are
+**uncommitted** on `main`.
+Last verified (2026-11-21): `php tests/dsa_test.php` → 214 passed, 0 failed; scratch API tests → 31 passed
+(review fixes) and 81 passed (competitions/projects); headless-browser check → 12 passed, no JS errors;
+DSA grep prints nothing; `npm run build:css` changes nothing. `impeccable detect` was **not** re-run (the CLI
+isn't installed on this machine; the page changes only reuse existing classes and colours).
+
+---
+
+## Done on 2026-11-21: the code-review findings (each with a failing test first)
+
+| # | Fix | Files |
+| --- | --- | --- |
+| 1 | The Event announcement always makes its new activity for **everyone** (the composer has no picker). A stored invite-only row with no invite rows no longer breaks every page: `Activity::fromRow($row, stored: true)` (used by `load_activities`) lets it load with nobody able to join until an officer picks people | `Announcement.php`, `Activity.php`, `services.php` |
+| 2 | Editing an activity to invite-only (or a narrower list) removes the RSVPs, waitlist places and `part_members` of people no longer invited, in the same transaction, and tells them; the freed seats go to the invited people waiting (`ActivityRoster::seatsToFill()`) | `api/activities.php`, `Activity.php` |
+| 3 | `cancel_rsvp` gives the seat to the first **invited** person waiting (`ActivityRoster::nextInLineFor()`) and drops anyone waiting who isn't invited (`waitingNotFor()`) | `api/activities.php`, `Activity.php` |
+| 4 | The Edit form sends `audience`/`invited` only when the officer touched the picker; the picker also lists people already invited who aren't in `data.people` (alumni, left the section), marked *Not active*; the server lets already-invited people stay on the list | `activities.js`, `api/activities.php` |
+| 5 | The GET returns cancelled activities older than 3 days in `old_cancelled` (was a `hidden_cancelled` count). With *Show cancelled* on, Past ends with a closed *N older cancelled activities* box with **Remove**; links to `#a<id>` open it | `api/activities.php`, `activities.js` |
+| 6 | `scrollToActivity` sets the tab / *Show cancelled* / the old box first and renders once; turning *Show cancelled* on from a link is saved like the toggle | `activities.js` |
+| 7 | **Decision: kept.** `delete` and `$saveInvites` read each table once and filter in PHP, as the DSA rule requires (no `WHERE`) | none |
+| 8 | `notifies(member, context)`: an Event announcement asks the live activity's `isFor()` instead of a copy of the invite list (the copy is no longer stored) | `Announcement.php`, `api/announcements.php` |
+| 9 | `PartsActivity`'s constructor drops any seat limit, so `create` builds a competition/project once (and a stray capacity can't refuse it) | `Activity.php`, `api/activities.php` |
+
+Deferred minors from the earlier review, also fixed (tests first):
+- `PartRoster::whyCantVolunteer` refuses once the activity has ended ("“X” has already ended.").
+- `edit_part`, `set_role`, `unpick`, `mark_done` refuse cancelled activities (409 "This activity was cancelled.").
+- `edit_part` clears a removed role from whoever had it (same transaction).
+- Event announcement facts show every day of a multi-day activity ("Wed, Nov 25 – Thu, Nov 26 · …").
+- Switching kinds in the New activity form keeps the part due dates (each row remembers its date in `data-due`).
+
+Docs updated: `CLASS_DIAGRAM.md` (new `ActivityRoster` methods, `fromRow(row, stored)`, `PartsActivity`
+constructor, `notifies(member, context)`), `PROJECT_CONTEXT.md`, README (cancelled activities, who can join).
+Scratch tests from this session (git-ignored): `.superpowers/sdd/2026-11-21-review-fixes/` (`review_test.php`,
+`fe_check.mjs`, `fe_setup.php`, `browser_router.php`, `sync.sh`, `run.sh`; see the comments in `run.sh`).
 
 ---
 
@@ -58,97 +89,49 @@ and a pending join request from Leo.
 
 ---
 
+## Done on 2026-11-21, later: the rest of the list (tests first)
+
+| Item | What changed | Files |
+| --- | --- | --- |
+| Open point: DB errors | `is_unique_violation()`: `volunteer` and the No class announcement only call a UNIQUE clash a double tap; any other database error is a real error | `services.php`, `api/activities.php`, `api/announcements.php` |
+| Open point: last-spot race | Not changed: with a write lock held from another connection, the second pick waited and then answered "This part is full. Un-pick someone first." | none |
+| 2. "Group 3" | Real DB: task "report", group 11 renamed to **Group 4** through the app as Juan (it notified the members); renaming another to "Group 4" was refused. Backup first: `data/acadsync.backup-before-rename-20261121-100415.db` | data only |
+| 3. History purge | The 3 DB files and `.taste-skill/` removed from every commit (`git filter-branch` in a separate clone, verified: no `.db` anywhere, final tree identical), force-pushed with `--force-with-lease` (`154f12a` → `b141196`, 24 commits). Local `main` moved with `git reset --mixed origin/main` (uncommitted work untouched) | history |
+| 4. Officers' phone nav | Officers: Home, Schedule, Queue \| + \| Members, Groups, Activities; My account from an avatar in the phone header (`Shell.accountInHeader()`). Members unchanged | `ui.js` |
+| 5. Reset code by e-mail | `Mailer` (hand-written SMTP: SSL or STARTTLS, AUTH LOGIN, base64 UTF-8 body, no header injection) with `MAIL_*` settings; `forgot` e-mails the code; `SHOW_RESET_CODE` is now actually read (it was documented but unused); with neither, 503 "isn't set up yet"; a failed send closes the code (502). Login page says "Enter your code" when nothing was e-mailed | `backend/Mailer.php`, `api/auth.php`, `auth.js`, `.env.example`, `tests/mailer_test.php`, `tests/fake_smtp.php` |
+| Idea: CSV export | Dues → **Export CSV** (`dues.php?export=<id>`, Treasurer/President): one row per charged member A–Z, payments with receipt lines, totals; UTF-8 BOM; `csv_line()` guards against formula injection | `api/dues.php`, `services.php`, `dues.js`, `ui.js` (download icon) |
+| Idea: live examples | How AcadSync works: the join queue, the volunteer queue of the busiest open part, and the HashSet of who paid the soonest due in full. Names only for the officers who see them elsewhere (review_members / manage_activities / manage_dues); members see counts and their own place | `api/dsa.php`, `dsa.js` |
+
+Verified after these: `tests/dsa_test.php` 220/0, `tests/mailer_test.php` 12/0; scratch API tests 31 + 81 + 9
+(reset e-mail) + 11 (CSV) + 7 (live examples); browser checks 12 + 11 (nav) + 2 (reset) + 4 (dues) + 3 (dsa page),
+no JS errors, clean server log; DSA grep empty; `npm run build:css` unchanged.
+
+---
+
 ## Still to do
-
-### 0. Fix the findings of the latest code review (do these first)
-Found by `/code-review` on the uncommitted work, most severe first. None is fixed yet. For each one:
-write a failing test (`tests/dsa_test.php` for domain code; the scratch API test approach in
-PROJECT_CONTEXT.md for endpoints), fix it, then run the whole suite.
-
-1. **Critical. An Event announcement can create a broken invite-only activity** (`backend/domain/Announcement.php`
-   ~line 819, `EventNotice::build` / `apply`). `new_activity: {audience:'invited', invited:[…]}` passes
-   `validate_new_activity`, `toRow()` stores `audience='invited'`, but no `activity_invites` rows are written
-   and the ids aren't checked against the section. Then `load_activities()` builds it with `invited=[]`, the
-   constructor throws "Pick at least one person to invite.", and **every page that loads activities fails for
-   the whole section** (Activities, announcements, member records).
-   Fix: in `EventNotice::build`, force `audience='everyone'` for new activities (the composer has no picker),
-   or check the ids and insert the invite rows in `apply()`. Also make `load_activities()` safe: an
-   `invited` row with no invites should not throw for the whole page.
-2. **Important. Making an activity invite-only keeps everyone else's RSVPs and volunteers** (`api/activities.php`
-   ~line 650, `edit`). A meeting with 20 RSVPs edited to invite 5 keeps the other 15 "going": they hold seats,
-   count in going/full, and the invited people get waitlisted, while those 15 can't be checked in.
-   Fix: when the invite list changes, delete RSVPs / waitlist rows and `part_members` of people who are no longer
-   `isFor()` (and notify them), inside the same transaction.
-3. **Important. `cancel_rsvp` can give a freed seat to someone who isn't invited** (`api/activities.php` ~line 901).
-   The front of the waitlist is promoted without `isFor()`. Fix: skip (and drop) uninvited people when
-   promoting; better, fix 2 removes them first.
-4. **Important. Saving the Edit form silently changes the invite list** (`Frontend/js/activities.js` ~line 220,
-   `bindWho` / `openEdit`). The picker is built from `data.people` (active members only), and the form always
-   sends `audience` + `invited`, so an invited alumni member is dropped on every save, and someone who left the
-   section makes the save fail with "Pick people from this section." The server's "null = keep invites" path
-   is never used. Fix: send `audience`/`invited` only when the officer touched the picker, and list the
-   currently invited people in the picker even if they're not in `data.people`.
-5. **Important. Auto-hidden cancelled activities can't be reached any more** (`api/activities.php` ~line 304).
-   After 3 days they're left out of the GET, so *Show cancelled* can't show them and **Remove** can't reach
-   them; `hidden_cancelled` is returned but the page never uses it; links to `activities.html#a<id>` fail
-   silently. Fix: return them in a separate `old_cancelled` list (or with `?cancelled=all`) that
-   *Show cancelled* reveals, and show "N older cancelled activities" with Remove.
-6. **Minor. `scrollToActivity` renders twice for a cancelled activity on the other tab, and the forced
-   *Show cancelled* isn't saved** (`Frontend/js/activities.js` ~line 71). Fix: set `showCancelled` and `tab`
-   first, render once, and either save the choice or show it as temporary.
-7. **Minor. Full-table scans in `delete` and `$saveInvites`** (`api/activities.php` ~line 849). They read every row
-   of five tables and filter in PHP. Note: this follows the project's DSA rule (reads only through
-   `Store::all` / `section_rows`, no `WHERE`), so `Store::where` is also a PHP loop over `SELECT *`. Decide
-   whether to keep it (rule) or accept; at most, build the per-activity lists once.
-8. **Minor. Event announcements keep a frozen invite list** (`backend/domain/Announcement.php` ~line 752). The
-   invited ids are copied into the announcement's `details`, so later invite edits (or opening it to
-   everyone) aren't followed by `notifies()`. Fix: decide from the live activity (`AnnouncementContext`
-   activities) instead of the snapshot; `notifies()` then needs the context.
-9. **Minor. `create` builds the activity twice for competitions/projects** (`api/activities.php` ~line 427):
-   `validate_new_activity` runs again only to drop the capacity. Fix: pass `capacity => null` up front when
-   the kind joins by parts (build once).
-
-Also still open from the earlier whole-branch review (deferred minors, not fixed):
-- Two officers picking the last spot at the same moment: the second sees "database is locked" instead of
-  "This part is full." (`Store::begin` is a deferred transaction; `BEGIN IMMEDIATE` for pick/assign would fix it).
-- `PartRoster::whyCantVolunteer` doesn't check `isOver()` (a direct POST after a same-day competition ended).
-- `volunteer` reports any `PDOException` as "You already volunteered for this part." (check the UNIQUE error code).
-- `edit_part` can drop a role someone holds; their old role stays shown.
-- `edit_part` / `set_role` / `unpick` / `mark_done` don't refuse cancelled activities (the page hides the buttons).
-- Event announcement facts show only the first day of a multi-day competition.
-- Switching kinds in the New activity form loses the part due dates already typed.
 
 ### 1. Fill in the README submission section (needs the team)
 Team member names, student IDs and who did what; YouTube demo and Canva slides links.
 The placeholders are under **Team and submission links** in `README.md`.
 
-### 2. Rename one of the two "Group 3" groups in the real database
-In the app as Juan (President): open the task's Groups, press **Rename** on one "Group 3", e.g. to
-"Group 4". (Tested on a copy: the second one then can't be given the same name.)
+### 2. Turn on e-mail for password reset (needs the owner)
+In `.env`: `MAIL_HOST=smtp.gmail.com`, `MAIL_USERNAME` / `MAIL_FROM` = the sending Gmail address,
+`MAIL_PASSWORD` = a Google **app password** (needs 2-Step Verification). Test "Forgot password" once, then set
+`SHOW_RESET_CODE=false`.
 
-### 3. Old database still in GitHub history (team decision)
-Earlier commits on `origin/main` still contain the DB files (accounts and password hashes). Purging
-needs a history rewrite (`git filter-repo`) + force-push, and every teammate re-cloning. Not done:
-it rewrites shared history. At minimum, change any real passwords that were in it.
-
-### 4. Officers' Groups icon on phones (design decision)
-Officers' phone bar is Home, Schedule, Queue | + | Classmates, Activities, Account; Groups is reached
-through Classmates. Adding it needs one icon to move (e.g. the queue into a Home card). The queue now
-also holds join requests, so it was left on the bar.
-
-### 5. E-mail for password reset (needs a mail server)
-`SHOW_RESET_CODE=true` shows the code on screen. Sending it by e-mail needs SMTP settings (e.g. a
-Gmail app password) and a mail library; then `SHOW_RESET_CODE` can be turned off.
-
+### 3. After the history purge (team)
+- Every teammate (e.g. arcelll) must **re-clone** (or `git fetch` + `git reset --hard origin/main` on a clean copy);
+  pushing from an old clone would bring the old history back.
+- Change any real passwords that were in the old database.
+- Optional: ask GitHub Support to clear cached views of the old commits (they can stay reachable by SHA).
 
 ### Ideas
-- Show the join queue, dues and a part's volunteer queue in **How AcadSync works** (`dsa.html`) as live examples.
-- Export a due's payment list to CSV for the Treasurer's report.
+- None open.
 
 ---
 
 ## After any change
-- `php tests/dsa_test.php`, `php -l` each edited PHP file, `node --check` each edited JS file.
+- `php tests/dsa_test.php`, `php tests/mailer_test.php`, `php -l` each edited PHP file, `node --check` each edited JS file.
 - New Tailwind classes in a page or script: `npm run build:css` (the built `Frontend/css/tailwind.css` is committed).
 - Keep the README tables (features, permissions, DSA map, project layout) and `docs/CLASS_DIAGRAM.md`
   in sync with the code.

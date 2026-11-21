@@ -8,9 +8,9 @@
     <div class="grid gap-5 lg:grid-cols-2 lg:items-start">
       ${card(1, 'Array', 'Storing and accessing collections of records.', 'SubjectArray holds this section’s subject records in fixed, indexed slots. A second, 2D array (WeekGrid) is the week itself: 6 days × 288 five-minute cells. Saving a subject reads only the cells its class times cover, so a clash is found without comparing against every other subject.', arrayView(d.array) + weekGridView(d.week_grid))}
       ${card(2, 'Linked List', 'Managing sequences of records through insertion and deletion.', `TaskLinkedList keeps active tasks in date order: approved tasks are inserted in place (Insertion Sort); expired or removed ones are deleted by re-pointing <i>next</i>. It is doubly linked, so each task also points back (<i>prev</i>): that is how Task Details shows the previous and next task. ${d.linked_list.expired_dropped} expired task${d.linked_list.expired_dropped === 1 ? ' was' : 's were'} dropped from the head.`, listView(d.linked_list.items))}
-      ${card(3, 'HashSet', 'Preventing duplicate entries or maintaining unique records.', `Each e-mail is hashed (djb2) into one of ${d.hashset.buckets} buckets, so checking “is this e-mail taken?” is O(1). The same set keeps student IDs, section names, class codes and subject codes unique.`, hashView(d.hashset))}
+      ${card(3, 'HashSet', 'Preventing duplicate entries or maintaining unique records.', `Each e-mail is hashed (djb2) into one of ${d.hashset.buckets} buckets, so checking “is this e-mail taken?” is O(1). The same set keeps student IDs, section names, class codes and subject codes unique.`, hashView(d.hashset) + paidSetView(d.paid_set))}
       ${card(4, 'Stack', 'Implementing undo operations, history, or backtracking.', 'UndoStack holds rejected requests; the admin’s Undo pops the most recent one back into the queue. Every student has their own stack too: leaving a group, cancelling a join request or ticking a task pushes its opposite, and the Undo button pops it.', stackView(d.stack) + undoMineView(d.undo_mine))}
-      ${card(5, 'Queue', 'Managing waiting lists, service requests, or tasks in order.', 'ApprovalQueue lines up student requests first-come, first-served. The admin can only decide the front.', queueView(d.queue))}
+      ${card(5, 'Queue', 'Managing waiting lists, service requests, or tasks in order.', 'ApprovalQueue lines up student requests first-come, first-served. The admin can only decide the front. The same queue holds people asking to join the section, and the volunteers for each part of a competition or project, in the order they signed up.', queueView(d.queue) + joinQueueView(d.join_queue) + volunteerQueueView(d.volunteer_queue))}
       ${card(6, 'Tree', 'Organizing hierarchical data or implementing tree-based searching.', 'SubjectTree organises Section › Subjects › Tasks. The search bar walks it depth-first. A task’s checklist is a tree too: steps hold sub-steps, and progress is added up post-order, children before their parent.', `<div class="max-h-80 overflow-y-auto rounded-2xl bg-canvas p-3 text-sm">${treeView(d.tree)}</div>${checklistView(d.checklist)}`)}
       ${card(7, 'Graph', 'Representing connections, routes, relationships, or networks.', 'DependencyGraph stores classmates as vertices and study-group links as edges (adjacency list). Breadth-first search finds your groupmates, the shortest chain linking you to someone, and who you’ve never worked with.', graphView(d.graph) + isolatedView(d.isolated))}
     </div>
@@ -162,6 +162,40 @@ function queueView(items) {
     <span class="font-semibold text-muted">front →</span>
     ${items.map((t, i) => `<span class="rounded-xl ${i === 0 ? 'bg-charcoal text-white' : 'bg-sun-tint'} px-2.5 py-1.5"><b>#${i + 1} ${esc(t.title)}</b><br><span class="opacity-70">${esc(t.by)}</span></span>`).join('')}
     <span class="font-semibold text-muted">← rear</span>
+  </div>`;
+}
+
+/** A small front → rear strip of names; members (no names) see only how many are waiting. */
+function namesQueue(title, size, items, emptyText, note = '') {
+  const body = !size ? none(emptyText)
+    : items ? `<div class="flex flex-wrap items-center gap-1.5 text-xs">
+        <span class="font-semibold text-muted">front →</span>
+        ${items.map((n, i) => `<span class="rounded-xl ${i === 0 ? 'bg-charcoal text-white' : 'bg-sun-tint'} px-2.5 py-1.5 font-semibold">#${i + 1} ${esc(n)}</span>`).join('')}
+        <span class="font-semibold text-muted">← rear</span></div>`
+      : `<p class="rounded-2xl bg-canvas p-3 text-sm">${plural(size, 'person', 'people')} waiting. Officers see the names.</p>`;
+  return `<div class="mt-4"><div class="mb-1.5 text-xs font-semibold">${title}</div>${body}${note ? `<p class="mt-1.5 text-xs text-muted">${note}</p>` : ''}</div>`;
+}
+
+function joinQueueView(q) {
+  return namesQueue('Waiting to join the section', q.size, q.items, 'Nobody is waiting to join.');
+}
+
+function volunteerQueueView(q) {
+  if (!q.size) return namesQueue('Volunteers for a part', 0, null, 'No open part has volunteers yet.');
+  return namesQueue(`Volunteers for “${esc(q.part)}” (${esc(q.activity)})`, q.size, q.items, '',
+    q.my_position ? `You are #${q.my_position} in this queue.` : 'Officers pick from the front.');
+}
+
+/** Who paid the soonest due in full: a HashSet, so "did this person pay?" is one O(1) lookup. */
+function paidSetView(p) {
+  if (!p) return `<div class="mt-4">${none('No open dues, so the “paid in full” set is empty.')}</div>`;
+  const buckets = p.buckets ? `<div class="mt-2 space-y-1.5 text-xs">${Object.entries(p.buckets).map(([i, keys]) => `<div class="flex items-start gap-2">
+      <span class="w-12 shrink-0 rounded-lg bg-charcoal py-1 text-center font-mono text-white">${i}</span>
+      <span class="flex flex-wrap gap-1">${keys.map((k) => `<span class="rounded-lg bg-mint-tint px-2 py-1">${esc(k)}</span>`).join('')}</span></div>`).join('')}</div>` : '';
+  return `<div class="mt-4">
+    <div class="mb-1.5 text-xs font-semibold">Paid “${esc(p.due)}” in full</div>
+    <p class="rounded-2xl bg-canvas p-3 text-sm">${p.size} of ${plural(p.charged, 'member')} · ${p.me ? 'you’re in the set' : 'you’re not in the set yet'}</p>
+    ${buckets}
   </div>`;
 }
 
