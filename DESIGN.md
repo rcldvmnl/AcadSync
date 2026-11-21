@@ -247,6 +247,8 @@ A hybrid: the ground is flat, white cards lift with a hairline ring plus a very 
 - **Charcoal** (`box-shadow: 0 16px 30px -18px rgba(28,28,33,.7)`): charcoal cards.
 - **Float** (`box-shadow: 0 18px 40px -14px rgba(28,28,33,.45)`): toasts and the cap badge on auth heroes. The nav pill uses `0 20px 40px -16px rgba(28,28,33,.6)`.
 - **Illustration lift** (`filter: drop-shadow(0 10px 10px rgba(28,28,33,.22))`): every hand-drawn illustration.
+- **Subject drawing extrusion** (`.subject-art`: three stacked 0-blur `drop-shadow(1.25px 1.25px 0 <side>)` plus `drop-shadow(2px 9px 8px <cast>)`; 2.25px steps on the 190px hero drawing): a light front face, a darker side down-right (lit from the top left) and an own-hue cast shadow. Face / side / cast per tone: periwinkle #D2CEFC / #9C96F2, orange #FAD3B4 / #EC9351, yellow #F8E08E / #DDAE24, grey #DADAE2 / #A3A3AF; on strong heroes a solid light face (#E9E7FE, #FFE6D3, #FFF4CC) over a deep side. Hover deepens the cast to `4px 14px 10px`.
+- **Raised disc** (`.subject-icon`: `inset 0 1.5px 0 rgba(255,255,255,.9), inset 0 -2.5px 0 rgba(28,28,33,.08), 0 6px 10px -6px rgba(28,28,33,.35)`): the white icon disc on subject cards.
 
 ### Named Rules
 **The Own-Hue Shadow Rule.** A coloured card's shadow is tinted with its own deep hue, never neutral grey.
@@ -260,7 +262,9 @@ Ornament is part of the shape language:
 - **Sparkle stars:** a large and small four-point star at the top-right of a card; white on strong fills, yellow on charcoal, periwinkle (or orange on orange tint) on soft cards.
 
 ### Named Rules
-**The Doodle On Heroes Rule.** The loop doodle lives on hero and charcoal cards only. Small tinted cards (stat cards, subject cards, quick actions) carry no doodle, as in the reference.
+**The Doodle On Heroes Rule.** The loop doodle lives on hero and charcoal cards only. Small tinted cards (stat cards, subject cards, quick actions) carry no doodle, as in the reference. (Known exception: the three Officers cards on the admin Home still carry it; see NEXT_STEPS recommendations.)
+
+**The One Drawing Per Subject Rule.** A subject card's only ornament is its own subject drawing (`SUBJECT_DESIGNS` in `js/ui.js`): the same line art large in the corner (86px on cards, 190px on the subject hero, rotated −12°, behind the text) and small (18px) on the raised icon disc. Never a doodle or a sparkle on top of it.
 
 ## Components
 
@@ -285,7 +289,9 @@ Tactile and confident: tall pills that press in.
 - **Shadow Strategy:** see Elevation & Depth (hairline card shadow on white, own-hue shadows on colour).
 - **Border:** none; the shadow ring is the edge.
 - **Internal Padding:** 16px on small cards, 20px on heroes, 28-32px on laptop heroes.
-- **Stat card:** caption label, an 800-weight number, a caption sublabel, and a 36px icon tile (rounded square on white or tint cards, white circle on strong cards) pinned top-right.
+- **Stat card** (`.stat-card`, the reference's "Lessons 78"): a 2px coloured border (orange #F7A262 on white, or periwinkle #A8A3F7 on #ECEBFE), a coloured corner tab top-left holding the icon (#F9B886 / #C9C6FB), a 13px/600 label beside the tab, a 40px/800 number and a caption sublabel.
+- **Subject card:** a soft tint of the subject's colour, the raised icon disc top-left with the subject drawing, a white "N due" / "All clear" chip top-right, the code as a 10px caption and the name at 600 (up to 3 lines), the extruded subject drawing in the bottom-right corner. Laid out two-up on phones, four-up on laptops; the admin's grid ends with a dashed **Add subject** tile (2px dashed #C9C9D3, white with a periwinkle border on hover, its + disc turns 90°).
+- **Officer card** (admin Home): a soft tint per office (VP periwinkle, Secretary orange, Treasurer yellow), the office name, the holder's initials or a "Vacant" chip, a white pill select (`.rec-select`) and a one-line duty.
 
 ### Inputs / Fields
 - **Style:** 48px tall, ground-grey fill (#F4F4F7), 16px radius, 1.5px transparent border, leading muted icon, 15px text, hint-coloured placeholder. On a grey panel the field turns white with a hairline ring.
@@ -302,7 +308,15 @@ Tactile and confident: tall pills that press in.
 Tall white pills (68px) with a hairline ring show the week; the selected day inverts to ink. Calendar days are circles; ranges fill periwinkle, the selected day is ink, a task day carries an orange dot (yellow when selected).
 
 ### Sheets and Drawers
-White bottom sheets with 36px top corners and a grab handle on phones, centred 32px-radius dialogs on laptops; the account drawer slides from the right with 36px left corners. Backdrop ink at 45%. Sheets slide up 40px over 250ms on `cubic-bezier(.2,.8,.2,1)`; reduced motion turns all animation off.
+White bottom sheets with 36px top corners and a grab handle on phones, centred 32px-radius dialogs on laptops; the account drawer slides from the right with 36px left corners. Backdrop ink at 45%. Sheets slide up 40px over 420ms on `cubic-bezier(.16,1,.3,1)` and leave faster (200ms, 48px down); reduced motion turns them into short fades.
+
+### Motion (the `Motion` object at the end of `js/ui.js`; styles under "motion & interaction" in `css/app.css`)
+One grammar: confident deceleration `cubic-bezier(.16,1,.3,1)`; feedback 100-150ms, state changes 200-300ms, overlays about 400ms; exits quicker than entrances. Content is visible without motion; Motion only adds classes and temporary elements.
+- **The authored moment, the cap toss:** the graduation cap (`assets/illus/cap.svg`) is tossed up, spins and peaks with a small star burst. Plays in the intro (once per visit: the AS tile and wordmark rise, a tap or key skips), when a task is marked done, and when a task is requested or added, a request approved, a due or activity created, an announcement posted.
+- **Acknowledging other saves:** every non-GET API call fires `acadsync:action`; a burst of four-point stars and dots in the palette comes from where you tapped; removals, cancellations and undo get a quiet grey ring instead.
+- **Interaction:** ripples from the touch point on buttons, chips, nav items and coloured cards; coloured cards lean up to 5° toward the mouse (3° on wide cards) with a light glare and their illustration or subject drawing drifting; subject drawings straighten and lift on hover; sparkle stars twinkle on hover; a done check pops.
+- **Arrival:** a page's cards rise in as a short list (stagger capped at 360ms), stat numbers count up, pages cross-fade (view transitions), toasts rise in with their icon drawn.
+- **Reduced motion:** no travel, tilt, particles, intro or count-up; short fades only, and the toast still confirms every action.
 
 ### Academic Illustrations (signature)
 Hand-drawn SVG objects with gradient shading for a 3D look: trophy (gold on a periwinkle stand), book stack, pencil, diploma, plus the pre-existing 3D graduation-cap badge (white and yellow PNG variants). They break out of the corner of hero cards (cap badge on the member hero, diploma on the officer hero) and stand in for the icon tile in empty states (56px): check and flag map to the trophy, book, notebook and calendar to the books, clipboard and inbox to the diploma, users to the pencil. On the auth heroes they cluster large (110-200px) around the headline on laptops and shrink to the cap badge plus one object on phones. Always decorative (`alt=""`), always with the illustration lift shadow.
@@ -316,6 +330,8 @@ Hand-drawn SVG objects with gradient shading for a 3D look: trophy (gold on a pe
 - **Do** set counts, balances and hero titles in Plus Jakarta Sans at 800.
 - **Do** put the doodle loop and sparkle stars on hero and charcoal cards, and an academic illustration in the hero's corner or the empty state.
 - **Do** use ink text on periwinkle, orange and yellow fills, and white or orange-light on charcoal.
+- **Do** give every subject its drawing with depth (light face, darker extruded side, own-hue cast), and add a new drawing to both `SUBJECT_DESIGNS` (`js/ui.js`) and `DESIGNS` (`api/subjects.php`).
+- **Do** save the cap toss for real milestones; everything else gets a burst or a ring.
 
 ### Don't:
 - **Don't** bring back the warm sand ground (#F6F3EE), the pastel-only skin or the yellow nav glow; that look is retired.

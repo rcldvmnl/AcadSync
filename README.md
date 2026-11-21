@@ -102,7 +102,8 @@ It was built for two final requirements at LSPU (BSINFO-2A):
 
 ## Screenshots
 
-Taken from the demo data (`SEED_DEMO_DATA=true`).
+Taken from the demo data (`SEED_DEMO_DATA=true`), before the 2026-11-21 additions (officers and subjects
+on the admin Home, subject designs, animations).
 
 | Home (member) | Schedule |
 | --- | --- |
@@ -210,6 +211,10 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 > project), dues, announcements and Leo's join request come from the seed, so they
 > only appear in a **new** database. In an older database, the President picks the officers on
 > **Home** (the *Officers* cards) or on the **Member Records** page.
+>
+> BSINFO-2A uses the class's real subjects, instructors and weekly schedule (First Semester, AY 2026-2027):
+> GEC 107, ITEC 204, ITEC 205, ITEP 203, ITEL 201, ITEL 202, SOSLIT and PATHFit 3. A new demo database
+> also adds sample 2A tasks so every page has something to show; the class's own database starts with none.
 
 ---
 
@@ -361,9 +366,12 @@ in the same step, so the app never says two different things:
 - **Schedule:** a class grid per day, plus Today / Urgent / This week / Due by Fri / Due soon views.
   A date range ("any day Nov 20 – 23") counts as due today, and as urgent, from its first day; lists
   stay in deadline order. Saving a subject warns you when its class times clash with another subject.
-- **Subjects** show on Home for everyone (the President also gets an *Add subject* tile). Each card has
-  its own drawing (atom, tree, database, chart, code, chip, book, sports), picked from the subject's
-  name or chosen in the subject form, with a live preview. A class day can have its own room (the lab day).
+- **Subjects** show on Home for everyone (the President also gets an *Add subject* tile at the end).
+  Each card has its own drawing (atom, tree, database, chart, code, chip, book, sports) drawn with depth:
+  a light front, a darker extruded side and a soft shadow, in the card's colour; it straightens and lifts
+  on hover, and the icon sits on a raised disc. The drawing is picked from the subject's name, or chosen
+  in the subject form (*Card design*, with a live preview of the card). A class day can have its own
+  room (the lab day).
 - **Motion:** a short intro once per visit, a graduation-cap toss when a task is marked done or a task is
   requested or added, a sparkle burst for every other saved change, ripples on buttons, coloured cards
   that lean toward the pointer, and sheets and toasts that slide out. With *reduce motion* turned on
@@ -481,7 +489,7 @@ api/                      JSON endpoints
   dues.php                dues, cash and GCash payments
   activities.php          activities, RSVP + waitlist, attendance; competition / project parts, volunteer → pick, results
   schedule.php            timeline, urgency, week grid, due by Friday
-  subjects.php            subjects and class times, clash check
+  subjects.php            subjects, class times (a room per day), card design, clash check
   tasks.php, request_task.php, subtasks.php           tasks, requests, checklists
   admin_queue.php, admin_action.php, admin_undo.php   approval queue (officers)
   groups.php, classmates.php, undo.php, search.php, notifications.php, dsa.php
@@ -497,7 +505,8 @@ tests/mailer_test.php     tests for the mailer, with tests/fake_smtp.php as a fa
 docs/CLASS_DIAGRAM.md     UML class diagram (Mermaid)
 docs/screenshots/         screenshots used in this README
 Frontend/                 *.html pages (incl. dues.html), js/, css/ (tailwind.css is built), fonts/ (self-hosted Plus Jakarta Sans),
-                          assets/ (icons, the 3D cap badge, illus/ hand-drawn SVG trophy, books, pencil, diploma)
+                          assets/ (icons, the 3D cap badge, illus/ hand-drawn SVG trophy, books, pencil, diploma,
+                          and the tossed cap used by the animations)
 tailwind.config.js        Tailwind theme + which files are scanned (npm run build:css)
 package.json              build tools only (the Tailwind CLI); the app itself doesn't need Node
 ```

@@ -6,16 +6,17 @@ this file lists what is left to do.
 Last updated: 2026-11-21 (end of the fourth session).
 
 **Suggested first message:**
-> Read docs/PROJECT_CONTEXT.md and docs/NEXT_STEPS.md, then continue with "Still to do".
-> Keep the rules in PROJECT_CONTEXT.md.
+> Read docs/PROJECT_CONTEXT.md, docs/NEXT_STEPS.md and DESIGN.md, then continue with "Recommended next steps".
+> Keep the rules in PROJECT_CONTEXT.md and the look in DESIGN.md.
 
-**State of the work:** the 2026-11-20 work was committed by the owner. History was rewritten on 2026-11-21
-(DB files purged; `main` is now `b141196`, same code as the old `154f12a`). All 2026-11-21 changes below are
-**uncommitted** on `main`.
-Last verified (2026-11-21): `php tests/dsa_test.php` → 214 passed, 0 failed; scratch API tests → 31 passed
-(review fixes) and 81 passed (competitions/projects); headless-browser check → 12 passed, no JS errors;
-DSA grep prints nothing; `npm run build:css` changes nothing. `impeccable detect` was **not** re-run (the CLI
-isn't installed on this machine; the page changes only reuse existing classes and colours).
+**State of the work:** history was rewritten on 2026-11-21 (DB files purged; `main` was `b141196`). The owner
+then committed the first three 2026-11-21 sessions (`1673613` "fix", `806bb59` "fix the design"). The **fourth
+session's changes are uncommitted** on `main` (see that table below): `Frontend/css/app.css`, `org.css`,
+`tailwind.css`, `js/activities.js`, `add-subject.js`, `api.js`, `dues.js`, `home.js`, `records.js`, `subject.js`,
+`ui.js`, `add-subject.html`, `assets/illus/cap.svg` (new), `api/subjects.php`, `backend/db.php`, `schema.sql`,
+`seed.php`, `services.php`, and the docs (`README.md`, `DESIGN.md`, `docs/*.md`).
+Last verified (2026-11-21, fourth session): `tests/dsa_test.php` 220/0, `tests/mailer_test.php` 12/0, headless
+Chrome 28/0 with no JS errors, DSA grep empty. `impeccable detect` was **not** run (the CLI isn't installed here).
 
 ---
 
@@ -133,12 +134,45 @@ part rows wrap narrowly.
 | **Officers on the admin Home**: VP / Secretary / Treasurer cards with the same picker as Member Records (`records.php` action=assign_officer); link to `records.html#officers`. `.rec-select` moved from `org.css` to `app.css` | `home.js`, `records.js`, `app.css`, `org.css` |
 | **Subjects on the admin Home** (bottom) with an *Add subject* tile (`manage_section`) | `home.js` |
 | **Design per subject**: `subjects.design` (science, algorithm, database, chart, code, chip, book, sport, notebook; NULL = Auto from the name, `subjectDesign()` / `SUBJECT_DESIGNS` in `ui.js`, `DESIGNS` + `pick_design()` in `subjects.php`). Shown on Home cards (both views) and the subject page hero; picker + live preview in the subject form. The form now checks `Shell.can('manage_section')` instead of the role | `ui.js`, `home.js`, `subject.js`, `add-subject.html/js`, `api/subjects.php`, `schema.sql`, `db.php`, `app.css` |
+| **Depth on the subject drawings** (owner: "add depth, don't change other"): light face + darker extruded side (three stacked 0-blur drop-shadows, lit top-left) + own-hue cast shadow, per card colour; hover lifts it; the icon sits on a raised disc (`.subject-icon`). CSS only, plus the `subject-icon` class on the disc. Values are in DESIGN.md (Elevation & Depth) | `app.css`, `home.js`, `add-subject.js` |
 
 Verified: `tests/dsa_test.php` 220/0, `tests/mailer_test.php` 12/0, `php -l` / `node --check` clean, DSA grep empty,
 `npm run build:css` run. Headless Chrome on a fresh-seed scratch copy: 28/0 (intro, officers on Home + assigning
 the VP, 8 subjects with 8 different designs + Add tile, member Home, design saved / unknown design → Auto,
 dues names not cut at 390 px, part rows ≥ 180 px, no sideways scroll, no JS errors, clean server log).
 Script: scratchpad only (not kept in the project).
+
+---
+
+## Recommended next steps (in this order)
+
+1. **Commit the fourth session now** (when the owner asks). It is a large uncommitted change; one commit per
+   theme keeps it reviewable: (a) real subjects + room per day + seed, (b) dues / activity rows, (c) motion,
+   (d) officers + subjects on the admin Home, (e) subject designs + depth, (f) docs. Never add `.env` or `data/`.
+   Run the checks in "After any change" first.
+2. **Decide the demo seed's 2A tasks.** The real DB has none (as the owner asked); a *new* demo DB still gets
+   sample 2A tasks. Recommendation: keep them for the demo video and screenshots (Schedule, Groups and the
+   DSA page look empty without tasks), but record the video on a separate demo database so the real one is
+   never touched: set `DB_PATH=data/demo.db` in `.env`, start the server (it seeds), record, then set
+   `DB_PATH` back to `data/acadsync.db`.
+3. **Retake the README screenshots** from that demo DB (admin Home with Officers + Subjects, member Home with
+   the subject drawings, the subject form with *Card design*). Same method as before: a scratch copy, headless
+   Chrome at 390 / 1280 px, saved over `docs/screenshots/*.png`; then drop the "before the 2026-11-21 additions"
+   note under **Screenshots** in the README.
+4. **Try it on a real phone** before presenting: the motion (cap toss, bursts, tilt is mouse-only) and the
+   extruded drawings use CSS filters; check that scrolling Home stays smooth on a low-end Android phone. If it
+   stutters, the cheapest fix is a smaller `--art-d` or dropping the cast `drop-shadow` on phones only.
+5. **Design consistency fix (small):** the three Officers cards on the admin Home carry the doodle loop
+   (`ring-deco` in `HomeOfficers.render()`, `home.js`), which breaks DESIGN.md's *Doodle On Heroes Rule*. Remove
+   that one `<span class="ring-deco">` line if strict consistency matters.
+6. **Add an API test for subject designs** (the scratch browser check covered it, but nothing in `tests/` does):
+   `pick_design()` keeps a known key and turns anything else into NULL (Auto). A small CLI test in the style of
+   `tests/dsa_test.php` is enough; keep `tests/` blocked from the browser.
+7. **Prepare the OOP / DSA defense:** the new code adds no classes (CLASS_DIAGRAM.md is still accurate). Talking
+   points: `pick_design()` uses `Algorithms::linearContains` (linear search, DSA rule kept); officers are still
+   chosen through `Person::can(Permission::ASSIGN_OFFICERS)` on the server, so the Home picker adds no
+   permission logic in the browser.
+8. Then the team items below (README names/links, Gmail app password, teammates re-clone).
 
 ---
 
@@ -168,5 +202,6 @@ In `.env`: `MAIL_HOST=smtp.gmail.com`, `MAIL_USERNAME` / `MAIL_FROM` = the sendi
 - `php tests/dsa_test.php`, `php tests/mailer_test.php`, `php -l` each edited PHP file, `node --check` each edited JS file.
 - New Tailwind classes in a page or script: `npm run build:css` (the built `Frontend/css/tailwind.css` is committed).
 - Keep the README tables (features, permissions, DSA map, project layout) and `docs/CLASS_DIAGRAM.md`
-  in sync with the code.
+  in sync with the code, and `DESIGN.md` in sync with the look (colours, shadows, components, motion).
+- A new subject drawing goes in both `SUBJECT_DESIGNS` (`Frontend/js/ui.js`) and `DESIGNS` (`api/subjects.php`).
 - Commit only when asked; never commit `.env` or anything in `data/`.

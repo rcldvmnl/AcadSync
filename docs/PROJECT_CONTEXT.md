@@ -68,7 +68,9 @@ backend/services.php     loads a section's rows into structures/objects (load_co
 backend/bootstrap.php    session, JSON helpers, current_user/current_member/current_person,
                          require_permission, require_admin (= MANAGE_SECTION), public_user
 backend/db.php, schema.sql, seed.php
-docs/CLASS_DIAGRAM.md    Mermaid UML for all classes + pillar table (keep it in sync with the code)
+docs/CLASS_DIAGRAM.md    Mermaid UML for all classes + pillar table (keep it in sync with the code; the fourth
+                         session added no classes)
+DESIGN.md, PRODUCT.md    visual system (colours, shadows/depth, components, motion) and product record (root)
 docs/screenshots/        README screenshots (taken from seed data in a scratch copy)
 tests/dsa_test.php       CLI tests for every structure/algorithm (blocked from the browser)
 tests/mailer_test.php    CLI tests for Mailer against tests/fake_smtp.php (a one-connection fake SMTP server)
@@ -101,7 +103,9 @@ router.php, .htaccess, .env.example, .gitignore
   visit (sessionStorage `acadsync.intro`); a milestone right before a page change replays on the next page
   (`acadsync.fx`). Content is visible without JS motion; reduced motion = fades only.
 - **Subject designs**: `subjects.design` (NULL = Auto). `SUBJECT_DESIGNS`, `subjectDesign(s)`, `subjectArt()` in `ui.js`;
-  the server list is `DESIGNS` in `api/subjects.php` (keep both in sync).
+  the server list is `DESIGNS` in `api/subjects.php` (keep both in sync). The drawing has depth (CSS only:
+  `.subject-art` face colour + three stacked 0-blur drop-shadows for the extruded side + a cast shadow, per-tone
+  `--art-face` / `--art-side` / `--art-cast`; `.subject-icon` raised disc). Values and rules are in `DESIGN.md`.
 - **Admin Home** ends with Officers (`HomeOfficers` in `home.js`, President picks VP / Secretary / Treasurer) and the
   Subjects grid with an *Add subject* tile.
 
@@ -236,8 +240,9 @@ activity titles and part names. Binary search: student ID, "Due by Fri".
 
 ## Open items / ideas
 
-The current to-do list (fixes and features, checked against the README) is in
-[NEXT_STEPS.md](NEXT_STEPS.md). Everything listed there was done on 2026-11-21 except what needs the team
+The current to-do list is in [NEXT_STEPS.md](NEXT_STEPS.md): start with its **Recommended next steps**
+(commit the uncommitted fourth session, decide the demo seed's 2A tasks, record the demo on a separate
+`DB_PATH=data/demo.db`, retake screenshots, test on a real phone). What remains after that needs the team
 (README names and links) or the owner (a Gmail app password in `.env`). The items below are older notes.
 
 - Phone nav: members Home, Schedule, Classmates | + | Groups, Activities, Account; officers Home, Schedule,
