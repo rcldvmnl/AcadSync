@@ -32,6 +32,7 @@ const statusChip = (s) => UI.chip(s.label, STATUS_TINT[s.key]);
 async function loadAll() {
   state.data = await API.get('records.php');
   renderAll();
+  if (location.hash === '#officers') $('#officers')?.scrollIntoView({ block: 'start' });
 }
 
 function renderAll() {
@@ -80,7 +81,7 @@ function officersCard(d) {
       </div>`;
   };
   return `
-    <section class="rounded-[1.75rem] bg-white p-5 shadow-card" aria-labelledby="off-h">
+    <section id="officers" class="scroll-mt-6 rounded-[1.75rem] bg-white p-5 shadow-card" aria-labelledby="off-h">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="off-h" class="text-xl font-bold">Officers</h2>
         <p class="text-xs text-muted">${d.can_assign ? 'Choose who serves. They’re notified, and can review the approval queue right away.' : 'Chosen by the President.'}</p>

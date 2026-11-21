@@ -1,7 +1,7 @@
 # AcadSync: project context (for a new conversation)
 
 Paste or attach this file at the start of a new chat so the assistant knows the project.
-Last updated: 2026-11-21 (third session: code-review fixes).
+Last updated: 2026-11-21 (fourth session: real subjects, motion, officers on Home, subject designs).
 
 ## What it is
 
@@ -43,8 +43,10 @@ Maria `maria.santos` (Vice President), Kyla `kyla.lim` (Secretary), Marco `marco
 Ana `ana.bautista` (Member), Carlo `carlo.domingo` (Inactive), Bea `bea.garcia` (President of 2B),
 Leo `leo.navarro` (2B member with a pending request to join 2A). Class codes: 2A `B2826K`, 2B `K7Q4PM`.
 User ids in a fresh DB: Juan 1, Maria 2, Paolo 3, Ana 4, Carlo 5, Kyla 6, Marco 7, Bea 8, Leo 9, Ivy 10.
-In the owner's older real database, no officers are set until Juan assigns them on Member Records,
-and there are no dues, announcements, join requests, competitions or projects yet.
+In the owner's older real database, no officers are set until Juan assigns them (Home → Officers, or
+Member Records). Since 2026-11-21 it holds 2A's real 8 subjects and schedule and **no 2A tasks** (the owner
+adds them). Subjects (code, instructor): GEC 107 Bicomong, ITEC 204 Encanto, ITEC 205 Repalam, ITEP 203 Escote,
+ITEL 201 Manaloto, ITEL 202 Andres, SOSLIT Balinsayo, PATHFit 3 Moreno (`bsinfo2a_subjects()` in seed.php).
 The seed (new databases only) also has the *Founding Anniversary* competition (5 parts, sign-ups close
 today; Ana volunteered for Cosplay, Marco picked for Culinary, Paolo for Guess the Song, Maria
 volunteered as Director) and the *Booth design* project (Poster: Paolo, done; Booth frame: Maria + Marco;
@@ -91,6 +93,17 @@ router.php, .htaccess, .env.example, .gitignore
   `#A8A3F7`, orange `#F58D42` and yellow `#FFD34E` cards, charcoal cards and nav, SVG sparkle stars and doodle
   lines, hand-drawn SVG academic illustrations in `Frontend/assets/illus/`, Plus Jakarta Sans self-hosted).
   Mint is only for success states. Layouts were not changed by the restyle.
+
+## Frontend extras
+
+- **Motion** (`Motion` at the end of `ui.js`, styles under "motion & interaction" in `app.css`): `API` dispatches
+  `acadsync:action` after every non-GET; `Motion.levelFor()` maps it to cap toss / burst / soft ring. Intro once per
+  visit (sessionStorage `acadsync.intro`); a milestone right before a page change replays on the next page
+  (`acadsync.fx`). Content is visible without JS motion; reduced motion = fades only.
+- **Subject designs**: `subjects.design` (NULL = Auto). `SUBJECT_DESIGNS`, `subjectDesign(s)`, `subjectArt()` in `ui.js`;
+  the server list is `DESIGNS` in `api/subjects.php` (keep both in sync).
+- **Admin Home** ends with Officers (`HomeOfficers` in `home.js`, President picks VP / Secretary / Treasurer) and the
+  Subjects grid with an *Add subject* tile.
 
 ## OOP model (backend/domain)
 

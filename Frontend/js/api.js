@@ -40,6 +40,10 @@ const API = {
       }
       throw new ApiError(data.error || 'Something went wrong.', res.status, data);
     }
+    // Every saved change is announced, so the motion layer (Motion in ui.js) can acknowledge it on any page
+    if (method !== 'GET') {
+      document.dispatchEvent(new CustomEvent('acadsync:action', { detail: { path, body: body || {}, data } }));
+    }
     return data;
   },
   get(path, params, opts) {

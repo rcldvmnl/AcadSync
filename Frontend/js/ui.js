@@ -164,6 +164,43 @@ const TONES = {
   mint: { soft: 'grey-soft', strong: 'grey-soft', chip: 'bg-[#EDEDF2]', bar: '#1C1C21', dot: 'bg-charcoal', icon: 'text-charcoal' },   // stored as 'mint'; shown as the reference grey (mint marks success only)
 };
 const tone = (c) => TONES[c] || TONES.lavender;
+
+/*
+ * Each subject's card carries its own drawing (stored in subjects.design; the server keeps the same list in
+ * api/subjects.php DESIGNS). Empty / 'auto' = picked from the subject's code and name by the `match` patterns.
+ */
+const SUBJECT_DESIGNS = {
+  science: { label: 'Science', match: /scien|physic|chem|biolog|\bsts\b/i,
+    svg: '<circle cx="12" cy="12" r="1.6"/><ellipse cx="12" cy="12" rx="10" ry="4"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)"/>' },
+  algorithm: { label: 'Tree', match: /algorithm|data struct|\bdsa\b/i,
+    svg: '<circle cx="12" cy="4.5" r="2.3"/><circle cx="6" cy="12" r="2.3"/><circle cx="18" cy="12" r="2.3"/><circle cx="3.5" cy="19.5" r="2"/><circle cx="9" cy="19.5" r="2"/><path d="m10.4 6.3-2.8 3.9M13.6 6.3l2.8 3.9M5 14l-1 3.6M7 14l1.2 3.6"/>' },
+  database: { label: 'Database', match: /information manag|database|\bsql\b|data manag/i,
+    svg: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>' },
+  chart: { label: 'Chart', match: /quantitativ|math|statist|calculus|model|simulat|analytic|account/i,
+    svg: '<path d="M3 21h18"/><rect x="4.5" y="12" width="3.5" height="6.5" rx="1"/><rect x="10.25" y="7" width="3.5" height="11.5" rx="1"/><rect x="16" y="3.5" width="3.5" height="15" rx="1"/>' },
+  code: { label: 'Code', match: /program|object-orient|software|coding|web|app dev/i,
+    svg: '<path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>' },
+  chip: { label: 'Chip', match: /platform|network|hardware|operating|computer sys|architect/i,
+    svg: '<rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>' },
+  book: { label: 'Book', match: /literat|panitik|sosyedad|filipino|english|reading|writing|commun|histor|soslit/i,
+    svg: '<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/><path d="M5 8.5h3M5 12h3M16 8.5h3M16 12h3"/>' },
+  sport: { label: 'Sports', match: /pathfit|physical|sport|dance|fitness|martial|\bpe\b/i,
+    svg: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.6 5.6a9 9 0 0 1 0 12.8M18.4 5.6a9 9 0 0 0 0 12.8"/>' },
+  notebook: { label: 'Notebook', match: null, svg: ICON_PATHS.notebook },
+};
+/** The design key for a subject: its saved choice, else the first design whose pattern fits its name, else one by id. */
+function subjectDesign(s) {
+  if (s.design && SUBJECT_DESIGNS[s.design]) return s.design;
+  const text = `${s.code || ''} ${s.title || ''}`;
+  const keys = Object.keys(SUBJECT_DESIGNS);
+  const hit = keys.find((k) => SUBJECT_DESIGNS[k].match?.test(text));
+  return hit || keys[Number(s.id || 0) % keys.length];
+}
+/** A subject design's drawing as an inline SVG (line art, currentColor). */
+function subjectArt(key, size = 20, cls = '', width = 1.75) {
+  const d = SUBJECT_DESIGNS[key] || SUBJECT_DESIGNS.notebook;
+  return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d.svg}</svg>`;
+}
 const CATEGORY_CHIP = { Reporting: 'bg-lavender-tint', Quiz: 'bg-peach-tint', Exam: 'bg-peach-tint', Activity: 'bg-[#EDEDF2]', Project: 'bg-sun-tint' };
 
 /*
@@ -406,13 +443,13 @@ const UI = {
     const lifted = $('#undo-bar')?.children.length;   // keep clear of the queue's undo banner
     el.className = `toast fixed inset-x-4 z-[60] mx-auto flex max-w-sm items-center gap-3 rounded-full bg-charcoal py-2 pl-2 pr-2 text-white shadow-float ${lifted ? 'bottom-44 lg:bottom-28' : 'bottom-28 lg:bottom-8'}`;
     el.innerHTML = `
-      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-charcoal">${icon(iconName, 18)}</span>
+      <span class="m-toast-icon grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-charcoal">${icon(iconName, 18)}</span>
       <div class="min-w-0 flex-1 py-1"><div class="truncate text-sm font-semibold">${esc(message)}</div>${sub ? `<div class="truncate text-xs text-white/60">${esc(sub)}</div>` : ''}</div>
       ${action ? `<button class="btn btn-yellow h-10 px-5 text-sm">${esc(action.label)}</button>` : '<span class="w-2"></span>'}`;
     document.body.appendChild(el);
     if (action) $('button', el).onclick = () => { el.remove(); action.onClick(); };
     clearTimeout(UI._toastTimer);
-    UI._toastTimer = setTimeout(() => el.remove(), duration);
+    UI._toastTimer = setTimeout(() => Motion.leave(el, 'is-leaving', 180), duration);
     return el;
   },
 
@@ -450,7 +487,8 @@ const UI = {
         <div class="mx-auto mb-4 h-1 w-9 rounded-full bg-line lg:hidden"></div>
         ${html}
       </div>`;
-    const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
+    // Closing plays a short exit (Motion.leave) before the sheet leaves the page
+    const close = () => { document.removeEventListener('keydown', onKey); Motion.leave(wrap, 'is-closing', 200); };
     const onKey = (e) => e.key === 'Escape' && close();
     document.addEventListener('keydown', onKey);
     wrap.addEventListener('click', (e) => e.target.closest('[data-close]') && close());
@@ -547,6 +585,7 @@ const Shell = {
     Shell.renderHeader({ ...opts, eyebrow: resolve(opts.eyebrow), title: resolve(opts.title), unread: notes.unread });
     Shell.renderNav(opts.active, queue);
     $$('[data-role-only]').forEach((el) => { el.hidden = el.dataset.roleOnly !== role; });
+    Motion.enter();   // the page's cards arrive as a short list once its content renders
     return me;
   },
 
@@ -653,7 +692,7 @@ const Shell = {
         </div>
         <div class="mt-auto pt-6"><button data-logout class="btn btn-danger w-full">Log out</button></div>
       </aside>`;
-    wrap.addEventListener('click', (e) => e.target.closest('[data-close]') && wrap.remove());
+    wrap.addEventListener('click', (e) => e.target.closest('[data-close]') && Motion.leave(wrap, 'is-closing', 200));
     $('[data-logout]', wrap).onclick = Shell.logout;
     Shell.bindSectionList(wrap);
     document.body.appendChild(wrap);
@@ -802,3 +841,315 @@ function createTimeChips(root, { options = ['07:00', '08:00', '10:00', '13:00', 
   render();
   return { value: () => current, set(v) { current = v; render(); } };
 }
+
+/* ------------------------------------------------------------------ Motion: feedback, state and the cap toss
+ * One authored moment: the graduation-cap toss (the intro, and every task marked done or request/task added).
+ * Everything else acknowledges an action or explains a state change:
+ *   - every saved change (API.post → 'acadsync:action') gets a sparkle burst from where you tapped,
+ *     a bigger burst + cap toss for milestones, a soft ring for removals and cancellations;
+ *   - buttons, chips, nav items and coloured cards ripple from the touch point;
+ *   - coloured cards lean toward the pointer, catch the light, and their illustration drifts (mouse only);
+ *   - a page's cards arrive as a short list on first render, and stat numbers count up;
+ *   - sheets, drawers and toasts leave with a short exit.
+ * prefers-reduced-motion: no travel, particles, tilt or intro; colour/state changes and the toast still confirm.
+ * Content is visible by default: Motion only adds classes and temporary elements.
+ */
+const Motion = {
+  last: { x: window.innerWidth / 2, y: window.innerHeight / 2 },   // where the last tap landed
+  COLORS: ['#F58D42', '#A8A3F7', '#FFD34E', '#5F58D6', '#F9B886'],
+
+  reduced() { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; },
+
+  layer() {
+    let l = document.getElementById('m-fx');
+    if (!l) {
+      l = document.createElement('div');
+      l.id = 'm-fx';
+      l.className = 'm-fx';
+      l.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(l);
+    }
+    return l;
+  },
+
+  /** Removes el after its exit class has played (immediately with reduced motion). */
+  leave(el, cls, ms) {
+    if (!el || !el.isConnected) return;
+    if (Motion.reduced()) { el.remove(); return; }
+    el.classList.add(cls);
+    setTimeout(() => el.remove(), ms);
+  },
+
+  /** A burst of four-point sparkle stars (and a few dots) from x, y. */
+  burst(x, y, { count = 12, spread = 90, big = false } = {}) {
+    if (Motion.reduced()) return;
+    const layer = Motion.layer();
+    for (let i = 0; i < count; i += 1) {
+      const el = document.createElement('span');
+      el.className = i % 3 === 2 ? 'm-dot' : 'm-star';
+      el.style.color = Motion.COLORS[i % Motion.COLORS.length];
+      const size = (big ? 11 : 8) + Math.random() * (big ? 10 : 7);
+      el.style.width = `${size}px`;
+      el.style.height = `${size}px`;
+      el.style.left = `${x - size / 2}px`;
+      el.style.top = `${y - size / 2}px`;
+      layer.appendChild(el);
+      const a = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+      const d = spread * (0.55 + Math.random() * 0.6);
+      const dx = Math.cos(a) * d;
+      const dy = Math.sin(a) * d - (big ? 30 : 14);
+      const spin = 120 + Math.random() * 160;
+      el.animate([
+        { transform: 'translate(0, 0) scale(.3) rotate(0deg)', opacity: 1 },
+        { transform: `translate(${dx}px, ${dy}px) scale(1) rotate(${spin}deg)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${dx * 1.15}px, ${dy + 28}px) scale(.55) rotate(${spin * 1.6}deg)`, opacity: 0 },
+      ], { duration: 720 + Math.random() * 260, easing: 'cubic-bezier(.16,1,.3,1)' }).onfinish = () => el.remove();
+    }
+  },
+
+  /** The graduation cap tossed up from x, y: it spins, peaks with a small burst of stars, and drifts down. */
+  capToss(x, y, { height = 140 } = {}) {
+    if (Motion.reduced()) return;
+    const cap = document.createElement('img');
+    cap.src = 'assets/illus/cap.svg';
+    cap.alt = '';
+    cap.className = 'm-cap';
+    cap.style.left = `${x - 32}px`;
+    cap.style.top = `${y - 32}px`;
+    Motion.layer().appendChild(cap);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const drift = side * (18 + Math.random() * 26);
+    cap.animate([
+      { transform: 'translate(0, 0) rotate(0deg) scale(.6)', opacity: 0 },
+      { transform: `translate(${drift * 0.4}px, ${-height}px) rotate(${side * 200}deg) scale(1)`, opacity: 1, offset: 0.45 },
+      { transform: `translate(${drift}px, ${-height * 0.55}px) rotate(${side * 330}deg) scale(.95)`, opacity: 1, offset: 0.78 },
+      { transform: `translate(${drift * 1.2}px, ${-height * 0.3}px) rotate(${side * 360}deg) scale(.9)`, opacity: 0 },
+    ], { duration: 1100, easing: 'cubic-bezier(.33,0,.2,1)' }).onfinish = () => cap.remove();
+    setTimeout(() => Motion.burst(x + drift * 0.4, y - height, { count: 10, spread: 70 }), 480);
+  },
+
+  /** A quiet ring for removals, cancellations and undo: acknowledged, not celebrated. */
+  puff(x, y) {
+    if (Motion.reduced()) return;
+    const ring = document.createElement('span');
+    ring.className = 'm-ring';
+    ring.style.left = `${x}px`;
+    ring.style.top = `${y}px`;
+    Motion.layer().appendChild(ring);
+    ring.animate([{ transform: 'scale(.4)', opacity: 0.8 }, { transform: 'scale(1.6)', opacity: 0 }],
+      { duration: 420, easing: 'cubic-bezier(.16,1,.3,1)' }).onfinish = () => ring.remove();
+  },
+
+  /** level: 'cap' (milestone), 'burst' (a saved change), 'soft' (removal / cancel / undo). */
+  celebrate(level, x = Motion.last.x, y = Motion.last.y) {
+    if (!level) return;
+    if (level === 'cap') {
+      Motion.burst(x, y, { count: 16, spread: 110, big: true });
+      Motion.capToss(x, y);
+    } else if (level === 'burst') {
+      Motion.burst(x, y);
+    } else {
+      Motion.puff(x, y);
+    }
+    // Many forms open another page right after saving: the next page plays the moment instead
+    if (level !== 'soft') {
+      try {
+        sessionStorage.setItem('acadsync.fx', JSON.stringify({ level, t: Date.now() }));
+        setTimeout(() => { try { sessionStorage.removeItem('acadsync.fx'); } catch { /* private mode */ } }, 1200);
+      } catch { /* private mode */ }
+    }
+  },
+
+  /** How much a saved change deserves, from the endpoint and its action. */
+  levelFor(path, body) {
+    const a = String(body.action || '').toLowerCase();
+    if (/^(login|logout|check_email|check_clash|forgot|read|read_all|mark_read|seen)$/.test(a) || path.startsWith('notifications')) return null;
+    if (path.startsWith('tasks.php') && a === 'done') return body.done ? 'cap' : 'soft';
+    if (/reject|remove|delete|cancel|withdraw|leave|step_down|unpick|undo|unpin|decline|kick/.test(a) || body.done === false || body.present === false) return 'soft';
+    if (path.startsWith('request_task') || path.startsWith('undo') === false && /^(approve|accept|admit|create|create_due|record_payment|post|publish|add|register|join)/.test(a)) return 'cap';
+    return 'burst';
+  },
+
+  /** A page's cards arrive as a short list the first time #main has real content (stagger capped at 360 ms). */
+  enter(root = document.getElementById('main')) {
+    if (!root || Motion.reduced()) return;
+    const run = () => {
+      if (root.dataset.mEntered || !root.children.length || root.querySelector('.skeleton')) return false;
+      root.dataset.mEntered = '1';
+      const inView = (el) => el.getBoundingClientRect().top < window.innerHeight + 120;
+      const picked = [];
+      root.querySelectorAll('.card-pastel, .stat-card, .shadow-card, .act-card, article').forEach((el) => {
+        if (picked.length < 14 && inView(el) && !picked.some((p) => p.contains(el) || el.contains(p))) picked.push(el);
+      });
+      root.querySelectorAll('section').forEach((el) => {
+        if (picked.length < 14 && inView(el) && !picked.some((p) => p.contains(el) || el.contains(p))) picked.push(el);
+      });
+      if (!picked.length) picked.push(...[...root.children].slice(0, 8));
+      picked.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+      picked.forEach((el, i) => {
+        el.style.setProperty('--m-d', `${Math.min(i * 45, 360)}ms`);
+        el.classList.add('m-enter');
+        el.addEventListener('animationend', () => { el.classList.remove('m-enter'); el.style.removeProperty('--m-d'); }, { once: true });
+      });
+      Motion.countUp(root);
+      Motion.replayPending();
+      return true;
+    };
+    if (run()) return;
+    const mo = new MutationObserver(() => { if (run()) mo.disconnect(); });
+    mo.observe(root, { childList: true, subtree: true });
+    setTimeout(() => mo.disconnect(), 8000);
+  },
+
+  /** Stat numbers count up from 0 (only plain integers at the start of a big number). */
+  countUp(root) {
+    if (Motion.reduced()) return;
+    root.querySelectorAll('.stat-num, .text-4xl.font-extrabold, .font-extrabold').forEach((el) => {
+      if (el.textContent.length > 30 || el.closest('button, a.btn')) return;
+      const node = [...el.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+      const m = node && /^(\s*)(\d{1,5})(.*)$/s.exec(node.textContent);
+      if (!m || Number(m[2]) < 2) return;
+      const target = Number(m[2]);
+      const t0 = performance.now();
+      const step = (t) => {
+        const p = Math.min(1, (t - t0) / 650);
+        node.textContent = `${m[1]}${Math.round(target * (1 - (1 - p) ** 3))}${m[3]}`;
+        if (p < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  },
+
+  /** A milestone saved just before this page opened (e.g. a task request) plays here. */
+  replayPending() {
+    let fx = null;
+    try { fx = JSON.parse(sessionStorage.getItem('acadsync.fx') || 'null'); sessionStorage.removeItem('acadsync.fx'); } catch { /* private mode */ }
+    if (!fx || Date.now() - fx.t > 5000) return;
+    setTimeout(() => {
+      if (fx.level === 'cap') {
+        Motion.burst(window.innerWidth / 2, window.innerHeight * 0.38, { count: 16, spread: 110, big: true });
+        Motion.capToss(window.innerWidth / 2, window.innerHeight * 0.38);
+      } else {
+        Motion.burst(window.innerWidth / 2, window.innerHeight * 0.38);
+      }
+    }, 320);
+  },
+
+  /** The intro, once per visit: the AcadSync tile rises and the cap is tossed above it. A tap or any key skips. */
+  intro() {
+    try {
+      if (sessionStorage.getItem('acadsync.intro')) return;
+      sessionStorage.setItem('acadsync.intro', '1');
+    } catch { return; }
+    if (Motion.reduced()) return;
+    const el = document.createElement('div');
+    el.className = 'm-intro';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<div class="m-intro-mark"><span class="m-intro-tile">AS</span><span class="m-intro-word">AcadSync</span></div>';
+    document.body.appendChild(el);
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      el.classList.add('is-done');
+      setTimeout(() => el.remove(), 400);
+      window.removeEventListener('keydown', done);
+    };
+    el.addEventListener('pointerdown', done);
+    window.addEventListener('keydown', done);
+    setTimeout(() => {
+      const r = $('.m-intro-tile', el).getBoundingClientRect();
+      Motion.capToss(r.left + r.width / 2, r.top + 6, { height: 110 });
+    }, 220);
+    setTimeout(done, 1250);
+  },
+
+  /** Ripple from the touch point on anything pressable that carries colour or a pill shape. */
+  bindRipple() {
+    document.addEventListener('pointerdown', (e) => {
+      Motion.last = { x: e.clientX, y: e.clientY };
+      if (Motion.reduced()) return;
+      const el = e.target.closest?.('.btn, .chip-filter, .nav-item, .nav-fab, .day-pill, .card-pastel, .stat-card, .act-kind, [role="tab"]');
+      if (!el || el.disabled) return;
+      if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+      let host = [...el.children].find((c) => c.classList.contains('m-ripple-host'));
+      if (!host) {
+        host = document.createElement('span');
+        host.className = 'm-ripple-host';
+        host.setAttribute('aria-hidden', 'true');
+        el.appendChild(host);
+      }
+      const r = el.getBoundingClientRect();
+      const dot = document.createElement('span');
+      dot.className = 'm-ripple';
+      dot.style.left = `${e.clientX - r.left}px`;
+      dot.style.top = `${e.clientY - r.top}px`;
+      dot.style.setProperty('--m-r', String(Math.ceil(Math.hypot(r.width, r.height) / 6)));
+      host.appendChild(dot);
+      dot.addEventListener('animationend', () => dot.remove());
+    }, { passive: true });
+  },
+
+  /** Coloured cards lean toward the mouse (up to 5°, 3° on wide cards); the light and the illustration follow. */
+  bindTilt() {
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    let cur = null;
+    let ev = null;
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      if (!cur || !ev) return;
+      const r = cur.getBoundingClientRect();
+      const px = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+      const py = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height));
+      const max = r.width > 420 ? 3 : 5;
+      cur.style.setProperty('--m-ry', `${((px - 0.5) * 2 * max).toFixed(2)}deg`);
+      cur.style.setProperty('--m-rx', `${((0.5 - py) * 2 * max).toFixed(2)}deg`);
+      cur.style.setProperty('--m-gx', `${(px * 100).toFixed(1)}%`);
+      cur.style.setProperty('--m-gy', `${(py * 100).toFixed(1)}%`);
+      cur.style.setProperty('--m-px', `${((px - 0.5) * 12).toFixed(1)}px`);
+      cur.style.setProperty('--m-py', `${((py - 0.5) * 12).toFixed(1)}px`);
+    };
+    const release = () => {
+      if (!cur) return;
+      cur.classList.remove('m-tilting');
+      ['--m-rx', '--m-ry', '--m-px', '--m-py'].forEach((p) => cur.style.removeProperty(p));
+      cur = null;
+    };
+    document.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse' || Motion.reduced()) return;
+      const el = e.target.closest?.('.card-pastel, .stat-card');
+      if (el !== cur) {
+        release();
+        if (el) { cur = el; el.classList.add('m-tilting'); }
+      }
+      ev = e;
+      if (cur && !raf) raf = requestAnimationFrame(apply);
+    }, { passive: true });
+    document.documentElement.addEventListener('mouseleave', release);
+    window.addEventListener('blur', release);
+  },
+
+  init() {
+    Motion.bindRipple();
+    Motion.bindTilt();
+    // Every saved change is acknowledged where it happened; a task marked done also pops its check
+    document.addEventListener('acadsync:action', (e) => {
+      const { path, body } = e.detail;
+      Motion.celebrate(Motion.levelFor(path, body));
+      if (path.startsWith('tasks.php') && body.action === 'done' && body.done) {
+        [80, 400].forEach((ms) => setTimeout(() => {
+          $$(`[data-done="${Number(body.task_id)}"][aria-pressed="true"]`).forEach((b) => {
+            b.classList.remove('m-pop');
+            void b.offsetWidth;   // restart the pop
+            b.classList.add('m-pop');
+          });
+        }, ms));
+      }
+    });
+    Motion.intro();
+    // Pages without Shell (login, sign-up) still replay a milestone saved on the page before
+    if (!document.getElementById('main')) setTimeout(() => Motion.replayPending(), 0);
+  },
+};
+Motion.init();

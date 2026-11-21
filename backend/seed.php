@@ -11,19 +11,60 @@
 
 declare(strict_types=1);
 
-/** The 8 BSINFO 2A core subjects from the PRD (FR-2.3). Also offered when creating a section. */
-function core_curriculum(): array
+/**
+ * BSINFO 2A's real subjects, First Semester AY 2026-2027 (from the class and the CCS class schedule):
+ * code, title, colour, instructor, usual room.
+ */
+function bsinfo2a_subjects(): array
 {
     return [
-        ['GEC 107', 'Science, Technology & Society', 'lavender'],
-        ['ITEC 204', 'Data Structures & Algorithms', 'peach'],
-        ['ITEC 205', 'Information Management', 'mint'],
-        ['ITEP 203', 'Integrative Programming', 'lavender'],
-        ['ITEL 201', 'Object-Oriented Programming', 'yellow'],
-        ['ITEL 202', 'Web Systems & Technologies', 'peach'],
-        ['SOSLIT', 'Sosyedad at Literatura', 'yellow'],
-        ['PATHFit 3', 'Physical Activity Towards Health & Fitness', 'mint'],
+        ['GEC 107', 'Science, Technology and Society', 'lavender', 'Marian Angela Mae Bicomong', 'CCS LEC 5'],
+        ['ITEC 204', 'Data Structure and Algorithm', 'peach', 'Criselda C. Encanto', 'CCS LAB 2'],
+        ['ITEC 205', 'Information Management', 'mint', 'Concepcion R. Repalam', 'CCS LEC 6'],
+        ['ITEP 203', 'Quantitative Methods including Modeling and Simulation', 'lavender', 'Sarah Escote', 'CCS LEC 9'],
+        ['ITEL 201', 'Object-Oriented Programming', 'yellow', 'Reymar Manaloto', 'CCS LEC 7'],
+        ['ITEL 202', 'Platform Technologies', 'peach', 'Prince Ross Andres', 'CCS LEC 1'],
+        ['SOSLIT', 'Sosyedad at Literatura / Panitikang Panlipunan', 'yellow', 'Janine Balinsayo', 'CCS LEC 2'],
+        ['PATHFit 3', 'Choice of Dance, Sports, Martial Arts, Group Exercise, Outdoor and Adventure Activities', 'mint', 'Marson David Alfaro Moreno', 'Gym'],
     ];
+}
+
+/**
+ * BSINFO 2A's weekly class schedule (CCS, First Semester AY 2026-2027): code, day (1 = Monday), start, end,
+ * and the room when that meeting is not in the subject's usual room (e.g. the lab day).
+ */
+function bsinfo2a_schedule(): array
+{
+    return [
+        ['ITEP 203', 1, '07:00', '08:00', null],
+        ['SOSLIT', 1, '08:00', '09:00', null],
+        ['ITEL 202', 1, '09:00', '10:00', null],
+        ['ITEC 204', 1, '11:00', '14:00', null],
+        ['ITEC 205', 1, '15:00', '18:00', 'CCS LAB 4'],
+        ['ITEC 205', 2, '08:00', '09:00', null],
+        ['ITEL 201', 2, '09:00', '11:00', null],
+        ['ITEC 204', 2, '12:00', '13:00', 'CCS LEC 8'],
+        ['ITEP 203', 2, '13:00', '14:00', 'Room TBA'],
+        ['ITEL 202', 2, '15:00', '18:00', 'CCS LAB 6'],
+        ['ITEL 202', 3, '08:00', '09:00', null],
+        ['ITEC 205', 3, '09:00', '10:00', null],
+        ['ITEP 203', 3, '10:00', '11:00', null],
+        ['GEC 107', 3, '12:00', '13:00', null],
+        ['ITEL 201', 3, '15:00', '18:00', 'CCS LAB 4'],
+        ['PATHFit 3', 4, '07:00', '09:00', null],
+        ['GEC 107', 4, '09:00', '11:00', null],
+        ['SOSLIT', 4, '12:00', '14:00', null],
+    ];
+}
+
+/** The 8 BSINFO 2A core subjects (code, title, colour). Also offered when creating a section. */
+function core_curriculum(): array
+{
+    $out = [];
+    foreach (bsinfo2a_subjects() as [$code, $title, $color]) {
+        $out[] = [$code, $title, $color];
+    }
+    return $out;
 }
 
 function seed_database(): void
@@ -98,21 +139,17 @@ function seed_database(): void
     Store::update('sections', $sec['BSINFO-2A'], ['created_by' => $u['juan.delacruz']]);
     Store::update('sections', $sec['BSINFO-2B'], ['created_by' => $u['bea.garcia']]);
 
-    // --- Subjects ----------------------------------------------------------------
-    $rooms = [
-        'GEC 107' => ['Prof. A. Reyes', 'Room 204'], 'ITEC 204' => ['Prof. M. Cruz', 'Comp Lab 2'],
-        'ITEC 205' => ['Prof. K. Tan', 'Room 301'], 'ITEP 203' => ['Prof. R. Garcia', 'Comp Lab 1'],
-        'ITEL 201' => ['Prof. J. Lim', 'Comp Lab 3'], 'ITEL 202' => ['Prof. D. Ramos', 'Comp Lab 1'],
-        'SOSLIT' => ['Prof. L. Santos', 'Room 110'], 'PATHFit 3' => ['Coach B. Villanueva', 'Gym'],
-    ];
+    // --- Subjects (BSINFO-2A's real subjects; 2B is a smaller demo section) ---------------
+    $rooms = [];
     $s = [];       // BSINFO-2A subjects by code
     $s2 = [];      // BSINFO-2B subjects by code
     $core = [];
-    foreach (core_curriculum() as [$code, $title, $color]) {
+    foreach (bsinfo2a_subjects() as [$code, $title, $color, $instructor, $room]) {
         $core[$code] = [$code, $title, $color];
+        $rooms[$code] = [$instructor, $room];
         $s[$code] = Store::insert('subjects', [
             'section_id' => $sec['BSINFO-2A'], 'code' => $code, 'title' => $title, 'color_tag' => $color,
-            'instructor' => $rooms[$code][0], 'room' => $rooms[$code][1],
+            'instructor' => $instructor, 'room' => $room,
         ]);
     }
     foreach ([['GEC 107', 'Room 205'], ['ITEC 204', 'Comp Lab 4'], ['ITEL 201', 'Comp Lab 3']] as [$code, $room]) {
@@ -123,25 +160,11 @@ function seed_database(): void
         ]);
     }
 
-    // --- Weekly class schedule: each meeting has its own day, start and end --------
-    $classes2A = [
-        ['GEC 107', 1, '13:00', '14:00'],   // Monday 1 PM, 1 hour
-        ['GEC 107', 2, '14:00', '17:00'],   // Tuesday 2 PM, 3 hours
-        ['ITEC 204', 1, '15:00', '17:00'],
-        ['ITEC 204', 4, '08:00', '11:00'],
-        ['ITEL 201', 2, '08:00', '09:30'],
-        ['ITEL 201', 5, '10:00', '12:00'],
-        ['ITEC 205', 2, '10:00', '11:30'],
-        ['ITEC 205', 5, '13:00', '14:30'],
-        ['ITEP 203', 3, '08:00', '10:00'],
-        ['ITEL 202', 3, '13:00', '16:00'],
-        ['SOSLIT', 4, '13:00', '14:30'],
-        ['PATHFit 3', 6, '07:00', '09:00'],
-    ];
-    foreach ($classes2A as [$code, $dow, $start, $end]) {
+    // --- Weekly class schedule: each meeting has its own day, start, end (and room on lab days) --------
+    foreach (bsinfo2a_schedule() as [$code, $dow, $start, $end, $room]) {
         Store::insert('class_schedules', [
             'section_id' => $sec['BSINFO-2A'], 'subject_id' => $s[$code],
-            'day_of_week' => $dow, 'day_name' => $dayNames[$dow], 'start_time' => $start, 'end_time' => $end,
+            'day_of_week' => $dow, 'day_name' => $dayNames[$dow], 'start_time' => $start, 'end_time' => $end, 'room' => $room,
         ]);
     }
     foreach ([['GEC 107', 3, '08:00', '09:30'], ['ITEC 204', 4, '13:00', '16:00'], ['ITEL 201', 1, '10:00', '11:30']] as [$code, $dow, $start, $end]) {

@@ -263,7 +263,7 @@ function partRow(a, p) {
     ? `<p class="mt-1 text-xs"><span class="text-muted">${a.kind === 'project' ? 'On it:' : 'Picked:'}</span> ${p.picked.map((x) => `${esc(x.name)}${x.role ? ` · ${esc(x.role)}` : ''}`).join(', ')}</p>` : '';
   return `
     <li class="part-row ${p.done ? 'is-done' : ''}">
-      <div class="min-w-0 flex-1">
+      <div class="min-w-[12rem] flex-1"><!-- at least 12rem: on a phone the buttons wrap below instead of squeezing the text -->
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span class="font-semibold">${esc(p.name)}</span>
           ${p.done ? `<span class="chip bg-mint-tint text-success">${icon('check', 13)}Done</span>` : ''}

@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     instructor TEXT,
     room TEXT,
     color_tag TEXT,                     -- lavender | peach | yellow | mint
+    design TEXT,                        -- the card's drawing: science | algorithm | database | chart | code | chip | book | sport | notebook (NULL = picked from the subject's name)
     FOREIGN KEY(section_id) REFERENCES sections(id)
 );
 
@@ -72,6 +73,7 @@ CREATE TABLE IF NOT EXISTS class_schedules (
     day_name TEXT NOT NULL,             -- "Monday" (for readability)
     start_time TEXT NOT NULL,           -- "13:00"
     end_time TEXT NOT NULL,             -- "14:00"
+    room TEXT,                          -- this meeting's room, e.g. "CCS LAB 4" (NULL = the subject's room)
     FOREIGN KEY(section_id) REFERENCES sections(id),
     FOREIGN KEY(subject_id) REFERENCES subjects(id)
 );

@@ -3,8 +3,9 @@
  * GET  /api/subjects.php            -> curriculum (Array) with weekly meetings
  * GET  /api/subjects.php?id=3       -> subject details + its active tasks
  * POST (admin)
- *   action=add          {code, title, instructor, room, color, slots:[{day, start, end}]}
- *   action=update       {id, code, title, instructor, room, color, slots:[...]}   (replaces meetings)
+ *   action=add          {code, title, instructor, room, color, design?, slots:[{day, start, end, room?}]}   room? = that meeting's own room
+ *   action=update       {id, code, title, instructor, room, color, design?, slots:[...]}   (replaces meetings)
+ *                       design? = the card's drawing (DESIGNS); missing or 'auto' = picked from the subject's name
  *   action=add_slot     {subject_id, day_of_week, start_time, end_time}
  *   action=remove_slot  {slot_id}
  *
@@ -28,6 +29,9 @@ function slots_of(array $slots, int $subjectId): array
     return $out;
 }
 
+// The drawing on a subject's card (Frontend/js/ui.js SUBJECT_DESIGNS); 'auto' or anything else = picked from its name
+const DESIGNS = ['science', 'algorithm', 'database', 'chart', 'code', 'chip', 'book', 'sport', 'notebook'];
+
 function pick_color(string $color, int $fallbackIndex): string
 {
     foreach (COLORS as $c) {
@@ -38,13 +42,19 @@ function pick_color(string $color, int $fallbackIndex): string
     return COLORS[$fallbackIndex % 4];
 }
 
+/** A chosen design, or null for "Auto". [ALGORITHM: LINEAR SEARCH] over the short list of designs. */
+function pick_design(string $design): ?string
+{
+    return Algorithms::linearContains(DESIGNS, $design) ? $design : null;
+}
+
 function insert_slots(int $sectionId, int $subjectId, array $slots): void
 {
     foreach ($slots as $s) {
         Store::insert('class_schedules', [
             'section_id' => $sectionId, 'subject_id' => $subjectId,
             'day_of_week' => $s['day'], 'day_name' => DAY_NAMES[$s['day']],
-            'start_time' => $s['start'], 'end_time' => $s['end'],
+            'start_time' => $s['start'], 'end_time' => $s['end'], 'room' => $s['room'] ?? null,
         ]);
     }
 }
@@ -190,6 +200,7 @@ switch (param('action')) {
             'instructor' => (string) param('instructor', ''),
             'room' => (string) param('room', ''),
             'color_tag' => pick_color((string) param('color', ''), $ctx['subjects']->size()),
+            'design' => pick_design((string) param('design', '')),
         ];
 
         Store::begin();

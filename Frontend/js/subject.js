@@ -33,7 +33,7 @@ function render(d, admin) {
     <div class="grid gap-5 lg:grid-cols-[1.1fr_1fr] lg:items-start lg:gap-6">
       <div class="space-y-4">
         <div class="card-pastel ${strong} rounded-[1.75rem] p-5 lg:p-7">
-          <span class="ring-deco" style="width:200px;height:200px;right:-20px;bottom:-50px"></span>
+          ${subjectArt(subjectDesign(s), 190, 'subject-art is-big', 1.2)}
           <div class="flex items-start justify-between">
             ${UI.chip(s.code, 'bg-white text-sm')}
             ${d.tasks.length ? `<span class="chip bg-white text-[11px]">${icon('clock', 12)}${d.tasks.length} due<span class="h-1.5 w-1.5 rounded-full bg-danger"></span></span>` : ''}

@@ -16,7 +16,8 @@
   $('#main').innerHTML = admin ? adminView(data) : studentView(data);
   Announcements.mount($('#announcements'));
   signupsReminder();
-  if (!admin) { groupReminder(); duesReminder(); }
+  if (admin) HomeOfficers.mount($('#home-officers'));
+  else { groupReminder(); duesReminder(); }
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
 /**
@@ -512,17 +513,17 @@ function studentView(d) {
       </a>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-1">
-        <a href="my-tasks.html#pending" class="relative overflow-hidden rounded-[1.75rem] bg-white p-4 shadow-card">
-          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-xl bg-lavender-tint text-lavender-dark">${icon('inbox', 18)}</span>
-          <div class="text-xs text-muted">Pending</div>
-          <div class="mt-1 text-4xl font-extrabold">${d.stats.my_pending}</div>
-          <div class="mt-1 text-xs text-muted">request${d.stats.my_pending === 1 ? '' : 's'}<span class="hidden lg:inline"> waiting for admin review</span></div>
+        <a href="schedule.html#urgent" class="stat-card orange">
+          <span class="stat-tab">${icon('clock', 18)}</span>
+          <div class="stat-label">Due today</div>
+          <div class="stat-num">${d.stats.due_today}</div>
+          <div class="flex items-center justify-between gap-1 text-xs text-muted"><span>deadline${d.stats.due_today === 1 ? '' : 's'}</span>${d.stats.due_today ? `<span class="chip bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">${inLabel(d.stats.next_due_ts)}</span>` : ''}</div>
         </a>
-        <a href="schedule.html#urgent" class="card-pastel yellow rounded-[1.75rem] p-4">
-          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white">${icon('clock', 18)}</span>
-          <div class="text-xs">Due today</div>
-          <div class="mt-1 text-4xl font-extrabold">${d.stats.due_today}</div>
-          <div class="mt-1 flex items-center justify-between gap-1 text-xs"><span>deadline${d.stats.due_today === 1 ? '' : 's'}</span>${d.stats.due_today ? `<span class="chip bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">${inLabel(d.stats.next_due_ts)}</span>` : ''}</div>
+        <a href="my-tasks.html#pending" class="stat-card periwinkle">
+          <span class="stat-tab">${icon('inbox', 18)}</span>
+          <div class="stat-label">Pending</div>
+          <div class="stat-num">${d.stats.my_pending}</div>
+          <div class="text-xs text-muted">request${d.stats.my_pending === 1 ? '' : 's'}<span class="hidden lg:inline"> waiting for admin review</span></div>
         </a>
       </div>
 
@@ -554,21 +555,119 @@ function studentView(d) {
     </div>`;
 }
 
+/** A subject card: its colour, its own drawing (SUBJECT_DESIGNS) in the corner and as the icon, and what's due. */
 function subjectCard(s) {
   const t = tone(s.color_tag);
+  const design = subjectDesign(s);
   const badge = s.due
     ? `<span class="chip bg-white text-[11px]">${icon('clock', 12)}${s.due} due<span class="h-1.5 w-1.5 rounded-full bg-danger"></span></span>`
     : `<span class="chip bg-white text-[11px] text-success">${icon('check', 12)}All clear</span>`;
   return `
-    <a href="subject.html?id=${s.id}" class="card-pastel ${t.soft} flex min-h-[8.5rem] flex-col rounded-[1.5rem] p-4 transition hover:-translate-y-0.5">
+    <a href="subject.html?id=${s.id}" class="card-pastel ${t.soft} flex min-h-[8.5rem] flex-col rounded-[1.5rem] p-4">
+      ${subjectArt(design, 96, 'subject-art', 1.4)}
       <div class="flex items-start justify-between gap-1">
-        <span class="grid h-9 w-9 place-items-center rounded-full bg-white ${t.icon}">${icon('notebook', 18)}</span>
+        <span class="subject-icon grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white ${t.icon}">${subjectArt(design, 18)}</span>
         ${badge}
       </div>
       <div class="mt-auto pt-3 text-[10px] font-semibold tracking-wide text-muted">${esc(s.code)}</div>
-      <div class="font-semibold leading-snug">${esc(s.title)}</div>
+      <div class="line-clamp-3 font-semibold leading-snug" title="${esc(s.title)}">${esc(s.title)}</div>
     </a>`;
 }
+
+/** The subjects grid; officers who manage the section also get an "Add subject" tile at the end. */
+function subjectsSection(d, heading) {
+  const canAdd = Shell.can('manage_section');
+  const addTile = canAdd ? `
+    <a href="add-subject.html" class="subject-add">
+      <span class="subject-add-plus grid h-9 w-9 place-items-center rounded-full bg-charcoal text-white">${icon('plus', 18)}</span>
+      <span><span class="block font-semibold">Add subject</span><span class="block text-xs text-muted">Days, time, room and design</span></span>
+    </a>` : '';
+  return `
+    <section class="lg:col-span-2" aria-labelledby="home-subjects-h">
+      <div class="mb-3 flex items-baseline justify-between gap-2">
+        <h2 id="home-subjects-h" class="text-xl font-bold">${heading}</h2>
+        <a href="week.html" class="text-sm font-semibold">${plural(d.subjects.length, 'subject')} · Week</a>
+      </div>
+      ${d.subjects.length || canAdd
+        ? `<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">${d.subjects.map(subjectCard).join('')}${addTile}</div>`
+        : UI.empty('No subjects yet', 'Your class officer hasn’t added this section’s subjects.', 'bookOpen')}
+    </section>`;
+}
+
+/*
+ * Officers on the admin Home: the President chooses the Vice President, Secretary and Treasurer right here
+ * (the same choice as on Member Records, records.php action=assign_officer).
+ */
+const HomeOfficers = {
+  OFFICES: [
+    ['vice_president', 'Vice President', 'lavender-soft', 'Reviews the queue, runs activities'],
+    ['secretary', 'Secretary', 'peach-soft', 'Takes attendance, keeps records'],
+    ['treasurer', 'Treasurer', 'yellow-soft', 'Sets dues, records payments'],
+  ],
+  el: null,
+  data: null,
+
+  async mount(el) {
+    if (!el || !Shell.can('view_member_records')) return;
+    HomeOfficers.el = el;
+    try {
+      HomeOfficers.data = await API.get('records.php');
+      HomeOfficers.render();
+    } catch { /* optional: Member Records still has the full picker */ }
+  },
+
+  render() {
+    const d = HomeOfficers.data;
+    const o = d.officers;
+    const holders = HomeOfficers.OFFICES.map(([k]) => o[k]?.id).filter(Boolean);
+    const vacant = HomeOfficers.OFFICES.filter(([k]) => !o[k]).length;
+    const tile = ([key, label, cls, duty]) => {
+      const who = o[key];
+      // Choices: active members who aren't the President and don't already hold another office
+      const options = d.records.filter((r) => r.status.key === 'active' && r.position !== 'president' && (!holders.includes(r.id) || r.id === who?.id));
+      return `
+        <div class="card-pastel ${cls} rounded-[1.5rem] p-4">
+          <span class="ring-deco" style="width:90px;height:90px;right:-26px;bottom:-40px"></span>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-sm font-semibold">${label}</span>
+            ${who ? UI.avatar(who.name, 'bg-white', 'h-8 w-8 text-[10px]') : '<span class="chip bg-white text-[11px] text-muted">Vacant</span>'}
+          </div>
+          ${d.can_assign ? `
+            <label class="mt-3 block"><span class="sr-only">Choose the ${label}</span>
+              <span class="rec-select"><select data-home-office="${key}">
+                <option value="">Vacant</option>
+                ${options.map((r) => `<option value="${r.id}" ${r.id === who?.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+              </select>${icon('chevronDown', 16)}</span></label>`
+            : `<div class="mt-2 text-lg font-bold leading-tight">${who ? esc(who.name) : '<span class="text-muted">Vacant</span>'}</div>`}
+          <p class="mt-2 text-xs text-muted">${duty}</p>
+        </div>`;
+    };
+    HomeOfficers.el.hidden = false;
+    HomeOfficers.el.innerHTML = `
+      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="home-officers-h" class="text-xl font-bold">Officers</h2>
+        <a href="records.html#officers" class="text-sm font-semibold">Member records</a>
+      </div>
+      ${d.can_assign && vacant ? `<p class="mb-3 text-sm text-muted">${vacant === 3 ? 'No officers yet.' : `${plural(vacant, 'office')} still vacant.`} Choose who serves: they’re notified and get their tools right away.</p>` : ''}
+      <div class="grid gap-4 sm:grid-cols-3">${HomeOfficers.OFFICES.map(tile).join('')}</div>`;
+    $$('[data-home-office]', HomeOfficers.el).forEach((s) => s.onchange = () => HomeOfficers.assign(s));
+  },
+
+  async assign(select) {
+    const position = select.dataset.homeOffice;
+    const label = HomeOfficers.OFFICES.find(([k]) => k === position)[1];
+    select.disabled = true;
+    try {
+      await API.post('records.php', { action: 'assign_officer', position, user_id: select.value ? Number(select.value) : null });
+      UI.toast(select.value ? `${label} updated` : `${label} is now vacant`,
+        { sub: select.value ? (position === 'treasurer' ? 'They were notified and can now handle dues' : 'They were notified and can now review the approval queue') : '' });
+    } catch (e) {
+      UI.toast(e.message, { iconName: 'alert' });
+    }
+    try { HomeOfficers.data = await API.get('records.php'); } catch { /* keep the last list */ }
+    HomeOfficers.render();
+  },
+};
 
 /* --------------------------------------------------------------- admin */
 function adminView(d) {
@@ -601,15 +700,17 @@ function adminView(d) {
       </a>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-1">
-        <a href="schedule.html#urgent" class="card-pastel danger-soft rounded-[1.75rem] p-4">
-          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white">${icon('clock', 18)}${urgentToday ? '<span class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-danger"></span>' : ''}</span>
-          <div class="mt-1 text-4xl font-extrabold">${urgentToday}</div>
-          <div class="mt-1 flex items-center justify-between gap-1 text-xs text-muted"><span>urgent today</span>${urgentToday ? `<span class="chip bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">${inLabel(d.stats.next_due_ts)}</span>` : ''}</div>
+        <a href="schedule.html#urgent" class="stat-card orange">
+          <span class="stat-tab">${icon('clock', 18)}${urgentToday ? '<span class="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-danger"></span>' : ''}</span>
+          <div class="stat-label">Urgent</div>
+          <div class="stat-num">${urgentToday}</div>
+          <div class="flex items-center justify-between gap-1 text-xs text-muted"><span>due today</span>${urgentToday ? `<span class="chip bg-charcoal px-2 py-0.5 text-[10px] font-bold text-white">${inLabel(d.stats.next_due_ts)}</span>` : ''}</div>
         </a>
-        <a href="schedule.html#week" class="card-pastel lavender-soft rounded-[1.75rem] p-4">
-          <span class="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-xl bg-white text-lavender-dark">${icon('inbox', 18)}</span>
-          <div class="mt-1 text-4xl font-extrabold">${d.stats.due_week}</div>
-          <div class="mt-1 text-xs text-muted">due this week</div>
+        <a href="schedule.html#week" class="stat-card periwinkle">
+          <span class="stat-tab">${icon('calendar', 18)}</span>
+          <div class="stat-label">This week</div>
+          <div class="stat-num">${d.stats.due_week}</div>
+          <div class="text-xs text-muted">due by Sunday</div>
         </a>
       </div>
 
@@ -619,7 +720,7 @@ function adminView(d) {
         <h2 class="mb-3 text-xl font-bold">Quick actions</h2>
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           ${quick.map(([href, cls, ic, title, sub]) => `
-            <a href="${href}" class="card-pastel ${cls} flex min-h-[8.5rem] flex-col rounded-[1.5rem] p-4 transition hover:-translate-y-0.5">
+            <a href="${href}" class="card-pastel ${cls} flex min-h-[8.5rem] flex-col rounded-[1.5rem] p-4">
               <span class="grid h-10 w-10 place-items-center rounded-full bg-white">${icon(ic, 20)}</span>
               <div class="mt-auto pt-3 text-lg font-semibold">${title}</div>
               <div class="text-xs text-muted">${esc(sub)}</div>
@@ -634,5 +735,9 @@ function adminView(d) {
         </div>
         <div class="space-y-3">${classes.length ? classes.map((c) => UI.classRow(c)).join('') : UI.empty('No classes today', 'Enjoy the free day.', 'calendar')}</div>
       </section>
+
+      <section id="home-officers" class="lg:col-span-2" aria-labelledby="home-officers-h" hidden></section>
+
+      ${subjectsSection(d, 'Subjects')}
     </div>`;
 }

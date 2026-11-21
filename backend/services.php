@@ -655,7 +655,9 @@ function class_slots(int $sectionId, array $subjectIndex): array
                 'code' => $subject['code'],
                 'title' => $subject['title'],
                 'color' => $subject['color_tag'],
-                'room' => $subject['room'],
+                // a meeting can have its own room (lecture vs lab day); otherwise the subject's room
+                'room' => trim((string) ($c['room'] ?? '')) !== '' ? $c['room'] : $subject['room'],
+                'slot_room' => trim((string) ($c['room'] ?? '')) !== '' ? $c['room'] : null,
                 'instructor' => $subject['instructor'],
             ];
         }
@@ -781,7 +783,11 @@ function clean_slots(array $slots): array
         if (!valid_time($start) || !valid_time($end) || to_minutes($start) >= to_minutes($end)) {
             fail('On ' . DAY_NAMES[$day] . ', the start time must be before the end time.');
         }
-        $out[] = ['day' => $day, 'start' => $start, 'end' => $end];
+        $room = trim((string) ($slot['room'] ?? ''));
+        if (strlen($room) > 60) {
+            fail('Keep each room under 60 characters.');
+        }
+        $out[] = ['day' => $day, 'start' => $start, 'end' => $end, 'room' => $room === '' ? null : $room];
     }
     return $out;
 }

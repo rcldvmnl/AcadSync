@@ -6,7 +6,8 @@ const SWATCH = { lavender: 'bg-lavender', peach: 'bg-peach', yellow: 'bg-sun', m
 const SWATCH_LABEL = { lavender: 'Periwinkle', peach: 'Orange', yellow: 'Yellow', mint: 'Grey' };
 const LENGTHS = [[60, '1 hr'], [90, '1.5 hrs'], [120, '2 hrs'], [180, '3 hrs']];
 let color = 'lavender';
-/** day (1–6) -> { start: 'HH:MM', end: 'HH:MM' } */
+let design = 'auto';   // 'auto' = picked from the code and name (subjectDesign in ui.js)
+/** day (1–6) -> { start: 'HH:MM', end: 'HH:MM', room: '' } (room: that day's own room; blank = the subject's room) */
 const schedule = new Map();
 
 $$('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon, 18); });
@@ -20,7 +21,7 @@ const toHHMM = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:$
     eyebrow: (m) => `Admin · ${m.section.name}`,
     title: editId ? 'Edit Subject' : 'Add Subject',
   });
-  if (me.user.role !== 'admin') {
+  if (!Shell.can('manage_section')) {
     $('#main').innerHTML = UI.errorBox('Only the class admin can add or edit subjects.');
     return;
   }
@@ -33,19 +34,56 @@ const toHHMM = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:$
     form.elements.instructor.value = s.instructor || '';
     form.elements.room.value = s.room || '';
     color = s.color_tag || 'lavender';
-    d.slots.forEach((slot) => schedule.set(slot.day_of_week, { start: slot.start_time, end: slot.end_time }));
+    design = SUBJECT_DESIGNS[s.design] ? s.design : 'auto';
+    d.slots.forEach((slot) => schedule.set(slot.day_of_week, { start: slot.start_time, end: slot.end_time, room: slot.slot_room || '' }));
     $('button[type=submit]', form).textContent = 'Save changes';
   } else {
-    schedule.set(1, { start: '13:00', end: '14:00' });
+    schedule.set(1, { start: '13:00', end: '14:00', room: '' });
   }
   renderColors();
+  renderDesigns();
   renderDays();
+  // The preview and the "Auto" drawing follow the code and name as they're typed
+  [form.elements.code, form.elements.title].forEach((el) => el.addEventListener('input', () => { renderDesigns(); }));
 })().catch((e) => { if (e.message !== 'no section') $('#main').innerHTML = UI.errorBox(e); });
 
 function renderColors() {
   $('#colors').innerHTML = Object.entries(SWATCH).map(([k, cls]) => `
     <button type="button" data-color="${k}" aria-label="${SWATCH_LABEL[k]}" aria-pressed="${k === color}" class="h-10 w-10 rounded-full ${cls} ${k === color ? 'ring-2 ring-charcoal ring-offset-2' : ''}"></button>`).join('');
-  $$('[data-color]').forEach((b) => b.onclick = () => { color = b.dataset.color; renderColors(); });
+  $$('[data-color]').forEach((b) => b.onclick = () => { color = b.dataset.color; renderColors(); renderPreview(); });
+}
+
+/** The drawing the card would get on "Auto", from what's typed so far. */
+const autoDesign = () => subjectDesign({ code: form.elements.code.value, title: form.elements.title.value, id: Number(editId || 0) });
+
+function renderDesigns() {
+  const auto = autoDesign();
+  const btn = (key, label, art) => `
+    <button type="button" data-design="${key}" aria-pressed="${key === design}" aria-label="${key === 'auto' ? `Auto (${SUBJECT_DESIGNS[art].label})` : label}" title="${label}"
+      class="flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors ${key === design ? 'bg-charcoal text-white' : 'bg-canvas text-charcoal hover:bg-line'}">
+      ${subjectArt(art, 18)}${key === 'auto' ? `<span>${label}</span>` : ''}</button>`;
+  $('#designs').innerHTML = btn('auto', 'Auto', auto)
+    + Object.entries(SUBJECT_DESIGNS).map(([k, v]) => btn(k, v.label, k)).join('');
+  $$('[data-design]').forEach((b) => b.onclick = () => { design = b.dataset.design; renderDesigns(); });
+  renderPreview();
+}
+
+/** The card as it will look on Home (same markup and classes as home.js subjectCard). */
+function renderPreview() {
+  const t = tone(color);
+  const key = design === 'auto' ? autoDesign() : design;
+  const code = form.elements.code.value.trim().toUpperCase() || 'CODE';
+  const title = form.elements.title.value.trim() || 'Subject name';
+  $('#subject-preview').innerHTML = `
+    <div class="card-pastel ${t.soft} flex min-h-[8.5rem] flex-col rounded-[1.5rem] p-4">
+      ${subjectArt(key, 96, 'subject-art', 1.4)}
+      <div class="flex items-start justify-between gap-1">
+        <span class="subject-icon grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white ${t.icon}">${subjectArt(key, 18)}</span>
+        <span class="chip bg-white text-[11px] text-success">${icon('check', 12)}All clear</span>
+      </div>
+      <div class="mt-auto pt-3 text-[10px] font-semibold tracking-wide text-muted">${esc(code)}</div>
+      <div class="line-clamp-3 font-semibold leading-snug">${esc(title)}</div>
+    </div>`;
 }
 
 function renderDays() {
@@ -57,7 +95,7 @@ function renderDays() {
     else {
       // New day starts with the same time as the last one added, as a starting point
       const last = [...schedule.values()].pop() || { start: '08:00', end: '09:30' };
-      schedule.set(d, { ...last });
+      schedule.set(d, { ...last, room: '' });
     }
     renderDays();
   });
@@ -67,7 +105,7 @@ function renderDays() {
 function renderRows() {
   const days = [...schedule.keys()].sort((a, b) => a - b);
   $('#day-rows').innerHTML = days.length ? days.map((d) => {
-    const { start, end } = schedule.get(d);
+    const { start, end, room = '' } = schedule.get(d);
     const len = toMin(end) - toMin(start);
     return `
       <div class="rounded-2xl bg-canvas p-3" data-row="${d}">
@@ -84,6 +122,8 @@ function renderRows() {
         <div class="mt-2 flex flex-wrap gap-1.5">
           ${LENGTHS.map(([m, l]) => `<button type="button" data-len="${m}" class="rounded-full px-3 py-1.5 text-xs font-medium ${m === len ? 'bg-charcoal text-white' : 'bg-white'}">${l}</button>`).join('')}
         </div>
+        <label class="mt-2 block"><span class="mb-1 block text-[11px] text-muted">Room this day (optional)</span>
+          <span class="field h-11 bg-white">${icon('mapPin', 16)}<input data-room value="${esc(room)}" maxlength="60" placeholder="Same as the subject's room" aria-label="${DAYS_LONG[d]} room"></span></label>
         <div data-clash="${d}" aria-live="polite"></div>
       </div>`;
   }).join('') : '<p class="rounded-2xl bg-canvas p-4 text-sm text-muted">No class days yet — tap a day above. You can also save now and set times later.</p>';
@@ -98,6 +138,7 @@ function renderRows() {
       renderRows();
     };
     $('[data-end]', row).onchange = (e) => { slot.end = e.target.value; renderRows(); };
+    $('[data-room]', row).oninput = (e) => { slot.room = e.target.value; };
     $$('[data-len]', row).forEach((b) => b.onclick = () => { slot.end = toHHMM(toMin(slot.start) + Number(b.dataset.len)); renderRows(); });
   });
   checkClashes();
@@ -106,7 +147,7 @@ function renderRows() {
 /* ---------------------------------------------------------------- clash check (server: 2D array WeekGrid) */
 let clashes = [];
 let clashTimer;
-const slotList = () => [...schedule.entries()].map(([day, s]) => ({ day, start: s.start, end: s.end }));
+const slotList = () => [...schedule.entries()].map(([day, s]) => ({ day, start: s.start, end: s.end, room: (s.room || '').trim() }));
 
 /** Asks the server which other subjects these times overlap, then marks each clashing day. */
 function checkClashes() {
@@ -136,7 +177,7 @@ function showClashes() {
 
 async function save(d, allowClash = false) {
   const res = await API.post('subjects.php', {
-    action: editId ? 'update' : 'add', id: editId ? Number(editId) : undefined, ...d, color, slots: slotList(), allow_clash: allowClash || undefined,
+    action: editId ? 'update' : 'add', id: editId ? Number(editId) : undefined, ...d, color, design, slots: slotList(), allow_clash: allowClash || undefined,
   });
   location.href = `subject.html?id=${res.id}`;
 }

@@ -61,6 +61,8 @@ final class Store
             'memberships' => ['position' => 'TEXT', 'status' => "TEXT NOT NULL DEFAULT 'active'"],
             // competitions and section projects: the original post, when sign-ups close, the result
             'activities' => ['link' => 'TEXT', 'signup_deadline' => 'TEXT', 'result' => 'TEXT', 'audience' => "TEXT NOT NULL DEFAULT 'everyone'"],
+            'class_schedules' => ['room' => 'TEXT'],   // a meeting's own room (e.g. the lab day); empty = the subject's room
+            'subjects' => ['design' => 'TEXT'],        // the subject card's drawing; empty = picked from the subject's name
         ];
         foreach ($added as $table => $cols) {
             $have = [];

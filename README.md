@@ -208,8 +208,8 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
 > [!NOTE]
 > The officers, activities (including the *Founding Anniversary* competition and the *Booth design*
 > project), dues, announcements and Leo's join request come from the seed, so they
-> only appear in a **new** database. In an older database, the President picks the officers on the
-> **Member Records** page.
+> only appear in a **new** database. In an older database, the President picks the officers on
+> **Home** (the *Officers* cards) or on the **Member Records** page.
 
 ---
 
@@ -221,8 +221,8 @@ Log in with the **e-mail**, the **student number** or the **username**. E-mails 
   enter the 6-letter class code to **ask to join**; an officer checks their name and student ID and
   lets them in (or declines), oldest request first. One account can belong to several sections,
   with a different role in each (`memberships`).
-- **The President appoints the Vice President, the Secretary and the Treasurer** (Member Records →
-  Officers). One office per person, and inactive or alumni members can't hold one. Every change is
+- **The President appoints the Vice President, the Secretary and the Treasurer**, right on Home
+  (*Officers*) or on Member Records → Officers. One office per person, and inactive or alumni members can't hold one. Every change is
   saved as a term (`officer_terms`), so a record shows which offices someone held and when.
 - **Every officer reviews the approval queue** (join requests, and task requests with approve /
   reject / undo).
@@ -361,6 +361,13 @@ in the same step, so the app never says two different things:
 - **Schedule:** a class grid per day, plus Today / Urgent / This week / Due by Fri / Due soon views.
   A date range ("any day Nov 20 – 23") counts as due today, and as urgent, from its first day; lists
   stay in deadline order. Saving a subject warns you when its class times clash with another subject.
+- **Subjects** show on Home for everyone (the President also gets an *Add subject* tile). Each card has
+  its own drawing (atom, tree, database, chart, code, chip, book, sports), picked from the subject's
+  name or chosen in the subject form, with a live preview. A class day can have its own room (the lab day).
+- **Motion:** a short intro once per visit, a graduation-cap toss when a task is marked done or a task is
+  requested or added, a sparkle burst for every other saved change, ripples on buttons, coloured cards
+  that lean toward the pointer, and sheets and toasts that slide out. With *reduce motion* turned on
+  in the device settings, only quick fades remain.
 
 ---
 

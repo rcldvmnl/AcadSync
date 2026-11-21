@@ -3,7 +3,7 @@
 Attach this file **and** [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) at the start of a new chat.
 PROJECT_CONTEXT.md explains the project, the rules the code follows and how to test safely;
 this file lists what is left to do.
-Last updated: 2026-11-21 (end of the third session).
+Last updated: 2026-11-21 (end of the fourth session).
 
 **Suggested first message:**
 > Read docs/PROJECT_CONTEXT.md and docs/NEXT_STEPS.md, then continue with "Still to do".
@@ -122,6 +122,23 @@ Checked: all 23 page views at 390 and 1280 px (font loads with Google blocked, n
 `tests/dsa_test.php` 220/0 and the five browser checks still pass.
 Not changed (frozen layout, pre-existing): at 390 px the Dues member rows cut long names short and the Activities
 part rows wrap narrowly.
+
+## Done on 2026-11-21, fourth session: real subjects, motion, officers on Home, subject designs
+
+| Change | Files |
+| --- | --- |
+| BSINFO-2A's real 8 subjects, instructors and weekly schedule (from the class schedule photo) in the seed; a class day can have its own room (`class_schedules.room`, "Room this day" in the subject form). The owner's real DB was switched to them (backup `data/acadsync.backup-before-real-schedule-20261121-112716.db`); 2A has **no tasks** there, demo accounts kept. The seed still adds sample 2A tasks for a *new* demo database | `seed.php`, `schema.sql`, `db.php`, `services.php`, `api/subjects.php`, `add-subject.js` |
+| Dues member rows (390 px): full names, standing + Record payment wrap below; Activities part rows: text keeps ≥ 12rem, buttons wrap below | `dues.js`, `activities.js` |
+| Motion layer `Motion` (end of `ui.js`, styles in `app.css`): intro once per visit, cap toss for done / request / add, sparkle burst for every saved change (`API` fires `acadsync:action` after each POST), soft ring for removals, ripples, tilt + light on coloured cards, page cards rise in, stat numbers count up, sheets/toasts exit; reduced motion = fades only | `ui.js`, `api.js`, `app.css`, `assets/illus/cap.svg`, `home.js` (stat cards) |
+| **Officers on the admin Home**: VP / Secretary / Treasurer cards with the same picker as Member Records (`records.php` action=assign_officer); link to `records.html#officers`. `.rec-select` moved from `org.css` to `app.css` | `home.js`, `records.js`, `app.css`, `org.css` |
+| **Subjects on the admin Home** (bottom) with an *Add subject* tile (`manage_section`) | `home.js` |
+| **Design per subject**: `subjects.design` (science, algorithm, database, chart, code, chip, book, sport, notebook; NULL = Auto from the name, `subjectDesign()` / `SUBJECT_DESIGNS` in `ui.js`, `DESIGNS` + `pick_design()` in `subjects.php`). Shown on Home cards (both views) and the subject page hero; picker + live preview in the subject form. The form now checks `Shell.can('manage_section')` instead of the role | `ui.js`, `home.js`, `subject.js`, `add-subject.html/js`, `api/subjects.php`, `schema.sql`, `db.php`, `app.css` |
+
+Verified: `tests/dsa_test.php` 220/0, `tests/mailer_test.php` 12/0, `php -l` / `node --check` clean, DSA grep empty,
+`npm run build:css` run. Headless Chrome on a fresh-seed scratch copy: 28/0 (intro, officers on Home + assigning
+the VP, 8 subjects with 8 different designs + Add tile, member Home, design saved / unknown design → Auto,
+dues names not cut at 390 px, part rows ≥ 180 px, no sideways scroll, no JS errors, clean server log).
+Script: scratchpad only (not kept in the project).
 
 ---
 

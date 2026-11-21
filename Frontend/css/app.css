@@ -61,6 +61,44 @@ a { text-underline-offset: .2em; }
 .card-pastel.grey-soft .ring-deco { color: #C4C4CE; }
 .card-pastel.danger-soft .ring-deco { color: #F0ADA4; }
 
+/* A subject's own drawing (atom, tree, database, …; SUBJECT_DESIGNS in js/ui.js) in the card's corner, drawn with depth:
+   a light front face (the stroke), a solid darker side stacked behind it (three 0-blur drop-shadows build an
+   extruded edge, down and to the right, as if lit from the top left), and a soft cast shadow on the card.
+   --art-face / --art-side / --art-cast are set per card colour. On hover the drawing lifts and its shadow spreads. */
+.subject-art { position: absolute; z-index: -1; pointer-events: none; right: -20px; bottom: -24px; width: 86px; height: 86px;
+  --art-d: 1.25px;   /* depth of each side layer (× 3) */
+  color: var(--art-face, #D3D3DC);
+  filter: drop-shadow(var(--art-d) var(--art-d) 0 var(--art-side, #A9A9B4)) drop-shadow(var(--art-d) var(--art-d) 0 var(--art-side, #A9A9B4))
+          drop-shadow(var(--art-d) var(--art-d) 0 var(--art-side, #A9A9B4)) drop-shadow(2px 9px 8px var(--art-cast, rgba(28,28,33,.16)));
+  rotate: -12deg; transition: rotate .5s cubic-bezier(.16,1,.3,1), scale .5s cubic-bezier(.16,1,.3,1), translate .4s cubic-bezier(.16,1,.3,1), filter .5s cubic-bezier(.16,1,.3,1); }
+.subject-art.is-big { right: -10px; bottom: -26px; width: 190px; height: 190px; --art-d: 2.25px; }
+.card-pastel.lavender-soft .subject-art { --art-face: #D2CEFC; --art-side: #9C96F2; --art-cast: rgba(76,68,190,.22); }
+.card-pastel.peach-soft .subject-art { --art-face: #FAD3B4; --art-side: #EC9351; --art-cast: rgba(185,86,26,.2); }
+.card-pastel.yellow-soft .subject-art { --art-face: #F8E08E; --art-side: #DDAE24; --art-cast: rgba(170,125,10,.2); }
+.card-pastel.grey-soft .subject-art { --art-face: #DADAE2; --art-side: #A3A3AF; --art-cast: rgba(28,28,33,.16); }
+.card-pastel.lavender .subject-art { --art-face: #E9E7FE; --art-side: #7D76E6; --art-cast: rgba(60,52,170,.3); }
+.card-pastel.peach .subject-art { --art-face: #FFE6D3; --art-side: #D9732B; --art-cast: rgba(150,66,14,.3); }
+.card-pastel.yellow .subject-art { --art-face: #FFF4CC; --art-side: #D9A814; --art-cast: rgba(140,100,0,.28); }
+a.card-pastel:hover .subject-art, a.card-pastel:focus-visible .subject-art { rotate: 0deg; scale: 1.08;
+  filter: drop-shadow(var(--art-d) var(--art-d) 0 var(--art-side, #A9A9B4)) drop-shadow(var(--art-d) var(--art-d) 0 var(--art-side, #A9A9B4))
+          drop-shadow(var(--art-d) var(--art-d) 0 var(--art-side, #A9A9B4)) drop-shadow(4px 14px 10px var(--art-cast, rgba(28,28,33,.16))); }
+.m-tilting .subject-art { translate: var(--m-px, 0) var(--m-py, 0); transition: rotate .5s cubic-bezier(.16,1,.3,1), scale .5s cubic-bezier(.16,1,.3,1), translate .12s linear, filter .5s cubic-bezier(.16,1,.3,1); }
+/* The subject's small icon sits on a raised white disc: a light top edge, a shaded bottom edge and a soft shadow */
+.subject-icon { box-shadow: inset 0 1.5px 0 rgba(255,255,255,.9), inset 0 -2.5px 0 rgba(28,28,33,.08), 0 6px 10px -6px rgba(28,28,33,.35); }
+.subject-icon svg { filter: drop-shadow(.75px 1px 0 rgba(28,28,33,.18)); }
+/* The "Add subject" tile at the end of the subjects grid */
+.subject-add { display: flex; min-height: 8.5rem; flex-direction: column; justify-content: space-between; border-radius: 1.5rem; padding: 1rem;
+  border: 2px dashed #C9C9D3; color: #1C1C21; transition: border-color .2s ease, background-color .2s ease; }
+.subject-add:hover, .subject-add:focus-visible { border-color: #A8A3F7; background: #fff; }
+.subject-add .subject-add-plus { transition: rotate .3s cubic-bezier(.16,1,.3,1); }
+.subject-add:hover .subject-add-plus { rotate: 90deg; }
+
+/* The office picker (Member Records and the admin Home's Officers cards): a white pill with a select */
+.rec-select { display: flex; align-items: center; gap: .25rem; height: 2.75rem; padding: 0 .9rem; border-radius: 999px; background: #fff; }
+.rec-select select { flex: 1; min-width: 0; appearance: none; background: transparent; outline: none; font-weight: 700; font-size: .95rem; cursor: pointer; }
+.rec-select:focus-within { box-shadow: 0 0 0 2px #1C1C21; }
+.rec-select svg { flex: none; pointer-events: none; color: #5E5E68; }
+
 /* Four-point sparkle stars (a large one and a small one). The old ✦ text in the markup is hidden. */
 .sparkle { position: absolute; top: 14px; right: 16px; width: 18px; height: 18px; font-size: 0; color: #fff; pointer-events: none; }
 .sparkle::before, .sparkle::after {
@@ -148,16 +186,30 @@ a { text-underline-offset: .2em; }
 .cal-day.selected.has-task::after { background: #FFD34E; }
 
 /* Sheets / drawers */
-.sheet-backdrop { background: rgba(28,28,33,.45); animation: fade .2s ease; }
-.sheet { animation: slide-up .25s cubic-bezier(.2,.8,.2,1); }
-.drawer { animation: slide-left .25s cubic-bezier(.2,.8,.2,1); }
+.sheet-backdrop { background: rgba(28,28,33,.45); animation: fade .24s ease; }
+.sheet { animation: slide-up .42s cubic-bezier(.16,1,.3,1); }
+.drawer { animation: slide-left .42s cubic-bezier(.16,1,.3,1); }
+/* Closing: exits are quicker than entrances */
+.is-closing .sheet-backdrop { animation: fade-out .18s ease forwards; }
+.is-closing .sheet { animation: sheet-out .2s cubic-bezier(.4,0,1,1) forwards; }
+.is-closing .drawer { animation: drawer-out .2s cubic-bezier(.4,0,1,1) forwards; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes sheet-out { to { transform: translateY(48px); opacity: 0; } }
+@keyframes drawer-out { to { transform: translateX(48px); opacity: 0; } }
 /* Keep drawer sections at full height; the drawer scrolls instead of squashing them */
 .drawer > * { flex-shrink: 0; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes slide-up { from { transform: translateY(40px); opacity: 0; } }
 @keyframes slide-left { from { transform: translateX(40px); opacity: 0; } }
 
-.toast { animation: slide-up .25s cubic-bezier(.2,.8,.2,1); }
+.toast { animation: toast-in .45s cubic-bezier(.16,1,.3,1); }
+.toast.is-leaving { animation: toast-out .18s ease forwards; }
+.toast .m-toast-icon { animation: icon-pop .5s .12s cubic-bezier(.34,1.56,.64,1) both; }
+.toast .m-toast-icon svg path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw .36s .26s ease-out forwards; }
+@keyframes toast-in { from { transform: translateY(24px) scale(.96); opacity: 0; } }
+@keyframes toast-out { to { transform: translateY(12px); opacity: 0; } }
+@keyframes icon-pop { from { transform: scale(.4); } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
 
 /* Misc */
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -167,6 +219,92 @@ a { text-underline-offset: .2em; }
 .skeleton { background: linear-gradient(90deg, #EBEBF0 0%, #F4F4F7 50%, #EBEBF0 100%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 1.25rem; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
+/* Stat cards (the reference's "Lessons 78" / "Hours 43"): a coloured border and a coloured corner tab with the icon */
+.stat-card { position: relative; display: block; overflow: hidden; isolation: isolate; border-radius: 1.75rem; padding: .9rem 1rem 1rem; border: 2px solid; min-height: 8.5rem; }
+.stat-card.orange { background: #fff; border-color: #F7A262; }
+.stat-card.periwinkle { background: #ECEBFE; border-color: #A8A3F7; }
+.stat-tab { position: absolute; left: -2px; top: -2px; width: 3.4rem; height: 3.4rem; display: grid; place-items: center; border-bottom-right-radius: 1.6rem; color: #1C1C21; }
+.stat-card.orange .stat-tab { background: #F9B886; }
+.stat-card.periwinkle .stat-tab { background: #C9C6FB; }
+.stat-label { margin-left: 2.9rem; font-size: .8125rem; font-weight: 600; line-height: 1.25rem; color: #1C1C21; }
+.stat-num { margin-top: .9rem; font-size: 2.5rem; line-height: 1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat-card .stat-num + * { margin-top: .4rem; }
+
+/* ===================================================================== motion & interaction
+   One grammar: confident deceleration (cubic-bezier(.16,1,.3,1)), feedback 100–150 ms, state 200–300 ms,
+   overlays about 400 ms. Content is visible by default; Motion (js/ui.js) only adds classes. */
+
+/* Page to page: a quick cross-fade while the nav stays put (cross-document view transitions) */
+@view-transition { navigation: auto; }
+::view-transition-old(root) { animation: vt-out .16s ease both; }
+::view-transition-new(root) { animation: vt-in .26s cubic-bezier(.16,1,.3,1) both; }
+.nav-pill { view-transition-name: main-nav; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* First paint of a page: its cards arrive as a short list (capped stagger, set by Motion.enter) */
+.m-enter { animation: m-rise .5s var(--m-d, 0ms) cubic-bezier(.16,1,.3,1) both; }
+@keyframes m-rise { from { opacity: 0; transform: translateY(14px) scale(.985); } }
+
+/* Press feedback: a ripple from the touch point, drawn in a host layer so the element keeps its layout */
+.m-ripple-host { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 0; }
+.m-ripple { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 9999px; background: currentColor; opacity: .22; animation: m-ripple .55s cubic-bezier(.16,1,.3,1) forwards; }
+@keyframes m-ripple { to { transform: scale(var(--m-r, 30)); opacity: 0; } }
+
+/* Coloured boxes are interactive: they lean toward the pointer, catch the light, and their illustration drifts */
+.card-pastel, .stat-card { transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .3s ease, scale .15s ease; }
+.m-tilting { transform: perspective(900px) rotateX(var(--m-rx, 0deg)) rotateY(var(--m-ry, 0deg)); transition: transform .12s linear, box-shadow .3s ease, scale .15s ease; }
+.m-tilting::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+  background: radial-gradient(circle at var(--m-gx, 50%) var(--m-gy, 50%), rgba(255,255,255,.32), transparent 48%); }
+.card-pastel.dark.m-tilting::after { background: radial-gradient(circle at var(--m-gx, 50%) var(--m-gy, 50%), rgba(255,255,255,.1), transparent 50%); }
+.card-pastel .illus, .card-pastel img[src*="badge-cap"] { transition: translate .4s cubic-bezier(.16,1,.3,1); }
+.m-tilting .illus, .m-tilting img[src*="badge-cap"] { translate: var(--m-px, 0) var(--m-py, 0); transition: translate .12s linear; }
+.card-pastel:active, .stat-card:active, a.act-card:active { scale: .985; }
+.card-pastel:hover .sparkle::before, .card-pastel:focus-visible .sparkle::before { animation: m-twinkle .7s cubic-bezier(.16,1,.3,1); }
+@keyframes m-twinkle { 40% { transform: scale(1.35) rotate(25deg); } }
+/* The arrow in a hero's round button nudges forward on hover */
+a.card-pastel .rounded-full > svg { transition: transform .2s cubic-bezier(.16,1,.3,1); }
+a.card-pastel:hover .rounded-full > svg { transform: translateX(3px); }
+
+/* A task just marked done: its check pops (Motion adds the class to the re-rendered button) */
+.m-pop { animation: m-pop .5s cubic-bezier(.34,1.56,.64,1); }
+@keyframes m-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } }
+
+/* Celebration layer: sparkle stars and the tossed cap (placed and moved by Motion with the Web Animations API) */
+.m-fx { position: fixed; inset: 0; pointer-events: none; z-index: 90;   /* above the intro (80) so its cap toss shows */ overflow: hidden; }
+.m-star { position: absolute; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 0c.9 7 4.9 11 12 12-7.1 1-11.1 5-12 12-.9-7-4.9-11-12-12C7.1 11 11.1 7 12 0Z'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 0c.9 7 4.9 11 12 12-7.1 1-11.1 5-12 12-.9-7-4.9-11-12-12C7.1 11 11.1 7 12 0Z'/%3E%3C/svg%3E") center / contain no-repeat; }
+.m-dot { position: absolute; width: 8px; height: 8px; border-radius: 9999px; background: currentColor; }
+.m-cap { position: absolute; width: 64px; height: 64px; filter: drop-shadow(0 10px 10px rgba(28,28,33,.25)); }
+.m-ring { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 9999px; border: 2px solid #A9A9B4; }
+
+/* Intro (once per visit): the AcadSync tile, the cap tossed above it, a burst of stars; a tap or any key skips */
+.m-intro { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: #F4F4F7; transition: opacity .35s ease, visibility .35s; }
+.m-intro.is-done { opacity: 0; visibility: hidden; }
+.m-intro-mark { display: flex; align-items: center; gap: .9rem; animation: m-rise .6s cubic-bezier(.16,1,.3,1) both; }
+.m-intro-tile { display: grid; place-items: center; width: 4rem; height: 4rem; border-radius: 1.25rem; background: #1C1C21; color: #fff; font-weight: 800; font-size: 1.15rem; }
+.m-intro-word { font-size: 1.75rem; font-weight: 800; letter-spacing: -.02em; color: #1C1C21; }
+
+/* Login / sign-up: the academic still life arrives once, piece by piece */
+.hero-academic .illus, .hero-academic img[src*="badge-cap"] { animation: m-drop .7s cubic-bezier(.16,1,.3,1) both; }
+.hero-academic .illus:nth-of-type(2) { animation-delay: .08s; }
+.hero-academic .illus:nth-of-type(3) { animation-delay: .16s; }
+.hero-academic img[src*="badge-cap"] { animation-delay: .24s; }
+.hero-academic .hero-doodle { animation: fade .8s ease both; }
+@keyframes m-drop { from { opacity: 0; transform: translateY(-18px) rotate(-6deg) scale(.92); } }
+
+/* Reduced motion: no travel, tilt, particles or intro; colour and state changes (and the toast) still confirm actions */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  @view-transition { navigation: none; }
+  .m-enter, .hero-academic .illus, .hero-academic img[src*="badge-cap"], .sheet, .drawer, .toast, .m-intro-mark, .m-pop { animation-name: fade !important; animation-duration: .15s !important; animation-delay: 0s !important; }
+  .m-ripple, .card-pastel:hover .sparkle::before, .skeleton, .toast .m-toast-icon { animation: none !important; }
+  .toast .m-toast-icon svg path { animation: none !important; stroke-dashoffset: 0 !important; }
+  .m-tilting { transform: none !important; }
+  .m-tilting::after { display: none; }
+  .m-tilting .illus, .m-tilting img[src*="badge-cap"], .m-tilting .subject-art { translate: none !important; }
+  a.card-pastel:hover .subject-art, a.card-pastel:focus-visible .subject-art { rotate: -12deg; scale: 1; }
+  .subject-add:hover .subject-add-plus { rotate: none; }
+  .card-pastel:active, .stat-card:active, a.act-card:active { scale: 1; }
+  .is-closing .sheet, .is-closing .drawer { animation: fade-out .12s ease forwards !important; }
 }
