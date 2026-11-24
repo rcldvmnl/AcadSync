@@ -440,8 +440,24 @@ classDiagram
         +balance(paid) int
         +standing(paid, now) string
     }
+    class PaymentClaim {
+        <<final>>
+        -int id
+        -Payment payment
+        -string note
+        -string status
+        -string reason
+        +__construct(id, dueId, userId, amount, method, reference, note, status, reason, createdAt)
+        +fromRow(row)$ PaymentClaim
+        +payment() Payment
+        +isPending() bool
+        +isRejected() bool
+        +confirm(receivedBy) Payment
+        +toRow(sectionId) array
+    }
     Payment <|-- CashPayment
     Payment <|-- GcashPayment
+    PaymentClaim *-- "1" Payment : what the member says they paid
     Payment "*" --> "1" Due : pays
     Payment ..> Person : paid by
     Due ..> MemberStatus : owesDues()

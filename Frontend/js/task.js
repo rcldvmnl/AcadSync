@@ -113,8 +113,8 @@ function render(t, admin) {
 
   const end = t.deadline_end || t.deadline;
   const deadlineMain = unset ? 'Not set yet'
-    : t.deadline_type === 'range' ? `${Fmt.monthDay(t.deadline)} – ${Fmt.monthDay(end)}${t.deadline_time ? ` · ${Fmt.time(t.deadline_time)}` : ''}`
-    : `${Fmt.short(end)}${t.deadline_time ? ` · ${Fmt.time(t.deadline_time)}` : ''}`;
+    : t.deadline_type === 'range' ? `${Fmt.monthDay(t.deadline)} – ${Fmt.monthDay(end)}${Fmt.dueTime(t)}`
+    : `${Fmt.short(end)}${Fmt.dueTime(t)}`;
   const deadlineSub = unset ? 'The professor hasn’t announced the exact date yet.'
     : t.deadline_ts * 1000 < Date.now() ? `Was due ${Fmt.relative(t.deadline_ts)}`
     : openRange ? `Open now · ends ${Fmt.relative(t.deadline_ts)}`

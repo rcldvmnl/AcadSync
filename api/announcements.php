@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
         $taskOption = fn (array $t) => ['id' => (int) $t['id'], 'title' => $t['title'], 'subject_code' => $ctx['subjectIndex'][(int) $t['subject_id']]['code'] ?? '',
             'deadline_label' => Deadlines::fromRow($t)->label(), 'deadline_type' => $t['deadline_type'], 'deadline' => $t['deadline'],
-            'deadline_end' => $t['deadline_end'], 'deadline_time' => $t['deadline_time'],
+            'deadline_end' => $t['deadline_end'], 'deadline_time' => $t['deadline_time'], 'deadline_until' => $t['deadline_until'] ?? null,
             'sort_ts' => Deadlines::fromRow($t)->timestamp() ?? PHP_INT_MAX, 'overdue' => (Deadlines::fromRow($t)->timestamp() ?? PHP_INT_MAX) < $c->now];
         foreach (build_timeline($ctx['tasks'], $c->now)->toArray() as $t) {   // [DSA: LINKED LIST] upcoming, by deadline (Task reminders)
             $options['tasks'][] = $taskOption($t);

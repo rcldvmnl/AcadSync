@@ -35,7 +35,7 @@ foreach ($queue->toArray() as $q) {
         $labels = [
             'title' => 'Title', 'description' => 'Description', 'category' => 'Category', 'location' => 'Where',
             'subject_id' => 'Subject', 'work_mode' => 'Individual/group', 'group_mode' => 'Group setup', 'group_min' => 'Group size', 'group_max' => 'Group size', 'group_count' => 'Number of groups', 'group_plan' => 'Assigned groups',
-            'deadline' => 'Deadline', 'deadline_end' => 'Deadline', 'deadline_time' => 'Due time', 'deadline_type' => 'Deadline',
+            'deadline' => 'Deadline', 'deadline_end' => 'Deadline', 'deadline_time' => 'Due time', 'deadline_until' => 'Due time', 'deadline_type' => 'Deadline',
         ];
         foreach ($labels as $field => $label) {
             if ((string) $q[$field] !== (string) $original[$field]) {

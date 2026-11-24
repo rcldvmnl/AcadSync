@@ -61,6 +61,7 @@ if ($action === 'approve') {
             'description' => $task['description'],
             'deadline' => $task['deadline'],
             'deadline_time' => $task['deadline_time'],
+            'deadline_until' => $task['deadline_until'] ?? null,
             'deadline_end' => $task['deadline_end'],
             'deadline_type' => $task['deadline_type'],
             'location' => $task['location'],

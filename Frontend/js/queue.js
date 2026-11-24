@@ -80,7 +80,7 @@ function updateBadges(n) {
 
 const dueText = (q) => (q.deadline_type === 'unset' ? 'Date not set yet' : q.deadline_type === 'range'
   ? `Any day ${Fmt.monthDay(q.deadline)} – ${Fmt.monthDay(q.deadline_end)}`
-  : `Due ${Fmt.short(q.deadline)}${q.deadline_time ? ` · ${Fmt.time(q.deadline_time)}` : ''}`);
+  : `Due ${Fmt.short(q.deadline)}${Fmt.dueTime(q)}`);
 const posLabel = (q) => (q.position === 1 ? '#1 · oldest' : `#${q.position} in queue`);
 
 function render() {

@@ -107,7 +107,7 @@ function render() {
         ${list.length ? list.map(card).join('') : emptyState()}
         ${oldCancelledBox()}
       </section>
-      <aside class="min-w-0 space-y-4">${mySignupsCard()}${needsPeopleCard()}${monthCard()}${myAttendanceCard()}${rulesCard()}</aside>
+      <aside class="min-w-0 space-y-4">${duesLink()}${mySignupsCard()}${needsPeopleCard()}${monthCard()}${myAttendanceCard()}${rulesCard()}</aside>
     </div>`;
   bind();
 }
@@ -376,6 +376,18 @@ function needsPeopleCard() {
         </a></li>`).join('')}
       </ul>
     </section>`;
+}
+
+/** Dues & payments: the same tappable row as the dues reminder on Home, for everyone. */
+function duesLink() {
+  const manage = Shell.can('manage_dues');
+  return `
+    <a href="dues.html" class="flex items-center gap-3 rounded-[1.5rem] bg-peach-tint p-4">
+      <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white">${icon('clipboard', 18)}</span>
+      <span class="min-w-0 flex-1"><span class="block text-sm font-semibold">${manage ? 'Dues & payments' : 'My dues & payments'}</span>
+        <span class="block truncate text-xs text-muted">${manage ? 'Record and check payments' : 'See what you owe or say you paid'}</span></span>
+      ${icon('chevronRight', 18, 'text-muted')}
+    </a>`;
 }
 
 /** This month: a 7-column calendar with a dot on each day that has an activity. */

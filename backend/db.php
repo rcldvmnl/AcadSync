@@ -53,7 +53,7 @@ final class Store
     private static function addMissingColumns(): void
     {
         $added = [
-            'tasks' => ['group_count' => 'INTEGER', 'group_mode' => 'TEXT', 'group_plan' => 'TEXT'],
+            'tasks' => ['group_count' => 'INTEGER', 'group_mode' => 'TEXT', 'group_plan' => 'TEXT', 'deadline_until' => 'TEXT'],   // deadline_until: end of a due time with a length
             // typed announcements (Announcement subclasses); older rows read as plain notices
             'announcements' => ['kind' => "TEXT NOT NULL DEFAULT 'general'", 'ref_id' => 'INTEGER', 'event_at' => 'TEXT', 'details' => 'TEXT'],
             'password_resets' => ['attempts' => 'INTEGER NOT NULL DEFAULT 0'],
@@ -193,7 +193,7 @@ final class Store
             'sections', 'users', 'memberships', 'subjects', 'class_schedules', 'tasks', 'study_groups', 'group_members',
             'approval_queue', 'undo_stack', 'notifications', 'password_resets', 'task_done', 'group_requests', 'subtasks',
             'activities', 'activity_rsvps', 'attendance', 'officer_terms', 'join_requests', 'announcements', 'dues', 'payments', 'class_cancellations',
-            'activity_parts', 'part_members', 'activity_invites',
+            'activity_parts', 'part_members', 'activity_invites', 'payment_claims',
         ];
         foreach ($allowed as $t) {
             if ($t === $name) {

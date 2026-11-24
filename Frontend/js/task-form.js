@@ -12,7 +12,7 @@ const CATEGORIES = ['Reporting', 'Quiz', 'Exam', 'Activity', 'Project'];
 const CAT_ON = { Reporting: 'bg-lavender-tint', Quiz: 'bg-lavender-tint', Exam: 'bg-peach-tint', Activity: 'bg-[#EDEDF2]', Project: 'bg-sun-tint' };
 const OTHER_SUGGESTIONS = ['Seatwork', 'Recitation', 'Laboratory', 'Film viewing', 'Field trip', 'Presentation', 'Research'];
 
-let picker, times, mode, task = null, sectionSize = 0;
+let picker, times, lengths, mode, task = null, sectionSize = 0;
 let category = 'Reporting';
 let otherLabel = '';
 // Group work: how the prof set it up (UI.GROUP_SETUPS) — number of groups, members per group, both,
@@ -105,7 +105,7 @@ function render(subjects, markers, mine) {
     submit = Submission.parse(task.location);
   }
   const full = mine && mine.pending >= mine.limit && mode !== 'fix';
-  const nowLabel = task ? (task.deadline_ts ? `Now: ${Fmt.monthDay(task.deadline_end || task.deadline)}${task.deadline_time ? ` · ${Fmt.time(task.deadline_time)}` : ''}` : 'Now: not set') : '';
+  const nowLabel = task ? (task.deadline_ts ? `Now: ${Fmt.monthDay(task.deadline_end || task.deadline)}${Fmt.dueTime(task)}` : 'Now: not set') : '';
 
   $('#main').innerHTML = `
     <form id="task-form" class="grid gap-5 lg:grid-cols-2 lg:items-start" novalidate>
@@ -127,7 +127,8 @@ function render(subjects, markers, mine) {
           </div>
           <div class="flex items-center justify-between"><span class="text-xs text-muted">Deadline</span>${task && mode !== 'fix' ? `<span class="chip bg-sun-tint">${esc(nowLabel)}</span>` : ''}</div>
           <div id="picker"></div>
-          <div id="time-wrap"><div class="mb-1.5 text-xs text-muted">Due time</div><div id="times"></div></div>
+          <div id="time-wrap"><div class="mb-1.5 text-xs text-muted">Due time</div><div id="times"></div>
+            <div class="mb-1.5 mt-3 text-xs text-muted">How long</div><div id="lengths"></div></div>
         </div>
       </div>
 
@@ -171,6 +172,7 @@ function render(subjects, markers, mine) {
   });
   $('#time-wrap').hidden = (task?.deadline_type || 'exact') === 'unset';
   times = createTimeChips($('#times'), { value: task?.deadline_time || '23:59' });
+  lengths = createLengthChips($('#lengths'), { start: () => times.value(), until: task?.deadline_until || null });
   $('#cancel').onclick = () => history.back();
 
   const form = $('#task-form');
@@ -186,6 +188,7 @@ function render(subjects, markers, mine) {
     const when = picker.value();
     if (when.type !== 'unset' && !when.start) throw new Error('Pick a deadline date on the calendar.');
     if (when.type === 'range' && !when.end) throw new Error('Pick the last day of the range.');
+    if (when.type !== 'unset' && lengths.error()) throw new Error(lengths.error());
     const cat = category === 'Other' ? (d.other_label || '').trim() : category;
     if (category === 'Other' && cat.length < 2) throw new Error('Type what kind of task it is.');
     const body = {
@@ -202,6 +205,7 @@ function render(subjects, markers, mine) {
       deadline: when.start,
       deadline_end: when.type === 'range' ? when.end : null,
       deadline_time: when.type === 'unset' ? null : times.value(),
+      deadline_until: when.type === 'unset' ? null : lengths.value(),
       target_task_id: mode === 'change' || mode === 'edit' ? task.id : null,
     };
     const res = await API.post('request_task.php', body);

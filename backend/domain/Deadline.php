@@ -34,18 +34,21 @@ interface Deadline
     public function attentionAt(int $now): ?int;
 }
 
-/** What every dated deadline shares: the last day and an optional time (default 11:59 PM). */
+/**
+ * What every dated deadline shares: the last day and an optional time (default 11:59 PM). The time may have
+ * a length ($until, e.g. 9:00–11:00 AM for a 2-hour quiz): then it is due when that time ends.
+ */
 abstract class DatedDeadline implements Deadline
 {
     protected const DEFAULT_TIME = '23:59';
 
-    public function __construct(protected string $lastDay, protected ?string $time = null)
+    public function __construct(protected string $lastDay, protected ?string $time = null, protected ?string $until = null)
     {
     }
 
     public function timestamp(): ?int
     {
-        $ts = strtotime($this->lastDay . ' ' . ($this->time ?: self::DEFAULT_TIME));
+        $ts = strtotime($this->lastDay . ' ' . ($this->until ?: $this->time ?: self::DEFAULT_TIME));
         return $ts === false ? null : $ts;
     }
 
@@ -67,7 +70,17 @@ abstract class DatedDeadline implements Deadline
 
     protected function timeLabel(): string
     {
-        return $this->time ? ' · ' . date('g:i A', (int) strtotime($this->time)) : ' · 11:59 PM';
+        if (!$this->time) {
+            return ' · 11:59 PM';
+        }
+        $label = ' · ' . date('g:i A', (int) strtotime($this->time));
+        return $this->until ? $label . ' – ' . date('g:i A', (int) strtotime($this->until)) : $label;
+    }
+
+    /** End of the due time ("HH:MM"), or null when the time has no length. */
+    public function until(): ?string
+    {
+        return $this->until;
     }
 
     public function lastDay(): string
@@ -93,9 +106,9 @@ final class ExactDeadline extends DatedDeadline
 /** May be submitted on any day of a range; the last day counts as the deadline. */
 final class RangeDeadline extends DatedDeadline
 {
-    public function __construct(private string $firstDay, string $lastDay, ?string $time = null)
+    public function __construct(private string $firstDay, string $lastDay, ?string $time = null, ?string $until = null)
     {
-        parent::__construct($lastDay, $time);
+        parent::__construct($lastDay, $time, $until);
     }
 
     public function type(): string
@@ -165,10 +178,11 @@ final class Deadlines
             return new NoDeadline();
         }
         $time = !empty($task['deadline_time']) ? (string) $task['deadline_time'] : null;
+        $until = $time !== null && !empty($task['deadline_until']) ? (string) $task['deadline_until'] : null;
         if (!empty($task['deadline_end']) && !empty($first) && $first !== $task['deadline_end']) {
-            return new RangeDeadline((string) $first, (string) $last, $time);
+            return new RangeDeadline((string) $first, (string) $last, $time, $until);
         }
-        return new ExactDeadline((string) $last, $time);
+        return new ExactDeadline((string) $last, $time, $until);
     }
 }
 

@@ -77,11 +77,12 @@ function task_fields(array $ctx, ?array $base): array
             'deadline' => param('deadline', $base['deadline'] ?? null),
             'deadline_end' => param('deadline_end', $base['deadline_end'] ?? null),
             'deadline_time' => param('deadline_time', $base['deadline_time'] ?? null),
+            'deadline_until' => param('deadline_until', $base['deadline_until'] ?? null),
         ], date('Y-m-d'));
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage());
     }
-    ['deadline_type' => $type, 'deadline' => $deadline, 'deadline_end' => $deadlineEnd, 'deadline_time' => $time] = $when;
+    ['deadline_type' => $type, 'deadline' => $deadline, 'deadline_end' => $deadlineEnd, 'deadline_time' => $time, 'deadline_until' => $until] = $when;
 
     // Individual or group work, and for group work how the prof set the groups up
     $mode = (string) param('work_mode', $base['work_mode'] ?? 'individual');
@@ -120,6 +121,7 @@ function task_fields(array $ctx, ?array $base): array
         'description' => $description,
         'deadline' => $deadline,
         'deadline_time' => $time,
+        'deadline_until' => $until,
         'deadline_end' => $deadlineEnd,
         'deadline_type' => $type,
         'location' => (string) param('location', $base['location'] ?? ''),

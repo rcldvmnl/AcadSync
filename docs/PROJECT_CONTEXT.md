@@ -128,6 +128,10 @@ router.php, .htaccess, .env.example, .gitignore
 - `Payment` (abstract) → `CashPayment` (receipt no. optional), `GcashPayment` (13-digit ref, must be
   unique: `referenceIsUnique()`); built by `Payment::create($method, …)`. `Due` (final) holds a fee,
   `balance()` and `standing()` (paid / partial / overdue / unpaid). Money is stored as centavos.
+  "I already paid": `PaymentClaim` (final, HAS-A Payment, table `payment_claims`, status pending | approved |
+  rejected). Members `claim_payment` / `withdraw_claim` (one waiting claim per due; amount ≤ balance; GCash ref
+  unused by payments and other waiting claims); Treasurer/President `confirm_claim` (re-reads payments under the
+  write lock, then inserts the payment) or `reject_claim` (optional reason). Shown in `dues.js` (`claimBox`).
 - `Announcement` (abstract) → `GeneralNotice`, `PaymentNotice`, `NoClassNotice`, `DeadlineChangeNotice`,
   `TaskNotice`, `EventNotice` (`announcements.kind`; old rows without a kind read as `GeneralNotice`).
   Built by `Announcement::fromInput($kind, $input, AnnouncementContext)`, which validates; `apply()` does the
@@ -150,6 +154,9 @@ router.php, .htaccess, .env.example, .gitignore
   groups stay when the count is fixed. Empty groups are joined directly (first in = leader).
 - `Deadline` interface → `DatedDeadline` → `ExactDeadline`/`RangeDeadline`, plus `NoDeadline`
   (`opensAt()` / `attentionAt()`: an open date range counts as today on the schedule).
+  The due time may have a length (`tasks.deadline_until`, "How long" chips `createLengthChips` in `ui.js`:
+  No length / 1 / 2 / 4 hours / Until…): label "9:00 AM – 11:00 AM", and the task is due at the end time.
+  Same day only (`validate_deadline` refuses an end that isn't after the start). `Fmt.dueTime(t)` words it.
 - `Activity` (abstract) → `RsvpActivity` (abstract) → `Meeting` (everyone expected, anyone checked in),
   `Seminar` (seat needed), `Outreach` (volunteers expected, walk-ins allowed), `SectionEvent` (kind `event`:
   open to everyone, anyone checked in, never counts against anyone); and `PartsActivity`

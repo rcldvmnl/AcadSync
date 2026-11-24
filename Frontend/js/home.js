@@ -289,7 +289,7 @@ const Announcements = {
         const list = s.kind === 'deadline_change' ? (o.deadline_tasks || o.tasks) : o.tasks;   // a deadline that just passed can still be moved
         if (!list.length) return '<p class="rounded-2xl bg-canvas p-3 text-sm text-muted">There are no upcoming tasks.</p>';
         return `${select('task_id', 'Which task', list, (t) => `<option value="${t.id}">${esc(t.title)} · ${esc(t.subject_code)} · ${t.overdue ? 'was ' : ''}${esc(t.deadline_label)}</option>`)}
-          ${s.kind === 'deadline_change' ? '<div><span class="mb-1.5 block text-xs text-muted">New deadline</span><div data-picker></div><div data-times class="mt-3"></div></div>' : ''}`;
+          ${s.kind === 'deadline_change' ? '<div><span class="mb-1.5 block text-xs text-muted">New deadline</span><div data-picker></div><div data-times class="mt-3"></div><span class="mb-1.5 mt-3 block text-xs text-muted">How long</span><div data-lengths></div></div>' : ''}`;
       }
       if (s.kind === 'event') {
         return `${toggle('event', o.can_create_activity, o.activities.length > 0)}
@@ -323,6 +323,7 @@ const Announcements = {
     const form = $('form', el);
     let picker = null;
     let times = null;
+    let lengths = null;
 
     /** What the server would write as the title when it's left empty (shown as the placeholder). */
     const defaultTitle = (v) => {
@@ -371,8 +372,8 @@ const Announcements = {
         body.task_id = t?.id; v.task = t;
         if (s.kind === 'deadline_change' && picker) {
           const p = picker.value();
-          Object.assign(body, { deadline_type: p.type, deadline: p.start, deadline_end: p.type === 'range' ? p.end : null, deadline_time: p.type === 'unset' ? null : times.value() });
-          const to = p.type === 'unset' ? 'Date not set yet' : p.start ? `${p.type === 'range' && p.end ? `${Fmt.monthDay(p.start)} – ${Fmt.monthDay(p.end)}` : Fmt.short(p.start)} · ${Fmt.time(times.value())}` : 'pick a date';
+          Object.assign(body, { deadline_type: p.type, deadline: p.start, deadline_end: p.type === 'range' ? p.end : null, deadline_time: p.type === 'unset' ? null : times.value(), deadline_until: p.type === 'unset' ? null : lengths.value() });
+          const to = p.type === 'unset' ? 'Date not set yet' : p.start ? `${p.type === 'range' && p.end ? `${Fmt.monthDay(p.start)} – ${Fmt.monthDay(p.end)}` : Fmt.short(p.start)}${Fmt.dueTime({ deadline_time: times.value(), deadline_until: lengths.value() })}` : 'pick a date';
           card.lines = t ? [t.title, `${t.deadline_label} → ${to}`] : [];
           card.event_ts = p.start ? Fmt.date(p.type === 'range' && p.end ? p.end : p.start).getTime() / 1000 : null;
         } else if (t) {
@@ -439,12 +440,13 @@ const Announcements = {
         <button type="button" role="radio" data-kind="${k.kind}" aria-checked="${s.kind === k.kind}"
           class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium ${s.kind === k.kind ? 'bg-charcoal text-white' : `${ANN_TONE[k.kind]} hover:opacity-80`}">${icon(k.icon, 14)}${esc(k.label)}</button>`).join('');
       $('[data-fields]', el).innerHTML = fieldsFor();
-      picker = times = null;
+      picker = times = lengths = null;
       const pk = $('[data-picker]', el);
       if (pk) {
         const t = [...(o.deadline_tasks || []), ...o.tasks].find((x) => x.id === Number(form.elements.task_id.value));
         picker = createDatePicker(pk, { type: t?.deadline_type === 'unset' ? 'exact' : (t?.deadline_type || 'exact'), start: null, end: null, onChange: preview });
         times = createTimeChips($('[data-times]', el), { value: t?.deadline_time || '23:59', onChange: preview });
+        lengths = createLengthChips($('[data-lengths]', el), { start: () => times.value(), until: t?.deadline_until || null, onChange: preview });
       }
       $$('[data-kind]', el).forEach((b) => b.onclick = () => { s.kind = b.dataset.kind; renderKind(); });
       $$('[data-mode]', el).forEach((b) => b.onclick = () => { const [key, m] = b.dataset.mode.split(':'); s.mode[key] = m; renderKind(); });
@@ -460,6 +462,7 @@ const Announcements = {
     UI.bindForm(form, async () => {
       const { body } = read();
       if (s.kind === 'general' && !body.title.trim()) throw new Error('Give the announcement a title.');
+      if (s.kind === 'deadline_change' && lengths?.error()) throw new Error(lengths.error());
       await API.post('announcements.php', body);
       sheet.close();
       UI.toast('Announcement posted', { sub: 'Everyone was notified' });

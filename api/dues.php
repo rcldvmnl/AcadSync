@@ -8,6 +8,11 @@
  *   action=cancel_due      {due_id}
  *   action=record_payment  {due_id, user_id, amount, method: cash|gcash, reference?}
  *   action=remove_payment  {payment_id}                                  a payment entered by mistake
+ *   action=confirm_claim   {claim_id}                                    "I already paid" → a real payment
+ *   action=reject_claim    {claim_id, reason?}                           not received; the member is told why
+ * POST (any member charged the due)
+ *   action=claim_payment   {due_id, amount, method, reference?, note?}  "I already paid": the Treasurer checks it
+ *   action=withdraw_claim  {claim_id}                                    your own waiting claim
  *
  * [OOP] Payment::create() builds a CashPayment or GcashPayment; each checks its own reference and
  *       writes its own receipt line. MemberStatus::owesDues() decides who is charged (active members).
@@ -36,6 +41,26 @@ foreach (section_rows('dues', $sectionId) as $row) {
 $payments = [];
 foreach (section_rows('payments', $sectionId) as $row) {
     $payments[] = Payment::fromRow($row);
+}
+
+/**
+ * "I already paid" claims. $pending[dueId][userId] = the member's waiting claim (one at a time);
+ * $lastClaim[dueId][userId] = their newest claim (shows "not received" until they send another).
+ */
+$claims = [];
+$pending = [];
+$lastClaim = [];
+foreach (section_rows('payment_claims', $sectionId) as $row) {
+    $c = PaymentClaim::fromRow($row);
+    $p = $c->payment();
+    $claims[$c->id()] = $c;
+    if ($c->isPending()) {
+        $pending[$p->dueId()][$p->userId()] = $c;
+    }
+    $before = $lastClaim[$p->dueId()][$p->userId()] ?? null;
+    if ($before === null || $c->id() > $before->id()) {
+        $lastClaim[$p->dueId()][$p->userId()] = $c;
+    }
 }
 
 /** Total paid per due per member: [dueId][userId] => centavos. */
@@ -122,6 +147,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'my_balance_label' => Due::peso($charged ? $due->balance($mine) : 0),
             'my_standing' => $charged ? $due->standing($mine, $now) : 'not_charged',
         ];
+        // "I already paid": your waiting claim, or the last one the Treasurer couldn't confirm
+        $open = $charged && $due->balance($mine) > 0;
+        $last = $lastClaim[$id][$uid] ?? null;
+        $item['my_claim'] = $open && isset($pending[$id][$uid]) ? $pending[$id][$uid]->toArray() : null;
+        $item['my_rejected'] = $open && $item['my_claim'] === null && $last !== null && $last->isRejected() ? $last->toArray() : null;
         $myBalance += $item['my_balance'];
 
         if ($canManage) {
@@ -129,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $fullyPaid = new HashSet();
             $rows = [];
             $collected = 0;
+            $toCheck = 0;                                   // "I already paid" claims waiting on this due
             foreach ($sortedMembers as $m) {
                 $mid = (int) $m['id'];
                 if (!$isCharged($m, $id)) {
@@ -151,7 +182,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'paid' => $got, 'paid_label' => Due::peso($got),
                     'balance' => $due->balance($got), 'balance_label' => Due::peso($due->balance($got)),
                     'standing' => $due->standing($got, $now), 'payments' => $history,
+                    // what the member says they paid, waiting for a check (only while something is left)
+                    'claim' => $due->balance($got) > 0 && isset($pending[$id][$mid]) ? $pending[$id][$mid]->toArray() : null,
                 ];
+                if ($rows[count($rows) - 1]['claim'] !== null) {
+                    $toCheck++;
+                }
             }
             $item += [
                 'members' => $rows,
@@ -160,6 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'collected' => $collected,
                 'collected_label' => Due::peso($collected),
                 'target_label' => Due::peso($due->amount() * count($rows)),
+                'claims_count' => $toCheck,
             ];
         }
         $list[] = $item;
@@ -190,9 +227,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 /* ------------------------------------------------------------------ writes */
 require_method('POST');
-if (!$canManage) {
-    fail('Only the Treasurer or the President handles dues.', 403);
-}
 $fullName = $me->fullName();
 
 /** The open due named by due_id, or a 404. */
@@ -203,6 +237,87 @@ $openDue = function () use ($dues): Due {
     }
     return $due;
 };
+
+/**
+ * [DSA: HASHSET] the references of this method already used by a payment, or by another member's waiting
+ * claim (a GCash reference proves one transfer, so it counts once). $payments may be re-read rows.
+ */
+$usedRefs = function (string $method, array $paymentList, int $skipClaimId = 0) use (&$claims): HashSet {
+    $refs = new HashSet();
+    foreach ($paymentList as $p) {
+        if ($p->referenceIsUnique() && $p->method() === $method) {
+            $refs->add((string) $p->reference());
+        }
+    }
+    foreach ($claims as $c) {
+        if ($c->isPending() && $c->id() !== $skipClaimId && $c->payment()->referenceIsUnique() && $c->payment()->method() === $method) {
+            $refs->add((string) $c->payment()->reference());
+        }
+    }
+    return $refs;
+};
+
+/** The waiting claim named by claim_id (in this section), or a 404. */
+$pendingClaim = function () use (&$claims): PaymentClaim {
+    $c = $claims[(int) param('claim_id', 0)] ?? null;
+    if ($c === null || !$c->isPending()) {
+        fail('That claim was already handled.', 404);
+    }
+    return $c;
+};
+
+/* ---- "I already paid": any member who still owes a due (no MANAGE_DUES needed) ---- */
+$action = (string) param('action');
+try {
+    if ($action === 'claim_payment') {
+        $due = $openDue();
+        $mine = $paid[$due->id()][$uid] ?? 0;
+        if (!$me->status()->owesDues() && $mine === 0) {   // [POLYMORPHISM] the status decides who is charged
+            fail('You aren’t charged this due.', 403);
+        }
+        $balance = $due->balance($mine);
+        if ($balance === 0) {
+            fail("You’ve already paid {$due->title()} in full.", 409);
+        }
+        if (isset($pending[$due->id()][$uid])) {
+            fail('You already told the Treasurer about a payment for this. Wait for them to check it, or withdraw it first.', 409);
+        }
+        $amount = Due::centavos((string) param('amount', ''));
+        if ($amount === null) {
+            fail('Enter the amount in pesos, e.g. 150 or 150.50.');
+        }
+        if ($amount > $balance) {
+            fail('That’s more than what’s left: ' . Due::peso($balance) . '.');
+        }
+        // [OOP: ENCAPSULATION] the claim builds a CashPayment / GcashPayment, which checks the reference
+        $claim = new PaymentClaim(0, $due->id(), $uid, $amount, (string) param('method', ''), (string) param('reference', ''), (string) param('note', ''));
+        $p = $claim->payment();
+        if ($p->referenceIsUnique() && $usedRefs($p->method(), $payments)->contains((string) $p->reference())) {
+            fail('That GCash reference number was already used for another payment.', 409);
+        }
+        $id = Store::insert('payment_claims', $claim->toRow($sectionId));
+        foreach ($ctx['members'] as $m) {                  // the Treasurer and the President check it
+            if ((int) $m['id'] !== $uid && Person::fromRow($m)->can(Permission::MANAGE_DUES)) {
+                notify((int) $m['id'], $sectionId, 'dues', "$fullName says they paid " . Due::peso($amount) . " for {$due->title()} ({$p->receiptLine()}). Check it and confirm.", 'dues.html');
+            }
+        }
+        respond(['id' => $id], 201);
+    }
+    if ($action === 'withdraw_claim') {
+        $c = $pendingClaim();
+        if ($c->payment()->userId() !== $uid) {
+            fail('You can only withdraw your own claim.', 403);
+        }
+        Store::delete('payment_claims', $c->id());
+        respond();
+    }
+} catch (InvalidArgumentException $e) {
+    fail($e->getMessage());   // the claim's Payment refused the method, amount or reference
+}
+
+if (!$canManage) {
+    fail('Only the Treasurer or the President handles dues.', 403);
+}
 
 try {
     switch (param('action')) {
@@ -281,6 +396,57 @@ try {
             Store::delete('payments', $target->id());
             $title = isset($dues[$target->dueId()]) ? $dues[$target->dueId()]->title() : 'a due';
             notify($target->userId(), $sectionId, 'dues', "$fullName removed a " . Due::peso($target->amount()) . " payment for $title (entered by mistake)", 'dues.html');
+            respond();
+        }
+
+        case 'confirm_claim': {
+            // The money is there: the claim becomes a real payment, received by this officer
+            $c = $pendingClaim();
+            $due = $dues[$c->payment()->dueId()] ?? null;
+            if ($due === null || !$due->isOpen()) {
+                fail('That due was cancelled.', 404);
+            }
+            $payment = $c->confirm($uid);                   // [OOP: COMPOSITION] built from the claim's own Payment
+            Store::begin();
+            Store::update('payment_claims', $c->id(), ['status' => PaymentClaim::APPROVED, 'reviewed_by' => $uid]);   // takes the write lock first
+            $fresh = [];                                    // re-read under the lock: nobody records the same money twice
+            $got = 0;
+            foreach (section_rows('payments', $sectionId) as $row) {
+                $p = Payment::fromRow($row);
+                $fresh[] = $p;
+                if ($p->dueId() === $due->id() && $p->userId() === $payment->userId()) {
+                    $got += $p->amount();
+                }
+            }
+            $balance = $due->balance($got);
+            if ($payment->amount() > $balance) {
+                Store::rollbackIfOpen();
+                fail($balance === 0 ? 'They’ve already paid this in full. Mark it not received instead.'
+                    : 'That’s more than what’s left: ' . Due::peso($balance) . '. Record the right amount instead.', 409);
+            }
+            if ($payment->referenceIsUnique() && $usedRefs($payment->method(), $fresh, $c->id())->contains((string) $payment->reference())) {
+                Store::rollbackIfOpen();
+                fail('That GCash reference number was already used for another payment.', 409);
+            }
+            $id = Store::insert('payments', $payment->toRow($sectionId));
+            Store::commit();
+            $left = $balance - $payment->amount();
+            notify($payment->userId(), $sectionId, 'dues', "$fullName confirmed your " . Due::peso($payment->amount()) . " payment for {$due->title()}"
+                . ($left > 0 ? ' (' . Due::peso($left) . ' left)' : ' (paid in full)'), 'dues.html');
+            respond(['id' => $id, 'left' => $left, 'left_label' => Due::peso($left)], 201);
+        }
+
+        case 'reject_claim': {
+            // Not received: the member is told why and can check and send it again
+            $c = $pendingClaim();
+            $reason = trim((string) preg_replace('/\s+/', ' ', (string) param('reason', '')));
+            if (mb_strlen($reason) > 200) {
+                fail('Keep the reason under 200 characters.');
+            }
+            Store::update('payment_claims', $c->id(), ['status' => PaymentClaim::REJECTED, 'reason' => $reason ?: null, 'reviewed_by' => $uid]);
+            $title = isset($dues[$c->payment()->dueId()]) ? $dues[$c->payment()->dueId()]->title() : 'a due';
+            notify($c->payment()->userId(), $sectionId, 'dues', "$fullName couldn’t confirm your " . Due::peso($c->payment()->amount()) . " payment for $title"
+                . ($reason !== '' ? ": $reason" : '') . '. Check it and tell them again.', 'dues.html');
             respond();
         }
 

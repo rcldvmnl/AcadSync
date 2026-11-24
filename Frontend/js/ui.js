@@ -100,6 +100,11 @@ const Fmt = {
     const [h, m] = hhmm.split(':').map(Number);
     return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
   },
+  /** " · 9:00 AM", or " · 9:00 AM – 11:00 AM" when the due time has a length; '' without a time. */
+  dueTime(t) {
+    if (!t.deadline_time) return '';
+    return ` · ${Fmt.time(t.deadline_time)}${t.deadline_until ? ` – ${Fmt.time(t.deadline_until)}` : ''}`;
+  },
   short(d) { const x = Fmt.date(d); return `${DAYS[x.getDay()]}, ${MONTHS[x.getMonth()]} ${x.getDate()}`; },
   monthDay(d) { const x = Fmt.date(d); return `${MONTHS[x.getMonth()]} ${x.getDate()}`; },
   long(d) { const x = Fmt.date(d); return `${DAYS_LONG[x.getDay()]}, ${MONTHS_LONG[x.getMonth()]} ${x.getDate()}`; },
@@ -124,7 +129,7 @@ const Fmt = {
   due(task) {
     if (task.deadline_type === 'unset' || !task.deadline_ts) return 'Date not set yet';
     const end = task.deadline_end || task.deadline;
-    const time = task.deadline_time ? ` · ${Fmt.time(task.deadline_time)}` : '';
+    const time = Fmt.dueTime(task);
     if (task.deadline_type === 'range') {
       if (!Fmt.isOpenRange(task)) return `Any day ${Fmt.monthDay(task.deadline)} – ${Fmt.monthDay(end)}${time}`;
       // Open now: say plainly that today counts, and which day is the last
@@ -648,7 +653,7 @@ const Shell = {
     const fab = items.find((it) => it.fab);
     const acct = items.find((it) => it.key === 'account');
     rail.innerHTML = `
-      <a href="home.html" class="mb-8 grid h-11 w-11 place-items-center rounded-xl bg-lavender text-sm font-bold text-charcoal" aria-label="AcadSync home">AS</a>
+      <a href="home.html" class="mb-8 grid h-11 w-11 place-items-center rounded-xl bg-lavender text-sm font-bold text-charcoal" aria-label="AcadSync home"><img src="assets/logo-128.png" alt="" width="32" height="32" class="h-8 w-8"></a>
       <div class="flex flex-col items-center gap-3">
         ${railItems.map((it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${active === it.key ? 'active' : ''}" title="${it.label}" aria-label="${it.label}">${icon(it.icon, 20)}${badge(it)}</a>`).join('')}
         <a href="${fab.href}" class="nav-fab mt-1" title="${fab.label}" aria-label="${fab.label}">${icon('plus', 22)}</a>
@@ -840,6 +845,56 @@ function createTimeChips(root, { options = ['07:00', '08:00', '10:00', '13:00', 
   }
   render();
   return { value: () => current, set(v) { current = v; render(); } };
+}
+
+/**
+ * "How long" chips under the due time: No length · 1 hour · 2 hours · 4 hours · Until… (a picked end time).
+ * start() gives the due time ("HH:MM"); until is a saved end time. value() = the end "HH:MM" or null;
+ * error() = what's wrong (the length goes past midnight, or the end isn't after the start), else ''.
+ * Same chip look as createTimeChips.
+ */
+function createLengthChips(root, { start, until = null, onChange } = {}) {
+  const PRESETS = [60, 120, 240];
+  const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const toTime = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+  // A saved end that is exactly 1, 2 or 4 hours after the start shows as that chip; anything else as Until…
+  const diff = until && start() ? toMin(until) - toMin(start()) : null;
+  let mode = !until ? 'none' : PRESETS.includes(diff) ? diff : 'until';
+  let end = mode === 'until' ? until : null;
+  const chip = (on) => `rounded-full px-4 py-2.5 text-sm font-medium ${on ? 'bg-charcoal text-white' : 'bg-canvas'}`;
+  function render() {
+    root.innerHTML = `<div class="flex flex-wrap gap-2">
+      <button type="button" data-len="none" aria-pressed="${mode === 'none'}" class="${chip(mode === 'none')}">No length</button>
+      ${PRESETS.map((n) => `<button type="button" data-len="${n}" aria-pressed="${mode === n}" class="${chip(mode === n)}">${n / 60} hour${n > 60 ? 's' : ''}</button>`).join('')}
+      <label class="flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium ${mode === 'until' ? 'bg-charcoal text-white' : 'bg-canvas'}">
+        <span>${mode === 'until' && end ? `Until ${Fmt.time(end)}` : 'Until…'}</span>
+        <input type="time" class="w-0 opacity-0 focus:w-auto focus:opacity-100 text-charcoal" value="${end || ''}" aria-label="End time">
+      </label>
+    </div>`;
+    $$('[data-len]', root).forEach((b) => b.onclick = () => {
+      mode = b.dataset.len === 'none' ? 'none' : Number(b.dataset.len);
+      render(); onChange?.();
+    });
+    const input = $('input[type=time]', root);
+    $('label', root).onclick = () => input.showPicker?.();
+    input.onchange = () => { if (input.value) { mode = 'until'; end = input.value; render(); onChange?.(); } };
+  }
+  render();
+  const compute = () => {
+    if (mode === 'none') return null;
+    if (mode === 'until') return end;
+    const n = toMin(start()) + mode;
+    return n < 24 * 60 ? toTime(n) : 'past';   // 'past' = would end after midnight
+  };
+  return {
+    value: () => { const v = compute(); return v === 'past' ? null : v; },
+    error() {
+      const v = compute();
+      if (v === 'past') return 'That length goes past midnight. Pick a shorter one or an earlier time.';
+      if (v && v <= start()) return 'The end time must be after the due time.';
+      return '';
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ Motion: feedback, state and the cap toss
@@ -1045,7 +1100,7 @@ const Motion = {
     const el = document.createElement('div');
     el.className = 'm-intro';
     el.setAttribute('aria-hidden', 'true');
-    el.innerHTML = '<div class="m-intro-mark"><span class="m-intro-tile">AS</span><span class="m-intro-word">AcadSync</span></div>';
+    el.innerHTML = '<div class="m-intro-mark"><span class="m-intro-tile"><img src="assets/logo-128.png" alt="" width="48" height="48"></span><span class="m-intro-word">AcadSync</span></div>';
     document.body.appendChild(el);
     let finished = false;
     const done = () => {

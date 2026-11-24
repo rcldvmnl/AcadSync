@@ -74,6 +74,7 @@ function present_task(array $t, array $subjectIndex, array $users): array
         'description' => $t['description'],
         'deadline' => $t['deadline'],
         'deadline_time' => $t['deadline_time'],
+        'deadline_until' => $t['deadline_until'] ?? null,
         'deadline_end' => $t['deadline_end'],
         'deadline_type' => $t['deadline_type'],
         'deadline_ts' => DsaUtil::deadlineTs($t),
@@ -803,9 +804,10 @@ function validate_deadline(array $in, string $today): array
     $deadline = ($in['deadline'] ?? null) ?: null;
     $end = ($in['deadline_end'] ?? null) ?: null;
     $time = ($in['deadline_time'] ?? null) ?: null;
+    $until = ($in['deadline_until'] ?? null) ?: null;   // end of the due time (1 hour, 2 hours, … or a picked end)
     $isDate = fn ($d) => is_real_date($d);   // "2026-02-31" is refused (strtotime would roll it to March)
     if ($type === 'unset') {
-        return ['deadline_type' => 'unset', 'deadline' => null, 'deadline_end' => null, 'deadline_time' => null];
+        return ['deadline_type' => 'unset', 'deadline' => null, 'deadline_end' => null, 'deadline_time' => null, 'deadline_until' => null];
     }
     if ($type === 'range') {
         if (!$isDate($deadline) || !$isDate($end) || $deadline > $end) {
@@ -827,7 +829,15 @@ function validate_deadline(array $in, string $today): array
     if ($time !== null && !valid_time((string) $time)) {
         throw new InvalidArgumentException('Pick a valid due time.');
     }
-    return ['deadline_type' => $type, 'deadline' => $deadline, 'deadline_end' => $end, 'deadline_time' => $time];
+    if ($until !== null) {
+        if ($time === null || !valid_time((string) $until)) {
+            throw new InvalidArgumentException('Pick a valid end time.');
+        }
+        if ((string) $until <= (string) $time) {      // "HH:MM" strings compare in time order
+            throw new InvalidArgumentException('The end time must be after the start, on the same day.');
+        }
+    }
+    return ['deadline_type' => $type, 'deadline' => $deadline, 'deadline_end' => $end, 'deadline_time' => $time, 'deadline_until' => $until];
 }
 
 /**

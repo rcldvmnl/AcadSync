@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     description TEXT,                   -- Linear Search target
     deadline DATE,                      -- YYYY-MM-DD (first day if a range); NULL = not set yet
     deadline_end DATE,                  -- last day of a date range
-    deadline_time TEXT,                 -- "13:00"
+    deadline_time TEXT,                 -- "13:00" (the start when the due time has a length)
+    deadline_until TEXT,                -- "15:00" end of the due time (NULL = no length); due at this time
     deadline_type TEXT NOT NULL DEFAULT 'exact', -- exact | range | unset
     location TEXT,
     work_mode TEXT NOT NULL DEFAULT 'individual', -- individual | group
@@ -397,6 +398,26 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
 
+-- 10l. PAYMENT_CLAIMS — "I already paid": a member reports a payment the Treasurer hasn't recorded yet.
+--      Confirmed = a payments row is made from it; rejected = the Treasurer couldn't find it (with a reason).
+CREATE TABLE IF NOT EXISTS payment_claims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_id INTEGER NOT NULL,
+    due_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,           -- who says they paid
+    amount INTEGER NOT NULL,            -- centavos
+    method TEXT NOT NULL,               -- 'cash' | 'gcash' (checked by CashPayment / GcashPayment)
+    reference TEXT,                     -- receipt no. or 13-digit GCash ref
+    note TEXT,                          -- e.g. "Paid during the Nov 20 meeting"
+    status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'approved' | 'rejected'
+    reason TEXT,                        -- why it was rejected (optional)
+    reviewed_by INTEGER,                -- the Treasurer / President who decided
+    created_at DATETIME DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY(section_id) REFERENCES sections(id),
+    FOREIGN KEY(due_id) REFERENCES dues(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
 -- 11. PASSWORD_RESETS -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS password_resets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -440,6 +461,7 @@ SELECT s.name AS section, sub.code AS subject, t.category, t.title,
             WHEN 'range' THEN t.deadline || ' to ' || t.deadline_end
             ELSE t.deadline END AS deadline,
        t.deadline_time AS due_time,
+       t.deadline_until AS due_until,
        CASE t.work_mode WHEN 'group' THEN 'group of ' || t.group_min || '–' || t.group_max ELSE 'individual' END AS work,
        t.status, t.kind,
        u.last_name || ', ' || u.first_name AS requested_by, t.created_at

@@ -21,6 +21,9 @@ const open = new Set();   // dues whose member list is expanded
 async function load() {
   data = await API.get('dues.php');
   if (data.can_manage && !open.size && data.dues[0]) open.add(data.dues[0].id);
+  // a due with "I already paid" claims to check opens by itself (first load only, like the first due)
+  if (data.can_manage && !load.done) data.dues.forEach((d) => { if (d.claims_count) open.add(d.id); });
+  load.done = true;
   render();
 }
 
@@ -80,8 +83,26 @@ function memberCard(d) {
       </div>
       ${d.my_standing === 'not_charged' ? '' : `
         <div class="mt-4">${bar(d.my_paid, d.amount)}</div>
-        <p class="mt-1.5 text-xs text-muted">Paid <b class="font-semibold text-charcoal">${esc(d.my_paid_label)}</b> of ${esc(d.amount_label)}${d.my_balance ? ` · ${esc(d.my_balance_label)} left` : ''}</p>`}
+        <p class="mt-1.5 text-xs text-muted">Paid <b class="font-semibold text-charcoal">${esc(d.my_paid_label)}</b> of ${esc(d.amount_label)}${d.my_balance ? ` · ${esc(d.my_balance_label)} left` : ''}</p>
+        ${d.my_balance ? claimBox(d) : ''}`}
     </article>`;
+}
+
+/** "I already paid": waiting for the Treasurer (with Withdraw), or why the last one wasn't confirmed, or the button. */
+function claimBox(d) {
+  const c = d.my_claim;
+  if (c) {
+    return `
+      <div class="mt-4 flex items-start gap-3 rounded-2xl bg-sun-tint p-3 text-xs">
+        <span class="min-w-0 flex-1">You said you paid <b class="font-semibold">${esc(c.amount_label)}</b> · ${esc(c.receipt)}${c.note ? ` · “${esc(c.note)}”` : ''}.
+          Waiting for the Treasurer to check it.</span>
+        <button type="button" data-withdraw-claim="${c.id}" class="shrink-0 font-semibold text-danger">Withdraw</button>
+      </div>`;
+  }
+  const r = d.my_rejected;
+  return `
+    ${r ? `<p class="mt-4 rounded-2xl bg-danger-tint p-3 text-xs">The Treasurer couldn’t confirm your ${esc(r.amount_label)} payment (${esc(r.receipt)})${r.reason ? `: ${esc(r.reason)}` : ''}. Check it and tell them again.</p>` : ''}
+    <div class="mt-4"><button type="button" data-claim="${d.id}" class="btn btn-canvas h-10 px-4 text-sm">${icon('check', 16)}I already paid</button></div>`;
 }
 
 /* ------------------------------------------------------------ Treasurer */
@@ -113,6 +134,14 @@ function manageCard(d) {
           ${m.balance ? `<button type="button" data-pay="${d.id}:${m.id}" class="rounded-full bg-charcoal px-4 py-2 text-xs font-semibold text-white">Record payment</button>` : ''}
         </span>
       </div>
+      ${m.claim ? `
+        <div class="mt-2 flex flex-wrap items-center gap-2 rounded-2xl bg-sun-tint p-3 text-xs">
+          <span class="min-w-[9rem] flex-1">Says they paid <b class="font-semibold">${esc(m.claim.amount_label)}</b> · ${esc(m.claim.receipt)} · ${esc(Fmt.monthDay(m.claim.created_at.slice(0, 10)))}${m.claim.note ? ` · “${esc(m.claim.note)}”` : ''}</span>
+          <span class="ml-auto flex shrink-0 items-center gap-3">
+            <button type="button" data-reject-claim="${m.claim.id}" class="font-semibold text-danger">Not received</button>
+            <button type="button" data-confirm-claim="${d.id}:${m.id}" class="rounded-full bg-charcoal px-4 py-2 text-xs font-semibold text-white">Confirm</button>
+          </span>
+        </div>` : ''}
       ${m.payments.length ? `<ul class="mt-2 space-y-1 border-t border-black/5 pt-2">${m.payments.map((p) => `
         <li class="flex items-start gap-2 text-xs">
           <span class="min-w-0 flex-1 text-muted">${esc(p.amount_label)} · ${esc(p.receipt)} · ${esc(Fmt.monthDay(p.paid_at.slice(0, 10)))} · by ${esc(p.received_by_name)}</span>
@@ -126,7 +155,10 @@ function manageCard(d) {
           <h2 class="text-lg font-semibold">${esc(d.title)}</h2>
           <p class="text-xs text-muted">${esc(d.amount_label)} each · ${esc(dueDate(d))}</p>
         </div>
-        <span class="chip ${d.paid_count === d.expected && d.expected ? 'bg-mint-tint text-success' : 'bg-canvas'}">${d.paid_count} of ${d.expected} paid</span>
+        <span class="flex shrink-0 flex-wrap justify-end gap-2">
+          ${d.claims_count ? `<span class="chip bg-sun-tint">${d.claims_count} to check</span>` : ''}
+          <span class="chip ${d.paid_count === d.expected && d.expected ? 'bg-mint-tint text-success' : 'bg-canvas'}">${d.paid_count} of ${d.expected} paid</span>
+        </span>
       </div>
       <div class="mt-4">${bar(d.collected, d.amount * d.expected)}</div>
       <p class="mt-1.5 text-xs text-muted"><b class="font-semibold text-charcoal">${esc(d.collected_label)}</b> of ${esc(d.target_label)} collected</p>
@@ -151,6 +183,22 @@ function bind() {
     const d = data.dues.find((x) => x.id === dueId);
     recordPayment(d, d.members.find((m) => m.id === userId));
   });
+  // "I already paid" (members) — the same form as Record a payment, sent to the Treasurer to check
+  $$('[data-claim]').forEach((b) => b.onclick = () => {
+    const d = data.dues.find((x) => x.id === Number(b.dataset.claim));
+    recordPayment(d, { name: 'You', balance: d.my_balance, balance_label: d.my_balance_label }, true);
+  });
+  $$('[data-withdraw-claim]').forEach((b) => b.onclick = () => confirmSheet('Withdraw this claim?',
+    'The Treasurer won’t check it any more. You can tell them again later.', 'Withdraw',
+    () => post({ action: 'withdraw_claim', claim_id: Number(b.dataset.withdrawClaim) }, 'Claim withdrawn')));
+  // Treasurer: the money is there → a real payment; or not received (with an optional reason)
+  $$('[data-confirm-claim]').forEach((b) => b.onclick = () => {
+    const [dueId, userId] = b.dataset.confirmClaim.split(':').map(Number);
+    const m = data.dues.find((x) => x.id === dueId).members.find((x) => x.id === userId);
+    confirmSheet(`Confirm ${m.name}’s payment?`, `${m.claim.amount_label} · ${m.claim.receipt}. Make sure you received it. It is recorded as a payment you received.`,
+      'Confirm', () => post({ action: 'confirm_claim', claim_id: m.claim.id }, 'Payment confirmed'));
+  });
+  $$('[data-reject-claim]').forEach((b) => b.onclick = () => rejectClaim(Number(b.dataset.rejectClaim)));
   $$('[data-remove-payment]').forEach((b) => b.onclick = () => confirmSheet('Remove this payment?',
     'Use this only for a payment entered by mistake. The member is notified.', 'Remove payment',
     () => post({ action: 'remove_payment', payment_id: Number(b.dataset.removePayment) }, 'Payment removed')));
@@ -173,6 +221,29 @@ function confirmSheet(title, text, ok, run) {
     <div class="mt-6 grid grid-cols-2 gap-3"><button data-close class="btn btn-canvas">Keep it</button><button data-ok class="btn btn-dark">${esc(ok)}</button></div>`, {
     label: title,
     onMount: (el, close) => { $('[data-ok]', el).onclick = () => { close(); run(); }; },
+  });
+}
+
+/** Not received: an optional reason the member sees ("No GCash transfer with that reference"). */
+function rejectClaim(claimId) {
+  UI.sheet(`
+    <form>
+      <h2 class="text-2xl font-bold">Not received?</h2>
+      <p class="mt-1 text-sm text-muted">The member is told, so they can check and tell you again.</p>
+      <div class="mt-4">${UI.field({ name: 'reason', label: 'Reason (optional)', placeholder: 'e.g. No GCash transfer with that reference' })}</div>
+      <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
+      <div class="mt-5 grid grid-cols-2 gap-3"><button type="button" data-close class="btn btn-canvas">Keep it</button><button type="submit" class="btn btn-dark">Not received</button></div>
+    </form>`, {
+    label: 'Not received',
+    onMount(el, close) {
+      $('input[name=reason]', el).maxLength = 200;
+      UI.bindForm($('form', el), async (f) => {
+        await API.post('dues.php', { action: 'reject_claim', claim_id: claimId, reason: f.reason });
+        close();
+        UI.toast('Marked not received', { sub: 'The member was notified' });
+        await load();
+      });
+    },
   });
 }
 
@@ -203,13 +274,17 @@ function newDue() {
   });
 }
 
-/** Cash or GCash. GCash asks for its 13-digit reference; the server checks it and that it's unused. */
-function recordPayment(d, m) {
+/**
+ * Cash or GCash. GCash asks for its 13-digit reference; the server checks it and that it's unused.
+ * claim = true: a member's "I already paid" (same form + a note); the Treasurer checks it before it counts.
+ */
+function recordPayment(d, m, claim = false) {
   const methods = data.methods;
+  const title = claim ? 'I already paid' : 'Record a payment';
   UI.sheet(`
     <form>
-      <h2 class="text-2xl font-bold">Record a payment</h2>
-      <p class="mt-1 text-sm text-muted">${esc(m.name)} · ${esc(d.title)} · ${esc(m.balance_label)} left</p>
+      <h2 class="text-2xl font-bold">${title}</h2>
+      <p class="mt-1 text-sm text-muted">${claim ? `${esc(d.title)} · ${esc(m.balance_label)} left. The Treasurer checks it, then it counts.` : `${esc(m.name)} · ${esc(d.title)} · ${esc(m.balance_label)} left`}</p>
       <div class="mt-4 space-y-4">
         <fieldset>
           <legend class="mb-1.5 text-xs text-muted">Paid with</legend>
@@ -220,11 +295,12 @@ function recordPayment(d, m) {
         </fieldset>
         ${UI.field({ name: 'amount', label: 'Amount (₱)', value: (m.balance / 100).toFixed(2), required: true })}
         <div data-ref>${UI.field({ name: 'reference', label: methods[0].reference })}</div>
+        ${claim ? UI.field({ name: 'note', label: 'Note (optional)', placeholder: 'e.g. Paid during the meeting on Friday' }) : ''}
       </div>
       <p data-error class="mt-3 rounded-2xl bg-danger-tint px-4 py-3 text-sm" hidden></p>
-      <button type="submit" class="btn btn-dark mt-5 w-full">Save payment</button>
+      <button type="submit" class="btn btn-dark mt-5 w-full">${claim ? 'Send to the Treasurer' : 'Save payment'}</button>
     </form>`, {
-    label: 'Record a payment',
+    label: title,
     onMount(el, close) {
       const form = $('form', el);
       $('input[name=amount]', el).inputMode = 'decimal';
@@ -245,7 +321,15 @@ function recordPayment(d, m) {
       $$('input[name=method]', el).forEach((r) => r.onchange = sync);
       sync();
       $('input[name=amount]', el).focus();   // not the hidden radio, whose focus ring looks like a second choice
+      if (claim) $('input[name=note]', el).maxLength = 200;
       UI.bindForm(form, async (f) => {
+        if (claim) {
+          await API.post('dues.php', { action: 'claim_payment', due_id: d.id, ...f });
+          close();
+          UI.toast('Sent to the Treasurer', { sub: 'You’re notified when they check it' });
+          await load();
+          return;
+        }
         const res = await API.post('dues.php', { action: 'record_payment', due_id: d.id, user_id: m.id, ...f });
         close();
         UI.toast('Payment recorded', { sub: res.left ? `${res.left_label} left` : 'Paid in full' });

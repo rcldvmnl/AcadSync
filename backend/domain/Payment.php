@@ -317,3 +317,95 @@ final class Due
             'due_date' => $this->dueDate, 'status' => $this->status];
     }
 }
+
+/**
+ * "I already paid": a member reports a payment the Treasurer hasn't recorded yet.
+ *
+ *   COMPOSITION   a claim HAS-A Payment (CashPayment or GcashPayment, built by Payment::create), so the amount
+ *                 and the reference are checked by the same rules as a payment the Treasurer enters.
+ *   ENCAPSULATION status only moves pending → approved | rejected; confirm() builds the real payment.
+ */
+final class PaymentClaim
+{
+    public const PENDING = 'pending';
+    public const APPROVED = 'approved';
+    public const REJECTED = 'rejected';
+
+    private Payment $payment;
+
+    public function __construct(
+        private int $id,
+        int $dueId,
+        int $userId,
+        int $amount,
+        string $method,
+        ?string $reference,
+        private ?string $note,
+        private string $status = self::PENDING,
+        private ?string $reason = null,
+        private string $createdAt = '',
+    ) {
+        // [OOP: POLYMORPHISM] the method's own class checks the reference (GCash: 13 digits)
+        $this->payment = Payment::create($method, $dueId, $userId, $amount, $reference, 0, $createdAt);
+        $this->note = $note !== null && trim($note) !== '' ? trim($note) : null;
+        if ($this->note !== null && mb_strlen($this->note) > 200) {
+            throw new InvalidArgumentException('Keep the note under 200 characters.');
+        }
+        if ($status !== self::PENDING && $status !== self::APPROVED && $status !== self::REJECTED) {
+            throw new InvalidArgumentException('Unknown claim status.');
+        }
+    }
+
+    public static function fromRow(array $row): PaymentClaim
+    {
+        return new self((int) $row['id'], (int) $row['due_id'], (int) $row['user_id'], (int) $row['amount'], (string) $row['method'],
+            $row['reference'], $row['note'], (string) $row['status'], $row['reason'], (string) ($row['created_at'] ?? ''));
+    }
+
+    public function id(): int
+    {
+        return $this->id;
+    }
+
+    /** The payment as the member described it (not recorded yet). */
+    public function payment(): Payment
+    {
+        return $this->payment;
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === self::PENDING;
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === self::REJECTED;
+    }
+
+    /** The real payment, received by the officer who confirms the claim. */
+    public function confirm(int $receivedBy): Payment
+    {
+        if (!$this->isPending()) {
+            throw new InvalidArgumentException('That claim was already handled.');
+        }
+        $p = $this->payment;
+        return Payment::create($p->method(), $p->dueId(), $p->userId(), $p->amount(), $p->reference(), $receivedBy);
+    }
+
+    /** The row to INSERT into payment_claims. */
+    public function toRow(int $sectionId): array
+    {
+        $p = $this->payment;
+        return ['section_id' => $sectionId, 'due_id' => $p->dueId(), 'user_id' => $p->userId(), 'amount' => $p->amount(),
+            'method' => $p->method(), 'reference' => $p->reference(), 'note' => $this->note, 'status' => $this->status];
+    }
+
+    public function toArray(): array
+    {
+        $p = $this->payment;
+        return ['id' => $this->id, 'due_id' => $p->dueId(), 'user_id' => $p->userId(), 'amount' => $p->amount(),
+            'amount_label' => Due::peso($p->amount()), 'receipt' => $p->receiptLine(), 'note' => $this->note,
+            'status' => $this->status, 'reason' => $this->reason, 'created_at' => $this->createdAt];
+    }
+}
