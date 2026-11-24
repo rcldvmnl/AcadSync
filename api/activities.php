@@ -157,6 +157,22 @@ $memberRow = function (int $partId, int $userId) use ($sectionId): ?array {
     return null;
 };
 
+/**
+ * Starts a transaction that holds the write lock first (a no-op write by primary key), then re-reads this
+ * activity's RSVPs. Two people pressing RSVP at once then go one after the other, so the last seat is taken once.
+ */
+$lockedRoster = function (Activity $a) use ($sectionId): ActivityRoster {
+    Store::begin();
+    Store::update('activities', $a->id(), ['id' => $a->id()]);   // takes SQLite's write lock before reading
+    $rows = [];
+    foreach (section_rows('activity_rsvps', $sectionId) as $x) {
+        if ((int) $x['activity_id'] === $a->id()) {
+            $rows[] = $x;
+        }
+    }
+    return new ActivityRoster($rows, []);
+};
+
 /** A fresh PartRoster for one part, re-read inside the transaction so two officers can't overfill it. */
 $freshRoster = function (int $partId) use ($sectionId): PartRoster {
     $rows = [];
@@ -942,12 +958,15 @@ switch (param('action')) {
         if ($a->isCancelled() || $a->isOver($now)) {
             fail('This activity is no longer open for RSVPs.', 409);
         }
+        $r = $lockedRoster($a);                     // re-read under the lock: nobody else takes the seat meanwhile
         if ($r->isGoing($uid) || $r->waitlistPosition($uid)) {
+            Store::rollbackIfOpen();
             fail('You already RSVP’d.', 409);
         }
         // A seat if there is one; otherwise ENQUEUE at the rear of the waitlist
         $status = $a->hasRoom($r->goingCount()) ? 'going' : 'waitlist';
         Store::insert('activity_rsvps', ['section_id' => $sectionId, 'activity_id' => $a->id(), 'user_id' => $uid, 'status' => $status]);
+        Store::commit();
         respond(['status' => $status, 'position' => $status === 'waitlist' ? $r->waitlistSize() + 1 : 0]);
     }
 
@@ -963,7 +982,7 @@ switch (param('action')) {
         if ($row === null) {
             fail('You haven’t RSVP’d to this.', 404);
         }
-        Store::begin();
+        $r = $lockedRoster($a);                             // fresh waitlist under the lock (two cancels at once)
         Store::delete('activity_rsvps', (int) $row['id']);
         $promoted = null;
         // A seat opened up: the first INVITED person in the waitlist QUEUE gets it (first come, first served).
@@ -979,7 +998,7 @@ switch (param('action')) {
         }
         Store::commit();
         if ($promoted !== null) {
-            notify($promoted, $sectionId, 'approved', "A seat opened up: you’re going to “{$a->title()}”", 'activities.html');
+            notify($promoted, $sectionId, 'approved', "A seat opened up: you’re going to “{$a->title()}”", "activities.html#a{$a->id()}");
         }
         respond(['promoted' => $promoted !== null]);
     }
