@@ -653,7 +653,7 @@ const Shell = {
     const fab = items.find((it) => it.fab);
     const acct = items.find((it) => it.key === 'account');
     rail.innerHTML = `
-      <a href="home.html" class="mb-8 grid h-11 w-11 place-items-center rounded-xl bg-lavender text-sm font-bold text-charcoal" aria-label="AcadSync home"><img src="assets/logo-128.png" alt="" width="32" height="32" class="h-8 w-8"></a>
+      <a href="home.html" class="mb-8 grid h-11 w-11 place-items-center rounded-xl bg-white text-sm font-bold text-charcoal" aria-label="AcadSync home"><img src="assets/logo-128.png" alt="" width="32" height="32" class="h-8 w-8"></a>
       <div class="flex flex-col items-center gap-3">
         ${railItems.map((it) => `<a href="${it.href}" data-nav="${it.key}" class="nav-item ${active === it.key ? 'active' : ''}" title="${it.label}" aria-label="${it.label}">${icon(it.icon, 20)}${badge(it)}</a>`).join('')}
         <a href="${fab.href}" class="nav-fab mt-1" title="${fab.label}" aria-label="${fab.label}">${icon('plus', 22)}</a>

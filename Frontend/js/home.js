@@ -719,6 +719,10 @@ function adminView(d) {
 
       <section id="announcements" class="scroll-mt-6 lg:col-span-2" aria-label="Announcements"></section>
 
+      <!-- Desktop: Quick actions, Officers and Subjects stack in the left column beside Classes today (no empty gap
+           when there are many classes). Phone: the wrapper steps aside (contents) and the order stays
+           Quick actions → Classes today → Officers → Subjects (order-1 puts the last two after the classes). -->
+      <div class="contents lg:block lg:space-y-6">
       <section>
         <h2 class="mb-3 text-xl font-bold">Quick actions</h2>
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -731,16 +735,17 @@ function adminView(d) {
         </div>
       </section>
 
-      <section>
+      <section id="home-officers" class="order-1 lg:order-none" aria-labelledby="home-officers-h" hidden></section>
+
+      <div class="order-1 lg:order-none">${subjectsSection(d, 'Subjects')}</div>
+      </div>
+
+      <section class="lg:self-start">
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-xl font-bold">Classes today</h2>
           <span class="chip bg-white">${esc(Fmt.short(today))}</span>
         </div>
         <div class="space-y-3">${classes.length ? classes.map((c) => UI.classRow(c)).join('') : UI.empty('No classes today', 'Enjoy the free day.', 'calendar')}</div>
       </section>
-
-      <section id="home-officers" class="lg:col-span-2" aria-labelledby="home-officers-h" hidden></section>
-
-      ${subjectsSection(d, 'Subjects')}
     </div>`;
 }
